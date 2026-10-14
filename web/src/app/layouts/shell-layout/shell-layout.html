@@ -1,0 +1,14 @@
+<div class="shell">
+  <header class="shell__header">
+    <span class="shell__brand">Controle de Estoque</span>
+    @if (operator(); as op) {
+      <span class="shell__operator">{{ op.nome }}</span>
+    }
+  </header>
+
+  <main class="shell__content">
+    <router-outlet />
+  </main>
+
+  <ce-bottom-nav class="shell__nav" [itens]="navItems" />
+</div>

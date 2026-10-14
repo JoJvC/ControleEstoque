@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\ControleEstoque.Estoque.Domain\ControleEstoque.Estoque.Domain.csproj" />
+  </ItemGroup>
+</Project>

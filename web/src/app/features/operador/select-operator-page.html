@@ -1,0 +1,36 @@
+<main class="operador">
+  <header class="operador__header">
+    <h1>Quem está operando?</h1>
+    <p>Escolha seu nome para começar. As vendas e operações serão registradas com ele.</p>
+  </header>
+
+  @switch (status()) {
+    @case ('loading') {
+      <p class="operador__feedback" role="status">Carregando funcionários…</p>
+    }
+    @case ('error') {
+      <div class="operador__feedback">
+        <p>Não foi possível carregar os funcionários.</p>
+        <button type="button" class="operador__retry" (click)="carregar()">Tentar novamente</button>
+      </div>
+    }
+    @case ('ok') {
+      <ul class="operador__lista">
+        @for (funcionario of funcionarios(); track funcionario.id) {
+          <li>
+            <button type="button" class="operador__item" (click)="selecionar(funcionario)">
+              <span class="operador__nome">{{ funcionario.nome }}</span>
+              @if (funcionario.cargo) {
+                <span class="operador__cargo">{{ funcionario.cargo }}</span>
+              }
+            </button>
+          </li>
+        } @empty {
+          <li class="operador__feedback">
+            Nenhum funcionário ativo cadastrado. Cadastre um funcionário na API de RH para começar.
+          </li>
+        }
+      </ul>
+    }
+  }
+</main>

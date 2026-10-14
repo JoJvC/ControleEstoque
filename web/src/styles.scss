@@ -1,0 +1,31 @@
+@use './styles/tokens';
+@use './styles/reset';
+
+body {
+  font-family: var(--ce-font-family);
+  font-size: var(--ce-font-md);
+  color: var(--ce-text);
+  background: var(--ce-bg);
+}
+
+// ---- Overlays (SheetService / CDK Dialog) ----------------------------------
+// Mobile: bottom sheet (align-self vence o align-items inline do wrapper).
+// ≥600px: dialog central.
+
+.ce-sheet-backdrop {
+  background: rgb(15 23 42 / 45%);
+}
+
+.cdk-overlay-pane.ce-sheet-panel {
+  align-self: flex-end;
+  width: 100vw;
+}
+
+@media (min-width: 600px) {
+  .cdk-overlay-pane.ce-sheet-panel {
+    align-self: center;
+    width: auto;
+    min-width: 420px;
+    max-width: 560px;
+  }
+}

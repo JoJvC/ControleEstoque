@@ -1,0 +1,26 @@
+<section class="mais">
+  <h1 class="mais__titulo">Mais</h1>
+
+  <nav class="mais__lista" aria-label="Outras áreas">
+    @for (link of links; track link.path) {
+      <a class="mais__item" [routerLink]="link.path">
+        <span aria-hidden="true">{{ link.icon }}</span>
+        <span>{{ link.label }}</span>
+      </a>
+    }
+  </nav>
+
+  <div class="mais__acoes">
+    <button type="button" class="mais__item mais__item--acao" (click)="trocarOperador()">
+      <span aria-hidden="true">🔄</span>
+      <span>Trocar operador</span>
+    </button>
+
+    @if (dev) {
+      <button type="button" class="mais__item mais__item--acao" (click)="simularErroApi()">
+        <span aria-hidden="true">🧪</span>
+        <span>Simular erro de API (dev)</span>
+      </button>
+    }
+  </div>
+</section>

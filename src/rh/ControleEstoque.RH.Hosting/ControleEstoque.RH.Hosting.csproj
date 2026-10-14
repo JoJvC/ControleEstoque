@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ControleEstoque.RH.Domain\ControleEstoque.RH.Domain.csproj" />
+    <ProjectReference Include="..\ControleEstoque.RH.Repository\ControleEstoque.RH.Repository.csproj" />
+  </ItemGroup>
+</Project>

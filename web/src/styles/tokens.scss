@@ -1,0 +1,64 @@
+// Design tokens do ControleEstoque.
+// Cores são semânticas (uso, não matiz) — estrutura pronta para dark mode futuro:
+// basta redefinir as custom properties sob prefers-color-scheme/data-theme.
+
+:root {
+  // Cor — marca e feedback
+  --ce-primary: #0284c7; // ação primária (água ⇒ azul)
+  --ce-primary-strong: #0369a1; // hover/pressed
+  --ce-primary-soft: #e0f2fe; // fundos de destaque suaves
+  --ce-success: #16a34a; // pago / saldo positivo
+  --ce-success-soft: #dcfce7;
+  --ce-warning: #d97706; // parcial / alerta de estoque / "vai para fiado"
+  --ce-warning-soft: #fef3c7;
+  --ce-danger: #dc2626; // pendente / débito / destrutivo
+  --ce-danger-soft: #fee2e2;
+
+  // Cor — superfície e texto
+  --ce-bg: #f1f5f9; // fundo da aplicação
+  --ce-surface: #ffffff; // cards, sheets, headers
+  --ce-surface-muted: #f8fafc; // linhas alternadas, campos desabilitados
+  --ce-text: #0f172a;
+  --ce-text-muted: #64748b;
+  --ce-text-on-primary: #ffffff;
+  --ce-border: #e2e8f0;
+  --ce-focus-ring: #38bdf8;
+
+  // Espaçamento — escala de 4px
+  --ce-space-1: 4px;
+  --ce-space-2: 8px;
+  --ce-space-3: 12px;
+  --ce-space-4: 16px;
+  --ce-space-5: 20px;
+  --ce-space-6: 24px;
+  --ce-space-7: 32px;
+  --ce-space-8: 40px;
+
+  // Tipografia
+  --ce-font-family:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --ce-font-sm: 0.8125rem; // 13px — legendas, metadados
+  --ce-font-md: 1rem; // 16px — base (evita zoom do iOS em inputs)
+  --ce-font-lg: 1.25rem; // 20px — títulos de seção
+  --ce-font-xl: 1.5rem; // 24px — títulos de página / totais
+  --ce-line-height: 1.5;
+
+  // Forma
+  --ce-radius-sm: 6px;
+  --ce-radius-md: 10px;
+  --ce-radius-lg: 16px;
+  --ce-shadow-1: 0 1px 2px rgb(15 23 42 / 8%);
+  --ce-shadow-2: 0 4px 12px rgb(15 23 42 / 12%);
+
+  // Toque — altura mínima de QUALQUER elemento interativo
+  --ce-touch-target: 44px;
+
+  // Layout do shell — páginas usam para posicionar barras fixas acima da bottom-nav
+  --ce-nav-height: 64px;
+
+  // Camadas
+  --ce-z-header: 10;
+  --ce-z-nav: 20;
+  --ce-z-sheet: 30;
+  --ce-z-toast: 40;
+}

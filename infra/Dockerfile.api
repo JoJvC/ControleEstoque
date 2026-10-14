@@ -1,0 +1,19 @@
+# Dockerfile único parametrizado por contexto (build context = raiz do repo).
+# Uso: docker build -f infra/Dockerfile.api --build-arg CONTEXT=vendas --build-arg PROJECT=ControleEstoque.Vendas.API .
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG CONTEXT
+ARG PROJECT
+WORKDIR /src
+COPY src/Directory.Build.props src/
+COPY src/shared/ src/shared/
+COPY src/${CONTEXT}/ src/${CONTEXT}/
+RUN dotnet publish src/${CONTEXT}/${PROJECT}/${PROJECT}.csproj -c Release -o /app
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+ARG PROJECT
+WORKDIR /app
+COPY --from=build /app .
+ENV ASPNETCORE_URLS=http://+:8080
+ENV APP_DLL=${PROJECT}.dll
+EXPOSE 8080
+ENTRYPOINT ["sh", "-c", "dotnet $APP_DLL"]

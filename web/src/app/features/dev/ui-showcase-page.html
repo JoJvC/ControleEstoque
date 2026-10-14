@@ -1,0 +1,134 @@
+<div class="showcase">
+  <ce-app-header titulo="Design System" [mostrarVoltar]="true">
+    <ce-badge cor="primary">dev</ce-badge>
+  </ce-app-header>
+
+  <section class="secao">
+    <h2>Botões</h2>
+    <div class="linha">
+      <ce-button>Primário</ce-button>
+      <ce-button variante="ghost">Ghost</ce-button>
+      <ce-button variante="danger">Perigo</ce-button>
+      <ce-button [loading]="true">Salvando…</ce-button>
+      <ce-button [disabled]="true">Desabilitado</ce-button>
+    </div>
+  </section>
+
+  <section class="secao">
+    <h2>Ícones</h2>
+    <div class="linha linha--icones">
+      <ce-icon nome="home" />
+      <ce-icon nome="gota" />
+      <ce-icon nome="usuario" />
+      <ce-icon nome="dinheiro" />
+      <ce-icon nome="menu" />
+      <ce-icon nome="buscar" />
+      <ce-icon nome="mais" />
+      <ce-icon nome="menos" />
+      <ce-icon nome="fechar" />
+      <ce-icon nome="confirmar" />
+      <ce-icon nome="alerta" />
+      <ce-icon nome="info" />
+      <ce-icon nome="lixeira" />
+      <ce-icon nome="editar" />
+      <ce-icon nome="camera" />
+      <ce-icon nome="cupom" />
+      <ce-icon nome="caixa" />
+      <ce-icon nome="grafico" />
+      <ce-icon nome="atualizar" />
+      <ce-icon nome="sair" />
+      <ce-icon nome="carrinho" />
+      <ce-icon nome="galao" />
+      <ce-icon nome="seta-esquerda" />
+      <ce-icon nome="seta-direita" />
+    </div>
+  </section>
+
+  <section class="secao">
+    <h2>Badges e chips</h2>
+    <div class="linha">
+      <ce-badge cor="success">Paga</ce-badge>
+      <ce-badge cor="warning">Parcial</ce-badge>
+      <ce-badge cor="danger">Pendente</ce-badge>
+      <ce-badge cor="primary">Novo</ce-badge>
+      <ce-badge>Neutro</ce-badge>
+    </div>
+    <div class="grade-3">
+      <ce-saldo-chip rotulo="Cascos devendo" cor="danger">5</ce-saldo-chip>
+      <ce-saldo-chip rotulo="Sucata entregue" cor="neutral">3</ce-saldo-chip>
+      <ce-saldo-chip rotulo="Fiado" cor="warning">{{ 50 | cePreco }}</ce-saldo-chip>
+    </div>
+  </section>
+
+  <section class="secao">
+    <h2>Formulário</h2>
+    <ce-form-field rotulo="Nome do cliente" [obrigatorio]="true" dica="Como aparece na venda">
+      <ce-input placeholder="Ex.: Maria Silva" [formControl]="texto" />
+    </ce-form-field>
+    <ce-form-field rotulo="Produto" erro="Selecione um produto.">
+      <ce-select [opcoes]="opcoes" placeholder="Escolha…" [formControl]="selecionado" />
+    </ce-form-field>
+    <ce-form-field rotulo="Preço unitário">
+      <ce-money-input [formControl]="dinheiro" />
+    </ce-form-field>
+    <div class="linha">
+      <ce-form-field rotulo="Quantidade">
+        <ce-quantity-stepper [formControl]="quantidade" [min]="0" [max]="99" />
+      </ce-form-field>
+      <p class="valor-atual">Valor: {{ quantidade.value }} × {{ dinheiro.value | cePreco }}</p>
+    </div>
+    <ce-checkbox [formControl]="marcado">Cascos devolvidos na hora</ce-checkbox>
+  </section>
+
+  <section class="secao">
+    <h2>Busca (debounce 300ms)</h2>
+    <ce-search-box placeholder="Buscar produto…" (buscar)="aoBuscar($event)" />
+  </section>
+
+  <section class="secao">
+    <h2>Lista</h2>
+    <ce-data-list [itens]="itensDemo" status="ok" [temMais]="true">
+      <ng-template let-item>
+        <ce-list-item>
+          <ce-avatar ce-leading [nome]="item" [tamanho]="36" />
+          <span>{{ item }}</span>
+          <ce-icon ce-trailing nome="seta-direita" [tamanho]="18" />
+        </ce-list-item>
+      </ng-template>
+    </ce-data-list>
+    <ce-divider />
+    <ce-empty-state titulo="Nenhuma venda hoje" descricao="Registre a primeira venda do dia.">
+      <ce-button variante="ghost">Nova venda</ce-button>
+    </ce-empty-state>
+  </section>
+
+  <section class="secao">
+    <h2>Venda (PDV)</h2>
+    <h3>ce-item-venda-card</h3>
+    <ce-item-venda-card
+      nome="Água Marca A 20L"
+      [quantidade]="5"
+      [precoUnitario]="50"
+      [valorDesconto]="10"
+      motivoDesconto="cliente antigo"
+      [totalItem]="240"
+    />
+    <ce-divider />
+    <h3>ce-pagamento-lista</h3>
+    <ce-pagamento-lista [total]="250" [(pagamentos)]="pagamentosDemo" />
+  </section>
+
+  <section class="secao">
+    <h2>Feedback</h2>
+    <div class="linha">
+      <ce-button variante="ghost" (click)="mostrarToast('success')">Toast sucesso</ce-button>
+      <ce-button variante="ghost" (click)="mostrarToast('error')">Toast erro</ce-button>
+      <ce-button variante="ghost" (click)="mostrarToast('info')">Toast info</ce-button>
+      <ce-button variante="ghost" (click)="confirmarDemo()">Confirm sheet</ce-button>
+    </div>
+    <div class="linha">
+      <ce-spinner />
+      <ce-skeleton largura="180px" altura="20px" />
+    </div>
+  </section>
+</div>

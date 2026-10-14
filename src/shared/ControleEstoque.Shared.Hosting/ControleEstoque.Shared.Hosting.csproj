@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ControleEstoque.Shared.Contracts\ControleEstoque.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\ControleEstoque.Shared.Results\ControleEstoque.Shared.Results.csproj" />
+    <ProjectReference Include="..\ControleEstoque.Shared.Telemetry\ControleEstoque.Shared.Telemetry.csproj" />
+  </ItemGroup>
+</Project>

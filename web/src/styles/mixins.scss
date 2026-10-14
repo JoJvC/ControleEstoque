@@ -1,0 +1,42 @@
+// Mixins mobile-first. Media queries SOMENTE min-width (Regra 4.3 do plano).
+
+$breakpoint-tablet: 600px;
+$breakpoint-desktop: 960px;
+
+@mixin from-tablet {
+  @media (min-width: $breakpoint-tablet) {
+    @content;
+  }
+}
+
+@mixin from-desktop {
+  @media (min-width: $breakpoint-desktop) {
+    @content;
+  }
+}
+
+// Safe areas (Capacitor/iOS — exige viewport-fit=cover no index.html)
+@mixin safe-area-top($extra: 0px) {
+  padding-top: calc(#{$extra} + env(safe-area-inset-top, 0px));
+}
+
+@mixin safe-area-bottom($extra: 0px) {
+  padding-bottom: calc(#{$extra} + env(safe-area-inset-bottom, 0px));
+}
+
+// Alvo de toque mínimo para elementos interativos
+@mixin touch-target {
+  min-height: var(--ce-touch-target);
+  min-width: var(--ce-touch-target);
+}
+
+// Números alinhados em colunas de dinheiro/quantidade
+@mixin tabular-numbers {
+  font-variant-numeric: tabular-nums;
+}
+
+// Contêiner de conteúdo largo (tabelas/relatórios) — nunca estourar o body
+@mixin scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}

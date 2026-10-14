@@ -1,0 +1,64 @@
+<ce-app-header
+  [titulo]="id() === null ? 'Novo produto' : 'Editar produto'"
+  [mostrarVoltar]="true"
+  (voltar)="voltar()"
+/>
+
+<form class="form" (submit)="$event.preventDefault(); salvar()">
+  <button type="button" class="form__foto" (click)="escolherFoto()">
+    @if (fotoPreview(); as preview) {
+      <img [src]="preview" alt="Foto do produto" />
+    } @else {
+      <ce-icon nome="camera" [tamanho]="32" />
+      <span>Adicionar foto</span>
+    }
+  </button>
+
+  <ce-form-field rotulo="Nome" [obrigatorio]="true">
+    <ce-input placeholder="Ex.: Água Mineral 20L" [formControl]="nome" />
+  </ce-form-field>
+
+  <ce-form-field
+    rotulo="Tipo"
+    [obrigatorio]="true"
+    dica="Produtos sem regra de casco entram como descartável."
+  >
+    <ce-select [opcoes]="tipos" placeholder="Selecione…" [formControl]="tipo" />
+  </ce-form-field>
+
+  <ce-form-field
+    rotulo="Marca"
+    [obrigatorio]="marcaObrigatoria()"
+    [dica]="marcaObrigatoria() ? 'Obrigatória para água e galão completo.' : 'Opcional.'"
+  >
+    <ce-select [opcoes]="marcasOpcoes()" placeholder="Selecione…" [formControl]="marcaId" />
+  </ce-form-field>
+
+  <div class="form__linha">
+    <ce-form-field rotulo="Tamanho" dica="Livre: 20L, 500ml, 5kg…">
+      <ce-input placeholder="20L" [formControl]="tamanho" />
+    </ce-form-field>
+    <ce-form-field rotulo="Categoria" dica="Agrupamento livre.">
+      <ce-input placeholder="Bebidas" [formControl]="categoria" />
+    </ce-form-field>
+  </div>
+
+  <ce-form-field
+    rotulo="Preço de referência"
+    dica="Sugestão de tela — o preço real é definido na venda."
+  >
+    <ce-money-input [formControl]="precoReferencia" />
+  </ce-form-field>
+
+  <ce-form-field rotulo="Estoque mínimo" dica="Alerta quando o estoque ficar abaixo.">
+    <ce-quantity-stepper [formControl]="estoqueMinimo" [min]="0" />
+  </ce-form-field>
+
+  @if (erroForm(); as erro) {
+    <p class="form__erro" role="alert">{{ erro }}</p>
+  }
+
+  <ce-button tipo="submit" [block]="true" [loading]="salvando()">
+    {{ id() === null ? 'Cadastrar produto' : 'Salvar alterações' }}
+  </ce-button>
+</form>

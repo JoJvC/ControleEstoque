@@ -1,0 +1,22 @@
+{
+  "/api/vendas": {
+    "target": "http://localhost:5101",
+    "pathRewrite": { "^/api/vendas": "" }
+  },
+  "/api/clientes": {
+    "target": "http://localhost:5102",
+    "pathRewrite": { "^/api/clientes": "" }
+  },
+  "/api/estoque": {
+    "target": "http://localhost:5103",
+    "pathRewrite": { "^/api/estoque": "" }
+  },
+  "/api/financeiro": {
+    "target": "http://localhost:5104",
+    "pathRewrite": { "^/api/financeiro": "" }
+  },
+  "/api/rh": {
+    "target": "http://localhost:5105",
+    "pathRewrite": { "^/api/rh": "" }
+  }
+}

@@ -1,0 +1,38 @@
+@use 'mixins';
+
+.mais {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-4);
+  padding: var(--ce-space-5) var(--ce-space-4);
+}
+
+.mais__titulo {
+  font-size: var(--ce-font-xl);
+}
+
+.mais__lista,
+.mais__acoes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-2);
+}
+
+.mais__item {
+  @include mixins.touch-target;
+
+  display: flex;
+  align-items: center;
+  gap: var(--ce-space-3);
+  width: 100%;
+  padding: var(--ce-space-3) var(--ce-space-4);
+  background: var(--ce-surface);
+  border: 1px solid var(--ce-border);
+  border-radius: var(--ce-radius-md);
+  font-size: var(--ce-font-md);
+  text-align: left;
+
+  &:active {
+    background: var(--ce-primary-soft);
+  }
+}

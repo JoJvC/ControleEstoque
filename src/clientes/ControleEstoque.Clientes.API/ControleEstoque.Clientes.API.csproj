@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\ControleEstoque.Clientes.Contracts\ControleEstoque.Clientes.Contracts.csproj" />
+    <ProjectReference Include="..\ControleEstoque.Clientes.Hosting\ControleEstoque.Clientes.Hosting.csproj" />
+    <ProjectReference Include="..\..\shared\ControleEstoque.Shared.Hosting\ControleEstoque.Shared.Hosting.csproj" />
+  </ItemGroup>
+</Project>

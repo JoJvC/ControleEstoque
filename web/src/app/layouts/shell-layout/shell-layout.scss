@@ -1,0 +1,66 @@
+@use 'mixins';
+
+$header-height: 56px;
+$sidebar-width: 220px;
+
+.shell {
+  min-height: 100dvh;
+}
+
+.shell__header {
+  @include mixins.safe-area-top;
+
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  z-index: var(--ce-z-header);
+  height: calc(#{$header-height} + env(safe-area-inset-top, 0px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: var(--ce-space-4);
+  background: var(--ce-primary);
+  color: var(--ce-text-on-primary);
+}
+
+.shell__brand {
+  font-weight: 700;
+}
+
+.shell__operator {
+  font-size: var(--ce-font-sm);
+  opacity: 0.9;
+}
+
+.shell__content {
+  padding-top: calc(#{$header-height} + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(var(--ce-nav-height) + env(safe-area-inset-bottom, 0px));
+  min-height: 100dvh;
+}
+
+.shell__nav {
+  @include mixins.safe-area-bottom;
+
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: var(--ce-z-nav);
+  background: var(--ce-surface);
+  border-top: 1px solid var(--ce-border);
+}
+
+// ≥960px: bottom-nav vira sidebar — mesmo componente, só o posicionamento muda
+@include mixins.from-desktop {
+  .shell__content {
+    padding-left: $sidebar-width;
+    padding-bottom: var(--ce-space-6);
+  }
+
+  .shell__nav {
+    inset: 0 auto 0 0;
+    top: calc(#{$header-height} + env(safe-area-inset-top, 0px));
+    width: $sidebar-width;
+    border-top: none;
+    border-right: 1px solid var(--ce-border);
+  }
+}

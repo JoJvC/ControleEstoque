@@ -1,0 +1,62 @@
+<ce-app-header [titulo]="cliente()?.nome ?? 'Cliente'" [mostrarVoltar]="true" (voltar)="voltar()">
+  <ce-button variante="ghost" (click)="editar()">
+    <ce-icon nome="editar" [tamanho]="18" /> Editar
+  </ce-button>
+</ce-app-header>
+
+@if (carregando()) {
+  <div class="centro"><ce-spinner /></div>
+} @else if (cliente(); as c) {
+  <div class="detalhe">
+    <section class="secao">
+      <h2 class="secao__titulo">Contato</h2>
+      <p>{{ c.telefone ?? 'Sem telefone cadastrado' }}</p>
+      @if (c.observacoes) {
+        <p class="observacoes">{{ c.observacoes }}</p>
+      }
+    </section>
+
+    <section class="secao">
+      <div class="secao__cabecalho">
+        <h2 class="secao__titulo">Endereços</h2>
+        <ce-button variante="ghost" (click)="novoEndereco()">
+          <ce-icon nome="mais" [tamanho]="18" /> Adicionar
+        </ce-button>
+      </div>
+
+      @if (c.enderecos.length === 0) {
+        <p class="vazio">Nenhum endereço cadastrado.</p>
+      } @else {
+        <ul class="enderecos">
+          @for (endereco of c.enderecos; track endereco.id) {
+            <li class="endereco">
+              <span class="endereco__linha">
+                {{ endereco.logradouro }}{{ endereco.numero ? ', ' + endereco.numero : '' }}
+                @if (endereco.principal) {
+                  <span class="endereco__principal">principal</span>
+                }
+              </span>
+              @if (endereco.bairro || endereco.complemento) {
+                <span class="endereco__extra">
+                  {{ [endereco.bairro, endereco.complemento].join(' · ') }}
+                </span>
+              }
+              @if (endereco.referencia) {
+                <span class="endereco__extra">Ref.: {{ endereco.referencia }}</span>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="secao secao--saldos">
+      <h2 class="secao__titulo">Saldos (casco, sucata e fiado)</h2>
+      <p class="vazio">Chegam na Sprint F6, com as ações de pagar casco e entregar sucata.</p>
+    </section>
+  </div>
+} @else {
+  <ce-empty-state icone="alerta" titulo="Cliente não encontrado">
+    <ce-button variante="ghost" (click)="carregar()">Tentar novamente</ce-button>
+  </ce-empty-state>
+}

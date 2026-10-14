@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(docker run *)",
+      "PowerShell(docker compose *)",
+      "PowerShell(npm *)",
+      "PowerShell(npx -y @angular/cli@latest new controle-estoque-web --directory web --style scss --ssr false --zoneless --skip-git --defaults --package-manager npm 2>&1 | Select-Object -Last 30)",
+      "PowerShell(npx ng test 2>&1 | Select-Object -Last 6; npx ng lint 2>&1 | Select-Object -Last 3; npx prettier --write \"src/**/*.{ts,html,scss}\" 2>&1 | Select-Object -Last 1)"
+    ]
+  }
+}

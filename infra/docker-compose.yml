@@ -1,0 +1,113 @@
+name: controle-estoque
+
+x-api-common: &api-common
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: controle_estoque
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d controle_estoque"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  vendas-api:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+      args:
+        CONTEXT: vendas
+        PROJECT: ControleEstoque.Vendas.API
+    environment:
+      ControleEstoque__Vendas__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=postgres"
+    ports:
+      - "5101:8080"
+
+  clientes-api:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+      args:
+        CONTEXT: clientes
+        PROJECT: ControleEstoque.Clientes.API
+    environment:
+      ControleEstoque__Clientes__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=postgres"
+    ports:
+      - "5102:8080"
+
+  estoque-api:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+      args:
+        CONTEXT: estoque
+        PROJECT: ControleEstoque.Estoque.API
+    environment:
+      ControleEstoque__Estoque__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=postgres"
+      ControleEstoque__Estoque__MediaPath: /media
+    volumes:
+      - media:/media
+    ports:
+      - "5103:8080"
+
+  financeiro-api:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+      args:
+        CONTEXT: financeiro
+        PROJECT: ControleEstoque.Financeiro.API
+    environment:
+      ControleEstoque__Financeiro__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=postgres"
+    ports:
+      - "5104:8080"
+
+  rh-api:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+      args:
+        CONTEXT: rh
+        PROJECT: ControleEstoque.RH.API
+    environment:
+      ControleEstoque__RH__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=postgres"
+    ports:
+      - "5105:8080"
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      - vendas-api
+      - clientes-api
+      - estoque-api
+      - financeiro-api
+      - rh-api
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
+  media:

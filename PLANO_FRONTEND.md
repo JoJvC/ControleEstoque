@@ -305,7 +305,7 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 - **Critério de aceite:** relatório de faturamento por período e produto confere com as vendas registradas nas sprints anteriores.
 
 ### Sprint F10 — Qualidade e prontidão Capacitor
-- [ ] `@angular/pwa` (manifest, ícones, service worker com estratégia network-first para `/api`)
+- [x] `@angular/pwa` (manifest, ícones, service worker com estratégia network-first para `/api`)
 - [ ] Gateway servindo o build do front em `/` (compose completo: `docker compose up` → sistema inteiro em uma porta)
 - [ ] Playwright: smoke e2e do fluxo crítico (operador → PDV → venda parcial → caixa) rodando contra o compose, viewport mobile
 - [ ] Auditoria da Seção 10 (checklist Capacitor) — corrigir violações (uso direto de `window`/`localStorage` fora de `core/platform`, etc.)

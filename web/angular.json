@@ -30,6 +30,7 @@
                 "input": "public"
               }
             ],
+            "serviceWorker": "ngsw-config.json",
             "styles": ["node_modules/@angular/cdk/overlay-prebuilt.css", "src/styles.scss"],
             "stylePreprocessorOptions": {
               "includePaths": ["src/styles"]
@@ -41,7 +42,7 @@
                 {
                   "type": "initial",
                   "maximumWarning": "500kB",
-                  "maximumError": "1MB"
+                  "maximumError": "500kB"
                 },
                 {
                   "type": "anyComponentStyle",

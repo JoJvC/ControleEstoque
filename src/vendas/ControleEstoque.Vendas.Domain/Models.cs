@@ -1,3 +1,5 @@
+using ControleEstoque.Shared.Results;
+
 namespace ControleEstoque.Vendas.Domain;
 
 public sealed record Desconto(TipoDesconto Tipo, decimal Valor, string Motivo);
@@ -62,6 +64,9 @@ public sealed record VendaGravacao(
     decimal DebitoFiado,
     Guid? CascoProdutoId,
     Guid? SucataProdutoId);
+
+/// <summary>Resultado da gravação: saldo de casco do cliente, ou a falta de estoque que causou o rollback.</summary>
+public sealed record ResultadoGravacao(long SaldoCasco, SaldoInsuficiente? Falta = null);
 
 public sealed record ResultadoVenda(
     Guid Id,

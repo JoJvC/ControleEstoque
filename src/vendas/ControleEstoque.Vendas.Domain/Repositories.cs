@@ -1,6 +1,8 @@
+using ControleEstoque.Shared.Results;
+
 namespace ControleEstoque.Vendas.Domain;
 
-/// <summary>Consultas de apoio à venda (clientes, funcionários, produtos, estoque).</summary>
+/// <summary>Consultas de apoio à venda (clientes, funcionários, produtos).</summary>
 public interface IVendaLookup
 {
     Task<bool> ClienteExisteAsync(Guid clienteId, CancellationToken cancellationToken);
@@ -10,20 +12,23 @@ public interface IVendaLookup
     Task<IReadOnlyDictionary<Guid, ProdutoVenda>> GetProdutosAsync(
         IReadOnlyCollection<Guid> produtoIds, CancellationToken cancellationToken);
     Task<Guid?> GetProdutoEstruturalAsync(TipoProduto tipo, CancellationToken cancellationToken);
-    Task<long> GetSaldoEstoqueAsync(Guid produtoId, CancellationToken cancellationToken);
 }
 
 public interface IVendaRepository
 {
-    /// <summary>Persiste a venda e todos os efeitos em uma transação; retorna o novo saldo de casco do cliente.</summary>
-    Task<long> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken);
+    /// <summary>
+    /// Persiste a venda e todos os efeitos em uma transação; retorna o novo saldo de casco do cliente.
+    /// Trava os produtos vendidos e checa o saldo dentro da transação; sem saldo, faz rollback e devolve a falta.
+    /// </summary>
+    Task<ResultadoGravacao> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken);
 
     /// <summary>
     /// Edição por replay: soft-deleta itens, pagamentos, movimentos de estoque,
     /// movimentos de casco, entregas de sucata e lançamentos de fiado vinculados
-    /// à venda, e reinsere conforme a gravação — tudo em uma transação.
+    /// à venda, e reinsere conforme a gravação — tudo em uma transação. A checagem de saldo roda
+    /// depois do soft-delete, então as saídas antigas da própria venda não contam.
     /// </summary>
-    Task<long> EditarAsync(VendaGravacao gravacao, CancellationToken cancellationToken);
+    Task<ResultadoGravacao> EditarAsync(VendaGravacao gravacao, CancellationToken cancellationToken);
 
     Task<bool> ExisteAsync(Guid vendaId, CancellationToken cancellationToken);
     Task<Venda?> GetAsync(Guid vendaId, CancellationToken cancellationToken);

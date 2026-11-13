@@ -31,8 +31,8 @@ public sealed class VendaService : IVendaService
     public async Task<ResultadoVenda> CriarAsync(NovaVenda venda, CancellationToken cancellationToken)
     {
         var gravacao = await MontarGravacaoAsync(Guid.NewGuid(), venda, cancellationToken);
-        var saldoCasco = await vendas.CriarAsync(gravacao, cancellationToken);
-        return ToResultado(gravacao, saldoCasco);
+        var gravado = await vendas.CriarAsync(gravacao, cancellationToken);
+        return await ToResultadoAsync(gravacao, gravado, cancellationToken);
     }
 
     public async Task<ResultadoVenda> EditarAsync(
@@ -51,8 +51,8 @@ public sealed class VendaService : IVendaService
         }
 
         var gravacao = await MontarGravacaoAsync(vendaId, venda, cancellationToken);
-        var saldoCasco = await vendas.EditarAsync(gravacao, cancellationToken);
-        return ToResultado(gravacao, saldoCasco);
+        var gravado = await vendas.EditarAsync(gravacao, cancellationToken);
+        return await ToResultadoAsync(gravacao, gravado, cancellationToken);
     }
 
     public async Task<Venda> ObterAsync(Guid vendaId, CancellationToken cancellationToken)
@@ -153,17 +153,6 @@ public sealed class VendaService : IVendaService
             }
         }
 
-        foreach (var grupo in totais.Itens.GroupBy(i => i.ProdutoId))
-        {
-            var quantidade = grupo.Sum(i => i.Quantidade);
-            var saldo = await lookup.GetSaldoEstoqueAsync(grupo.Key, cancellationToken);
-            if (saldo < quantidade)
-            {
-                throw new InsufficientStockException(
-                    $"Estoque de '{produtos[grupo.Key].Nome}' ({saldo}) insuficiente para vender {quantidade}.");
-            }
-        }
-
         // Regra crítica 1: apenas itens de AGUA emprestam casco NORMAL.
         // GALAO_COMPLETO é propriedade do cliente e não gera débito; sucata nunca é emprestada.
         var aguaVendida = totais.Itens
@@ -196,7 +185,21 @@ public sealed class VendaService : IVendaService
             totais.Faltante, cascoProdutoId, sucataProdutoId);
     }
 
-    private static ResultadoVenda ToResultado(VendaGravacao gravacao, long saldoCasco) => new(
-        gravacao.VendaId, gravacao.TotalBruto, gravacao.TotalDesconto, gravacao.TotalLiquido,
-        gravacao.TotalLiquido - gravacao.DebitoFiado, gravacao.DebitoFiado, gravacao.Status, saldoCasco);
+    /// <summary>A checagem de saldo é do repositório (atômica, na transação); aqui só vira exceção.</summary>
+    private async Task<ResultadoVenda> ToResultadoAsync(
+        VendaGravacao gravacao, ResultadoGravacao gravado, CancellationToken cancellationToken)
+    {
+        if (gravado.Falta is { } falta)
+        {
+            var nome = (await lookup.GetProdutosAsync([falta.ProdutoId], cancellationToken))
+                .TryGetValue(falta.ProdutoId, out var produto) ? produto.Nome : falta.ProdutoId.ToString();
+            throw new InsufficientStockException(
+                $"Estoque de '{nome}' ({falta.Saldo}) insuficiente para vender {falta.Solicitado}.");
+        }
+
+        return new ResultadoVenda(
+            gravacao.VendaId, gravacao.TotalBruto, gravacao.TotalDesconto, gravacao.TotalLiquido,
+            gravacao.TotalLiquido - gravacao.DebitoFiado, gravacao.DebitoFiado, gravacao.Status,
+            gravado.SaldoCasco);
+    }
 }

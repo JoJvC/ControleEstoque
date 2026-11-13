@@ -1,4 +1,5 @@
 using ControleEstoque.Estoque.Domain;
+using ControleEstoque.Shared.Results;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -33,26 +34,85 @@ public sealed class PostgresEstoqueRepository : IEstoqueRepository
         return results;
     }
 
-    public async Task<long> GetSaldoAsync(Guid produtoId, CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.GetSaldo, connection);
-        command.Parameters.AddWithValue("produtoId", produtoId);
-        return (long?)await command.ExecuteScalarAsync(cancellationToken) ?? 0;
-    }
-
-    public async Task AddAjusteAsync(
+    public async Task<SaldoInsuficiente?> AddAjusteAsync(
         Guid produtoId, int quantidade, string? observacao, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.AddAjuste, connection);
-        command.Parameters.AddWithValue("produtoId", produtoId);
-        command.Parameters.AddWithValue("quantidade", quantidade);
-        command.Parameters.Add(new NpgsqlParameter("observacao", NpgsqlDbType.Text)
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        if (quantidade < 0)
         {
-            Value = (object?)observacao ?? DBNull.Value
-        });
-        await command.ExecuteNonQueryAsync(cancellationToken);
+            var saidas = new Dictionary<Guid, long> { [produtoId] = -(long)quantidade };
+            if (await ChecarSaldoAsync(connection, transaction, saidas, cancellationToken) is { } falta)
+            {
+                return falta; // sem Commit: o Dispose da transação faz rollback.
+            }
+        }
+
+        await using (var command = new NpgsqlCommand(Sql.AddAjuste, connection, transaction))
+        {
+            command.Parameters.AddWithValue("produtoId", produtoId);
+            command.Parameters.AddWithValue("quantidade", quantidade);
+            command.Parameters.Add(new NpgsqlParameter("observacao", NpgsqlDbType.Text)
+            {
+                Value = (object?)observacao ?? DBNull.Value
+            });
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return null;
+    }
+
+    /// <summary>
+    /// Trava os produtos em ordem de id e, em outra instrução da mesma transação (READ COMMITTED),
+    /// confere se o saldo cobre as saídas. O saldo é lido depois da trava para ver o commit de quem a soltou.
+    /// </summary>
+    internal static async Task<SaldoInsuficiente?> ChecarSaldoAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction,
+        IReadOnlyDictionary<Guid, long> saidasPorProduto, CancellationToken cancellationToken)
+    {
+        var ids = saidasPorProduto.Keys.ToArray();
+
+        await using (var command = new NpgsqlCommand(Sql.TravaProdutos, connection, transaction))
+        {
+            command.Parameters.AddWithValue("ids", ids);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+            }
+        }
+
+        return await ConferirSaldoAsync(connection, transaction, saidasPorProduto, cancellationToken);
+    }
+
+    /// <summary>Confere o saldo das saídas; os produtos já devem estar travados na transação.</summary>
+    internal static async Task<SaldoInsuficiente?> ConferirSaldoAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction,
+        IReadOnlyDictionary<Guid, long> saidasPorProduto, CancellationToken cancellationToken)
+    {
+        var ids = saidasPorProduto.Keys.ToArray();
+        var saldos = new Dictionary<Guid, long>();
+        await using (var command = new NpgsqlCommand(Sql.GetSaldos, connection, transaction))
+        {
+            command.Parameters.AddWithValue("ids", ids);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                saldos[reader.GetGuid(0)] = reader.GetInt64(1);
+            }
+        }
+
+        foreach (var (produtoId, saida) in saidasPorProduto)
+        {
+            var saldo = saldos.GetValueOrDefault(produtoId);
+            if (saldo - saida < 0)
+            {
+                return new SaldoInsuficiente(produtoId, saldo, saida);
+            }
+        }
+
+        return null;
     }
 
     private static class Sql
@@ -64,10 +124,15 @@ public sealed class PostgresEstoqueRepository : IEstoqueRepository
             ORDER BY nome
             """;
 
-        public const string GetSaldo = """
-            SELECT COALESCE(SUM(quantidade), 0)::bigint
+        // NO KEY UPDATE não conflita com o FOR KEY SHARE das FKs: lançamentos positivos não esperam.
+        public const string TravaProdutos =
+            "SELECT id FROM produtos WHERE id = ANY(@ids) ORDER BY id FOR NO KEY UPDATE";
+
+        public const string GetSaldos = """
+            SELECT produto_id, COALESCE(SUM(quantidade), 0)::bigint
             FROM movimentos_estoque
-            WHERE produto_id = @produtoId AND deleted_at IS NULL
+            WHERE produto_id = ANY(@ids) AND deleted_at IS NULL
+            GROUP BY produto_id
             """;
 
         public const string AddAjuste = """

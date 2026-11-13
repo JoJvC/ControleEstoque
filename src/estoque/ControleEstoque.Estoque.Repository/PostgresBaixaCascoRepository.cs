@@ -1,4 +1,5 @@
 using ControleEstoque.Estoque.Domain;
+using ControleEstoque.Shared.Results;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -10,12 +11,26 @@ public sealed class PostgresBaixaCascoRepository : IBaixaCascoRepository
 
     public PostgresBaixaCascoRepository(NpgsqlDataSource dataSource) => this.dataSource = dataSource;
 
-    public async Task<Guid> CreateAsync(
+    public async Task<(Guid Id, SaldoInsuficiente? Falta)> CreateAsync(
         NovaBaixaCasco baixa, Guid cascoProdutoId, Guid sucataProdutoId, CancellationToken cancellationToken)
     {
         var id = Guid.NewGuid();
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // Trava o casco e, em outra instrução, confere o saldo; tudo antes de qualquer INSERT.
+        await using (var command = new NpgsqlCommand(Sql.TravaCasco, connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", cascoProdutoId);
+            await command.ExecuteScalarAsync(cancellationToken);
+        }
+
+        var saidas = new Dictionary<Guid, long> { [cascoProdutoId] = baixa.Quantidade };
+        if (await PostgresEstoqueRepository.ConferirSaldoAsync(connection, transaction, saidas, cancellationToken)
+            is { } falta)
+        {
+            return (Guid.Empty, falta); // sem Commit: o Dispose da transação faz rollback.
+        }
 
         await using (var command = new NpgsqlCommand(Sql.InsertBaixa, connection, transaction))
         {
@@ -46,11 +61,14 @@ public sealed class PostgresBaixaCascoRepository : IBaixaCascoRepository
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return id;
+        return (id, null);
     }
 
     private static class Sql
     {
+        // NO KEY UPDATE não conflita com o FOR KEY SHARE das FKs: lançamentos positivos não esperam.
+        public const string TravaCasco = "SELECT id FROM produtos WHERE id = @id FOR NO KEY UPDATE";
+
         public const string InsertBaixa =
             "INSERT INTO baixas_casco (id, quantidade, motivo) VALUES (@id, @quantidade, @motivo)";
 

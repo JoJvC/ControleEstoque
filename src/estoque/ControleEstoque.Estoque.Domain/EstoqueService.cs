@@ -36,10 +36,14 @@ public sealed class EstoqueService : IEstoqueService
             throw new RequestValidationException("QUANTIDADE_INVALIDA", "Quantidade do ajuste não pode ser zero.");
         }
 
-        _ = await produtos.GetAsync(produtoId, cancellationToken)
+        var produto = await produtos.GetAsync(produtoId, cancellationToken)
             ?? throw new EntityNotFoundException("PRODUTO_NAO_ENCONTRADO", $"Produto {produtoId} não encontrado.");
 
-        await estoque.AddAjusteAsync(produtoId, quantidade, observacao, cancellationToken);
+        if (await estoque.AddAjusteAsync(produtoId, quantidade, observacao, cancellationToken) is { } falta)
+        {
+            throw new InsufficientStockException(
+                $"Estoque de '{produto.Nome}' ({falta.Saldo}) insuficiente para ajustar {quantidade}.");
+        }
     }
 
     public async Task<Guid> BaixarCascoAsync(NovaBaixaCasco baixa, CancellationToken cancellationToken)
@@ -60,13 +64,13 @@ public sealed class EstoqueService : IEstoqueService
         var sucata = await produtos.GetFirstByTipoAsync(TipoProduto.SUCATA, cancellationToken)
             ?? throw new BusinessRuleException("PRODUTO_SUCATA_AUSENTE", "Produto estrutural SUCATA não cadastrado.");
 
-        var saldoCasco = await estoque.GetSaldoAsync(casco.Id, cancellationToken);
-        if (saldoCasco < baixa.Quantidade)
+        var (id, falta) = await baixas.CreateAsync(baixa, casco.Id, sucata.Id, cancellationToken);
+        if (falta is not null)
         {
             throw new InsufficientStockException(
-                $"Estoque de casco vazio ({saldoCasco}) insuficiente para baixar {baixa.Quantidade}.");
+                $"Estoque de casco vazio ({falta.Saldo}) insuficiente para baixar {baixa.Quantidade}.");
         }
 
-        return await baixas.CreateAsync(baixa, casco.Id, sucata.Id, cancellationToken);
+        return id;
     }
 }

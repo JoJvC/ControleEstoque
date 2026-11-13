@@ -5,7 +5,7 @@ namespace ControleEstoque.Vendas.Tests;
 
 public sealed class VendaServiceTests
 {
-    private readonly FakeVendaRepository vendas = new();
+    private readonly FakeVendaRepository vendas;
     private readonly FakeVendaLookup lookup = new();
     private readonly FakeCupomFiscalRepository cupons = new();
     private readonly VendaService sut;
@@ -18,6 +18,7 @@ public sealed class VendaServiceTests
 
     public VendaServiceTests()
     {
+        vendas = new FakeVendaRepository(lookup.SaldosEstoque);
         sut = new VendaService(vendas, lookup, cupons);
         lookup.Clientes.Add(clienteId);
         lookup.Funcionarios.Add(funcionarioId);
@@ -179,6 +180,62 @@ public sealed class VendaServiceTests
             () => sut.EmitirCupomAsync(criada.Id, CancellationToken.None));
 
         Assert.Equal("CUPOM_JA_EMITIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoSemSaldo_LancaInsufficientStockENaoGrava()
+    {
+        lookup.SaldosEstoque[agua.Id] = 0;
+
+        await Assert.ThrowsAsync<InsufficientStockException>(
+            () => sut.CriarAsync(NovaVendaDe(agua.Id, 1, 50m), CancellationToken.None));
+
+        Assert.Null(vendas.UltimaGravacao);
+    }
+
+    [Fact]
+    public async Task CriarAsync_ConcorrenteComSaldo3_AceitaSo3De5()
+    {
+        lookup.SaldosEstoque[agua.Id] = 3;
+
+        var resultados = await Task.WhenAll(Enumerable.Range(0, 5).Select(async _ =>
+        {
+            try
+            {
+                await sut.CriarAsync(NovaVendaDe(agua.Id, 1, 50m), CancellationToken.None);
+                return true;
+            }
+            catch (InsufficientStockException)
+            {
+                return false;
+            }
+        }));
+
+        Assert.Equal(3, resultados.Count(sucesso => sucesso));
+        Assert.Equal(0, lookup.SaldosEstoque[agua.Id]);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoGravacaoAtomicaRecusa_LancaInsufficientStockMesmoComLeituraAlta()
+    {
+        lookup.SaldosEstoque[agua.Id] = 100; // leitura avulsa desatualizada: a gravação atômica é quem decide
+        vendas.RecusarSempre = true;
+
+        await Assert.ThrowsAsync<InsufficientStockException>(
+            () => sut.CriarAsync(NovaVendaDe(agua.Id, 1, 50m), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task EditarAsync_QuandoMantemQuantidadeComSaldoZeradoPelaPropriaVenda_Aceita()
+    {
+        lookup.SaldosEstoque[agua.Id] = 4;
+        var criada = await sut.CriarAsync(NovaVendaDe(agua.Id, 4, 50m), CancellationToken.None);
+        Assert.Equal(0, lookup.SaldosEstoque[agua.Id]);
+
+        await sut.EditarAsync(criada.Id, NovaVendaDe(agua.Id, 4, 50m), CancellationToken.None);
+
+        Assert.NotNull(vendas.UltimaEdicao);
+        Assert.Equal(0, lookup.SaldosEstoque[agua.Id]);
     }
 
     private NovaVenda NovaVendaDe(

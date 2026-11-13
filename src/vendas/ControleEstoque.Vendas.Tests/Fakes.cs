@@ -1,3 +1,4 @@
+using ControleEstoque.Shared.Results;
 using ControleEstoque.Vendas.Domain;
 
 namespace ControleEstoque.Vendas.Tests;
@@ -42,13 +43,23 @@ internal sealed class FakeVendaLookup : IVendaLookup
 
     public Task<Guid?> GetProdutoEstruturalAsync(TipoProduto tipo, CancellationToken cancellationToken) =>
         Task.FromResult<Guid?>(Estruturais.TryGetValue(tipo, out var id) ? id : null);
-
-    public Task<long> GetSaldoEstoqueAsync(Guid produtoId, CancellationToken cancellationToken) =>
-        Task.FromResult(SaldosEstoque.GetValueOrDefault(produtoId));
 }
 
+/// <summary>
+/// Compartilha os saldos com o lookup e cumpre o contrato C0: checagem de saldo e gravação atômicas,
+/// sob trava. O atraso entre ler e gravar faz a corrida aparecer se a trava for retirada.
+/// </summary>
 internal sealed class FakeVendaRepository : IVendaRepository
 {
+    private readonly Dictionary<Guid, long> saldos;
+    private readonly Dictionary<Guid, Dictionary<Guid, long>> saidasPorVenda = new();
+    private readonly SemaphoreSlim trava = new(1, 1);
+
+    public FakeVendaRepository(Dictionary<Guid, long> saldos) => this.saldos = saldos;
+
+    /// <summary>Simula gravação atômica que recusa, mesmo com saldo alto na leitura avulsa.</summary>
+    public bool RecusarSempre { get; set; }
+
     public VendaGravacao? UltimaGravacao { get; private set; }
     public VendaGravacao? UltimaEdicao { get; private set; }
     public HashSet<Guid> VendasExistentes { get; } = new();
@@ -57,17 +68,69 @@ internal sealed class FakeVendaRepository : IVendaRepository
     public (FormaPagamento Forma, decimal Valor, decimal Abatimento, StatusPagamento Status)? UltimoPagamento
     { get; private set; }
 
-    public Task<long> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken)
+    public async Task<ResultadoGravacao> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken)
     {
+        var falta = await BaixarSaldoAsync(gravacao);
+        if (falta is not null)
+        {
+            return new ResultadoGravacao(0, falta);
+        }
+
         UltimaGravacao = gravacao;
         VendasExistentes.Add(gravacao.VendaId);
-        return Task.FromResult(SaldoCascoRetorno);
+        return new ResultadoGravacao(SaldoCascoRetorno);
     }
 
-    public Task<long> EditarAsync(VendaGravacao gravacao, CancellationToken cancellationToken)
+    public async Task<ResultadoGravacao> EditarAsync(VendaGravacao gravacao, CancellationToken cancellationToken)
     {
+        var falta = await BaixarSaldoAsync(gravacao);
+        if (falta is not null)
+        {
+            return new ResultadoGravacao(0, falta);
+        }
+
         UltimaEdicao = gravacao;
-        return Task.FromResult(SaldoCascoRetorno);
+        return new ResultadoGravacao(SaldoCascoRetorno);
+    }
+
+    /// <summary>Devolve as saídas antigas da venda (soft-delete), checa e grava as novas; falha não grava nada.</summary>
+    private async Task<SaldoInsuficiente?> BaixarSaldoAsync(VendaGravacao gravacao)
+    {
+        var novas = gravacao.Itens
+            .GroupBy(i => i.ProdutoId)
+            .ToDictionary(g => g.Key, g => g.Sum(i => (long)i.Quantidade));
+        var antigas = saidasPorVenda.GetValueOrDefault(gravacao.VendaId) ?? new Dictionary<Guid, long>();
+
+        await trava.WaitAsync();
+        try
+        {
+            var lidos = novas.Keys.ToDictionary(id => id, id => saldos.GetValueOrDefault(id) + antigas.GetValueOrDefault(id));
+            await Task.Delay(5); // janela entre ler e gravar: expõe a corrida sem a trava
+            foreach (var (produtoId, saida) in novas)
+            {
+                if (RecusarSempre || lidos[produtoId] - saida < 0)
+                {
+                    return new SaldoInsuficiente(produtoId, lidos[produtoId], saida);
+                }
+            }
+
+            foreach (var (produtoId, saldoAntigo) in antigas)
+            {
+                saldos[produtoId] = saldos.GetValueOrDefault(produtoId) + saldoAntigo;
+            }
+
+            foreach (var (produtoId, saida) in novas)
+            {
+                saldos[produtoId] = saldos.GetValueOrDefault(produtoId) - saida;
+            }
+
+            saidasPorVenda[gravacao.VendaId] = novas;
+            return null;
+        }
+        finally
+        {
+            trava.Release();
+        }
     }
 
     public Task<bool> ExisteAsync(Guid vendaId, CancellationToken cancellationToken) =>

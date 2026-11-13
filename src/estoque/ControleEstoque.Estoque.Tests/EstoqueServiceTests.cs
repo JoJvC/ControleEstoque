@@ -7,7 +7,7 @@ public sealed class EstoqueServiceTests
 {
     private readonly FakeProdutoRepository produtos = new();
     private readonly FakeEstoqueRepository estoque = new();
-    private readonly FakeBaixaCascoRepository baixas = new();
+    private readonly FakeBaixaCascoRepository baixas;
     private readonly EstoqueService sut;
 
     private readonly Produto casco;
@@ -15,6 +15,7 @@ public sealed class EstoqueServiceTests
 
     public EstoqueServiceTests()
     {
+        baixas = new FakeBaixaCascoRepository(estoque);
         sut = new EstoqueService(estoque, produtos, baixas);
         casco = CreateProduto(TipoProduto.CASCO, "Casco vazio 20L");
         sucata = CreateProduto(TipoProduto.SUCATA, "Galão sucata");
@@ -69,6 +70,81 @@ public sealed class EstoqueServiceTests
     {
         await Assert.ThrowsAsync<EntityNotFoundException>(
             () => sut.AjustarAsync(Guid.NewGuid(), 5, null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AjustarAsync_QuandoNegativoAlemDoSaldo_LancaInsufficientStockESaldoNaoMuda()
+    {
+        estoque.SetSaldo(casco.Id, 2);
+
+        await Assert.ThrowsAsync<InsufficientStockException>(
+            () => sut.AjustarAsync(casco.Id, -3, null, CancellationToken.None));
+
+        Assert.Equal(2, estoque.GetSaldo(casco.Id));
+    }
+
+    [Fact]
+    public async Task AjustarAsync_QuandoNegativoDentroDoSaldo_Grava()
+    {
+        estoque.SetSaldo(casco.Id, 5);
+
+        await sut.AjustarAsync(casco.Id, -5, null, CancellationToken.None);
+
+        Assert.Equal(0, estoque.GetSaldo(casco.Id));
+    }
+
+    [Fact]
+    public async Task AjustarAsync_ConcorrenteComSaldo5_AceitaSo5De10()
+    {
+        estoque.SetSaldo(casco.Id, 5);
+
+        var resultados = await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => TentarAsync(
+            () => sut.AjustarAsync(casco.Id, -1, null, CancellationToken.None))));
+
+        Assert.Equal(5, resultados.Count(sucesso => sucesso));
+        Assert.Equal(5, resultados.Count(sucesso => !sucesso));
+        Assert.Equal(0, estoque.GetSaldo(casco.Id));
+    }
+
+    [Fact]
+    public async Task BaixarCascoAsync_ConcorrenteComSaldo5_AceitaSo5De10()
+    {
+        estoque.SetSaldo(casco.Id, 5);
+        var baixa = new NovaBaixaCasco(1, null, [Guid.NewGuid()]);
+
+        var resultados = await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => TentarAsync(
+            () => sut.BaixarCascoAsync(baixa, CancellationToken.None))));
+
+        Assert.Equal(5, resultados.Count(sucesso => sucesso));
+        Assert.Equal(5, resultados.Count(sucesso => !sucesso));
+        Assert.Equal(0, estoque.GetSaldo(casco.Id));
+        Assert.Equal(5, estoque.GetSaldo(sucata.Id));
+    }
+
+    [Fact]
+    public async Task AjustarEBaixar_QuandoGravacaoAtomicaRecusa_LancamInsufficientStockMesmoComLeituraAlta()
+    {
+        estoque.SetSaldo(casco.Id, 100); // leitura avulsa desatualizada: a gravação atômica é quem decide
+        estoque.RecusarSempre = true;
+
+        await Assert.ThrowsAsync<InsufficientStockException>(
+            () => sut.AjustarAsync(casco.Id, -1, null, CancellationToken.None));
+        await Assert.ThrowsAsync<InsufficientStockException>(
+            () => sut.BaixarCascoAsync(new NovaBaixaCasco(1, null, [Guid.NewGuid()]), CancellationToken.None));
+        Assert.Null(baixas.UltimaBaixa);
+    }
+
+    private static async Task<bool> TentarAsync(Func<Task> acao)
+    {
+        try
+        {
+            await acao();
+            return true;
+        }
+        catch (InsufficientStockException)
+        {
+            return false;
+        }
     }
 
     private static Produto CreateProduto(TipoProduto tipo, string nome) => new(

@@ -1,3 +1,5 @@
+using ControleEstoque.Shared.Results;
+
 namespace ControleEstoque.Estoque.Domain;
 
 public interface IMarcaRepository
@@ -21,8 +23,13 @@ public interface IProdutoRepository
 public interface IEstoqueRepository
 {
     Task<IReadOnlyList<EstoqueItem>> GetEstoqueAsync(CancellationToken cancellationToken);
-    Task<long> GetSaldoAsync(Guid produtoId, CancellationToken cancellationToken);
-    Task AddAjusteAsync(Guid produtoId, int quantidade, string? observacao, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Grava o ajuste em uma transação. Com quantidade negativa, trava o produto e checa o saldo
+    /// dentro da transação; sem saldo, faz rollback e devolve o produto que faltou.
+    /// </summary>
+    Task<SaldoInsuficiente?> AddAjusteAsync(
+        Guid produtoId, int quantidade, string? observacao, CancellationToken cancellationToken);
 }
 
 public interface IAbastecimentoRepository
@@ -36,8 +43,11 @@ public interface IAbastecimentoRepository
 
 public interface IBaixaCascoRepository
 {
-    /// <summary>Baixa + responsáveis + movimentos (−CASCO / +SUCATA) em uma transação.</summary>
-    Task<Guid> CreateAsync(
+    /// <summary>
+    /// Baixa + responsáveis + movimentos (−CASCO / +SUCATA) em uma transação, com o saldo de casco
+    /// checado sob trava dentro dela. Sem saldo, faz rollback e devolve a falta (Id fica vazio).
+    /// </summary>
+    Task<(Guid Id, SaldoInsuficiente? Falta)> CreateAsync(
         NovaBaixaCasco baixa, Guid cascoProdutoId, Guid sucataProdutoId, CancellationToken cancellationToken);
 }
 

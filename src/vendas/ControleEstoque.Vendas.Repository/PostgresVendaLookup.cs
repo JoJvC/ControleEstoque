@@ -51,14 +51,6 @@ public sealed class PostgresVendaLookup : IVendaLookup
         return (Guid?)await command.ExecuteScalarAsync(cancellationToken);
     }
 
-    public async Task<long> GetSaldoEstoqueAsync(Guid produtoId, CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.GetSaldoEstoque, connection);
-        command.Parameters.AddWithValue("produtoId", produtoId);
-        return (long?)await command.ExecuteScalarAsync(cancellationToken) ?? 0;
-    }
-
     private async Task<bool> ExistsAsync(string sql, Guid id, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -87,12 +79,6 @@ public sealed class PostgresVendaLookup : IVendaLookup
             SELECT id FROM produtos
             WHERE tipo = @tipo::tipo_produto AND deleted_at IS NULL
             ORDER BY created_at LIMIT 1
-            """;
-
-        public const string GetSaldoEstoque = """
-            SELECT COALESCE(SUM(quantidade), 0)::bigint
-            FROM movimentos_estoque
-            WHERE produto_id = @produtoId AND deleted_at IS NULL
             """;
     }
 }

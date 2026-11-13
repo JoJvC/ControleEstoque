@@ -1,4 +1,5 @@
 using ControleEstoque.Estoque.Domain;
+using ControleEstoque.Shared.Results;
 
 namespace ControleEstoque.Estoque.Tests;
 
@@ -72,35 +73,78 @@ internal sealed class FakeProdutoRepository : IProdutoRepository
     }
 }
 
+/// <summary>
+/// Razão em memória que cumpre o contrato C0: a checagem de saldo e a gravação são atômicas,
+/// sob trava. O atraso entre ler e gravar faz a corrida aparecer se a trava for retirada.
+/// </summary>
 internal sealed class FakeEstoqueRepository : IEstoqueRepository
 {
     private readonly Dictionary<Guid, long> saldos = new();
+    private readonly SemaphoreSlim trava = new(1, 1);
+
+    /// <summary>Simula gravação atômica que recusa, mesmo com a leitura avulsa mostrando saldo alto.</summary>
+    public bool RecusarSempre { get; set; }
 
     public void SetSaldo(Guid produtoId, long saldo) => saldos[produtoId] = saldo;
+
+    public long GetSaldo(Guid produtoId) => saldos.GetValueOrDefault(produtoId);
 
     public Task<IReadOnlyList<EstoqueItem>> GetEstoqueAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<EstoqueItem>>([]);
 
-    public Task<long> GetSaldoAsync(Guid produtoId, CancellationToken cancellationToken) =>
-        Task.FromResult(saldos.GetValueOrDefault(produtoId));
+    public async Task<SaldoInsuficiente?> AddAjusteAsync(
+        Guid produtoId, int quantidade, string? observacao, CancellationToken cancellationToken) =>
+        await AplicarAsync([(produtoId, quantidade)]);
 
-    public Task AddAjusteAsync(
-        Guid produtoId, int quantidade, string? observacao, CancellationToken cancellationToken)
+    /// <summary>Aplica os deltas de uma vez; se algum produto ficar negativo, não grava nada.</summary>
+    public async Task<SaldoInsuficiente?> AplicarAsync(IReadOnlyList<(Guid ProdutoId, long Delta)> deltas)
     {
-        saldos[produtoId] = saldos.GetValueOrDefault(produtoId) + quantidade;
-        return Task.CompletedTask;
+        await trava.WaitAsync();
+        try
+        {
+            var lidos = deltas.ToDictionary(d => d.ProdutoId, d => saldos.GetValueOrDefault(d.ProdutoId));
+            await Task.Delay(5); // janela entre ler e gravar: expõe a corrida sem a trava
+            foreach (var (produtoId, delta) in deltas)
+            {
+                if (RecusarSempre || (delta < 0 && lidos[produtoId] + delta < 0))
+                {
+                    return new SaldoInsuficiente(produtoId, lidos[produtoId], -delta);
+                }
+            }
+
+            foreach (var (produtoId, delta) in deltas)
+            {
+                saldos[produtoId] = lidos[produtoId] + delta;
+            }
+
+            return null;
+        }
+        finally
+        {
+            trava.Release();
+        }
     }
 }
 
 internal sealed class FakeBaixaCascoRepository : IBaixaCascoRepository
 {
+    private readonly FakeEstoqueRepository estoque;
+
+    public FakeBaixaCascoRepository(FakeEstoqueRepository estoque) => this.estoque = estoque;
+
     public NovaBaixaCasco? UltimaBaixa { get; private set; }
 
-    public Task<Guid> CreateAsync(
+    public async Task<(Guid Id, SaldoInsuficiente? Falta)> CreateAsync(
         NovaBaixaCasco baixa, Guid cascoProdutoId, Guid sucataProdutoId, CancellationToken cancellationToken)
     {
+        var falta = await estoque.AplicarAsync([(cascoProdutoId, -baixa.Quantidade), (sucataProdutoId, baixa.Quantidade)]);
+        if (falta is not null)
+        {
+            return (Guid.Empty, falta);
+        }
+
         UltimaBaixa = baixa;
-        return Task.FromResult(Guid.NewGuid());
+        return (Guid.NewGuid(), null);
     }
 }
 

@@ -89,8 +89,11 @@ internal sealed class FakeEstoqueRepository : IEstoqueRepository
 
     public long GetSaldo(Guid produtoId) => saldos.GetValueOrDefault(produtoId);
 
+    /// <summary>Lista devolvida por GetEstoqueAsync; vazia por padrão.</summary>
+    public IReadOnlyList<EstoqueItem> Itens { get; set; } = [];
+
     public Task<IReadOnlyList<EstoqueItem>> GetEstoqueAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<EstoqueItem>>([]);
+        Task.FromResult(Itens);
 
     public async Task<SaldoInsuficiente?> AddAjusteAsync(
         Guid produtoId, int quantidade, string? observacao, CancellationToken cancellationToken) =>

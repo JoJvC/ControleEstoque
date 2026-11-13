@@ -175,6 +175,70 @@ public sealed class EstoqueServiceTests
         }
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task BaixarCascoAsync_QuandoQuantidadeNaoPositiva_LancaQuantidadeInvalida(int quantidade)
+    {
+        var baixa = new NovaBaixaCasco(quantidade, null, [Guid.NewGuid()]);
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.BaixarCascoAsync(baixa, CancellationToken.None));
+
+        Assert.Equal("QUANTIDADE_INVALIDA", e.Code);
+        Assert.Null(baixas.UltimaBaixa);
+    }
+
+    [Fact]
+    public async Task BaixarCascoAsync_QuandoSemProdutoCasco_LancaCascoAusente()
+    {
+        var vazio = new FakeProdutoRepository();
+        var outro = new EstoqueService(estoque, vazio, baixas);
+        estoque.SetSaldo(casco.Id, 10);
+        estoque.SetSaldo(sucata.Id, 1);
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => outro.BaixarCascoAsync(new NovaBaixaCasco(2, null, [Guid.NewGuid()]), CancellationToken.None));
+
+        Assert.Equal("PRODUTO_CASCO_AUSENTE", e.Code);
+        Assert.Null(baixas.UltimaBaixa);
+        Assert.Equal(10, estoque.GetSaldo(casco.Id));
+        Assert.Equal(1, estoque.GetSaldo(sucata.Id));
+    }
+
+    [Fact]
+    public async Task BaixarCascoAsync_QuandoSemProdutoSucata_LancaSucataAusente()
+    {
+        var soCasco = new FakeProdutoRepository();
+        soCasco.Add(casco);
+        var outro = new EstoqueService(estoque, soCasco, baixas);
+        estoque.SetSaldo(casco.Id, 10);
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => outro.BaixarCascoAsync(new NovaBaixaCasco(2, null, [Guid.NewGuid()]), CancellationToken.None));
+
+        Assert.Equal("PRODUTO_SUCATA_AUSENTE", e.Code);
+        Assert.Null(baixas.UltimaBaixa);
+        Assert.Equal(10, estoque.GetSaldo(casco.Id));
+        Assert.Equal(0, estoque.GetSaldo(sucata.Id));
+    }
+
+    [Fact]
+    public async Task ObterEstoqueAsync_DevolveItensDoRepositorio()
+    {
+        var itens = new[]
+        {
+            new EstoqueItem(casco.Id, TipoProduto.CASCO, casco.Nome, null, null, null, 7, 2, false),
+            new EstoqueItem(sucata.Id, TipoProduto.SUCATA, sucata.Nome, null, null, null, 1, 3, true),
+        };
+        estoque.Itens = itens;
+
+        var r = await sut.ObterEstoqueAsync(CancellationToken.None);
+
+        Assert.Equal(2, r.Count);
+        Assert.Equal(itens, r);
+    }
+
     private static Produto CreateProduto(TipoProduto tipo, string nome) => new(
         Guid.NewGuid(), tipo, nome, null, null, null, null, null, 0m, 0);
 }

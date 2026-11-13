@@ -169,4 +169,83 @@ public sealed class CaixaServiceTests
 
         await sut.AdicionarDespesaAsync(caixa.Id, tipo.Id, 10m, null, CancellationToken.None);
     }
+
+    [Fact]
+    public async Task AbrirAsync_QuandoSaldoPositivo_AbreCaixa()
+    {
+        var data = new DateOnly(2026, 7, 8);
+
+        var caixa = await sut.AbrirAsync(data, 50m, CancellationToken.None);
+
+        Assert.Equal(data, caixa.Data);
+        Assert.Equal(50m, caixa.SaldoInicial);
+        Assert.NotNull(await caixas.GetByDataAsync(data, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AbrirAsync_QuandoSaldoZero_Aceita()
+    {
+        var caixa = await sut.AbrirAsync(new DateOnly(2026, 7, 8), 0m, CancellationToken.None);
+
+        Assert.Equal(0m, caixa.SaldoInicial);
+    }
+
+    [Fact]
+    public async Task AbrirAsync_QuandoSaldoNegativo_LancaSaldoInvalido()
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.AbrirAsync(new DateOnly(2026, 7, 8), -0.01m, CancellationToken.None));
+
+        Assert.Equal("SALDO_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task ObterResumoAsync_QuandoSemCaixa_LancaNaoEncontrado()
+    {
+        var e = await Assert.ThrowsAsync<EntityNotFoundException>(
+            () => sut.ObterResumoAsync(new DateOnly(2026, 7, 8), CancellationToken.None));
+
+        Assert.Equal("CAIXA_NAO_ENCONTRADO", e.Code);
+    }
+
+    [Fact]
+    public async Task ObterResumoAsync_CalculaSaldoInicialMaisEntradasMenosDespesas()
+    {
+        var data = new DateOnly(2026, 7, 8);
+        var caixa = caixas.AddCaixa(data, 100m);
+        caixas.Entradas = 30m;
+        caixas.AddDespesa(caixa.Id, 20m);
+        caixas.AddDespesa(caixa.Id, 5m);
+
+        var r = await sut.ObterResumoAsync(data, CancellationToken.None);
+
+        Assert.Equal(30m, r.Entradas);
+        Assert.Equal(25m, r.TotalDespesas);
+        Assert.Equal(105m, r.SaldoParcial);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task AdicionarDespesaAsync_QuandoValorNaoPositivo_LancaValorInvalido(int valor)
+    {
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 8), 100m);
+        var tipo = tipos.Add("Combustível");
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.AdicionarDespesaAsync(caixa.Id, tipo.Id, valor, null, CancellationToken.None));
+
+        Assert.Equal("VALOR_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task AdicionarDespesaAsync_QuandoCaixaInexistente_LancaNaoEncontrado()
+    {
+        var tipo = tipos.Add("Combustível");
+
+        var e = await Assert.ThrowsAsync<EntityNotFoundException>(
+            () => sut.AdicionarDespesaAsync(Guid.NewGuid(), tipo.Id, 10m, null, CancellationToken.None));
+
+        Assert.Equal("CAIXA_NAO_ENCONTRADO", e.Code);
+    }
 }

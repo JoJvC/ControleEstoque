@@ -32,4 +32,52 @@ describe('FinanceiroApi', () => {
     req.flush({ novoSaldoFiado: 10 });
     expect(resp).toEqual({ novoSaldoFiado: 10 });
   });
+
+  const BASE = '/api/financeiro/v1';
+
+  it('abrirCaixa: POST /caixas com { data, saldoInicial }', () => {
+    api.abrirCaixa({ data: '2026-11-13', saldoInicial: 150 }).subscribe();
+    const req = http.expectOne(`${BASE}/caixas`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ data: '2026-11-13', saldoInicial: 150 });
+    req.flush({});
+  });
+
+  it('obterResumoCaixa: GET /caixas/{data}', () => {
+    api.obterResumoCaixa('2026-11-13').subscribe();
+    const req = http.expectOne(`${BASE}/caixas/2026-11-13`);
+    expect(req.request.method).toBe('GET');
+    req.flush({});
+  });
+
+  it('lancarDespesa: POST /caixas/{id}/despesas com o corpo', () => {
+    api.lancarDespesa('cx-1', { tipoDespesaId: 't-1', valor: 20, descricao: null }).subscribe();
+    const req = http.expectOne(`${BASE}/caixas/cx-1/despesas`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ tipoDespesaId: 't-1', valor: 20, descricao: null });
+    req.flush(null, { status: 201, statusText: 'Created' });
+  });
+
+  it('fecharCaixa: POST /caixas/{id}/fechamento com { diarias }', () => {
+    api.fecharCaixa('cx-1', { diarias: [{ funcionarioId: 'f-1' }] }).subscribe();
+    const req = http.expectOne(`${BASE}/caixas/cx-1/fechamento`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ diarias: [{ funcionarioId: 'f-1' }] });
+    req.flush({});
+  });
+
+  it('listarTiposDespesa: GET /tipos-despesa', () => {
+    api.listarTiposDespesa().subscribe();
+    const req = http.expectOne(`${BASE}/tipos-despesa`);
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
+
+  it('criarTipoDespesa: POST /tipos-despesa com { nome }', () => {
+    api.criarTipoDespesa({ nome: 'Luz' }).subscribe();
+    const req = http.expectOne(`${BASE}/tipos-despesa`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ nome: 'Luz' });
+    req.flush({ id: 't-1', nome: 'Luz' });
+  });
 });

@@ -101,6 +101,23 @@ public sealed class CaixaServiceTests
     }
 
     [Fact]
+    public async Task FecharAsync_FuncionarioComDiariaZero_NaoGeraLancamentoNemContaNoResultado()
+    {
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 0m);
+        var comDiaria = Guid.NewGuid();
+        var semDiaria = Guid.NewGuid();
+        caixas.ValoresDiaria[comDiaria] = 80m;
+        caixas.ValoresDiaria[semDiaria] = 0m;
+
+        var resultado = await sut.FecharAsync(caixa.Id, [comDiaria, semDiaria], CancellationToken.None);
+
+        Assert.Single(caixas.DiariasLancadas);
+        Assert.Equal((comDiaria, 80m), caixas.DiariasLancadas[0]);
+        Assert.Equal(1, resultado.DiariasLancadas);
+        Assert.NotNull(caixas.Fechamento);
+    }
+
+    [Fact]
     public async Task FecharAsync_QuandoFuncionarioInexistente_LancaNotFound()
     {
         var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 0m);

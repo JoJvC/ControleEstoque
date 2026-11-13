@@ -27,6 +27,10 @@ const MENSAGENS: Record<string, string> = {
   CARGO_NATIVO: 'O cargo ADM é nativo e não pode ser alterado.',
   CAIXA_FECHADO: 'O caixa do dia já está fechado.',
   CAIXA_JA_FECHADO: 'O caixa do dia já está fechado.',
+  SALDO_INVALIDO: 'Saldo inicial inválido.',
+  VALOR_INVALIDO: 'Valor deve ser positivo.',
+  TIPO_DESPESA_INEXISTENTE: 'Tipo de despesa não encontrado.',
+  FUNCIONARIO_DUPLICADO: 'Funcionário repetido na lista de diárias.',
   CAIXA_NAO_ABERTO: 'O caixa do dia ainda não foi aberto.',
 };
 

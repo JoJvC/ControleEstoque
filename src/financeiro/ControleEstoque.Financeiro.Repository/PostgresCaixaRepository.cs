@@ -181,8 +181,11 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         var saldoFinal = saldoInicial + entradas - totalSaidas;
 
         // Diária credita a conta corrente do funcionário — não é saída de caixa.
-        foreach (var funcionarioId in funcionarioIds)
+        // Diária 0 (permitida no cadastro) não gera lançamento: lancamentos_funcionario exige valor > 0.
+        var diariasLancadas = 0;
+        foreach (var funcionarioId in funcionarioIds.Where(id => valores[id] > 0))
         {
+            diariasLancadas++;
             await using var command = new NpgsqlCommand(Sql.InsertDiaria, connection, transaction);
             command.Parameters.AddWithValue("funcionarioId", funcionarioId);
             command.Parameters.AddWithValue("caixaId", caixaId);
@@ -210,7 +213,7 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return new ResultadoFechamento(caixaId, data, entradas, totalSaidas, saldoFinal, funcionarioIds.Count);
+        return new ResultadoFechamento(caixaId, data, entradas, totalSaidas, saldoFinal, diariasLancadas);
     }
 
     private static Caixa MapCaixa(NpgsqlDataReader reader) => new(

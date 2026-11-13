@@ -99,7 +99,10 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
                     "FUNCIONARIO_NAO_ENCONTRADO", $"Funcionário {funcionarioId} não encontrado.");
             }
 
-            diarias.Add((funcionarioId, valor));
+            if (valor > 0)
+            {
+                diarias.Add((funcionarioId, valor));
+            }
         }
 
         if (DiariaDuplicadaNoBanco || LinhasAfetadasNoFechamento != 1)

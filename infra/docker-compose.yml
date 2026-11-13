@@ -11,6 +11,8 @@ services:
     image: postgres:16.16-alpine
     restart: unless-stopped
     environment:
+      TZ: America/Sao_Paulo
+      PGTZ: America/Sao_Paulo
       POSTGRES_DB: controle_estoque
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD em infra/.env}
@@ -34,6 +36,7 @@ services:
         CONTEXT: vendas
         PROJECT: ControleEstoque.Vendas.API
     environment:
+      TZ: America/Sao_Paulo
       ControleEstoque__Vendas__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=${POSTGRES_PASSWORD}"
     ports:
       - "127.0.0.1:5101:8080"
@@ -47,6 +50,7 @@ services:
         CONTEXT: clientes
         PROJECT: ControleEstoque.Clientes.API
     environment:
+      TZ: America/Sao_Paulo
       ControleEstoque__Clientes__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=${POSTGRES_PASSWORD}"
     ports:
       - "127.0.0.1:5102:8080"
@@ -60,6 +64,7 @@ services:
         CONTEXT: estoque
         PROJECT: ControleEstoque.Estoque.API
     environment:
+      TZ: America/Sao_Paulo
       ControleEstoque__Estoque__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=${POSTGRES_PASSWORD}"
       ControleEstoque__Estoque__MediaPath: /media
     volumes:
@@ -76,6 +81,7 @@ services:
         CONTEXT: financeiro
         PROJECT: ControleEstoque.Financeiro.API
     environment:
+      TZ: America/Sao_Paulo
       ControleEstoque__Financeiro__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=${POSTGRES_PASSWORD}"
     ports:
       - "127.0.0.1:5104:8080"
@@ -89,6 +95,7 @@ services:
         CONTEXT: rh
         PROJECT: ControleEstoque.RH.API
     environment:
+      TZ: America/Sao_Paulo
       ControleEstoque__RH__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=${POSTGRES_PASSWORD}"
     ports:
       - "127.0.0.1:5105:8080"

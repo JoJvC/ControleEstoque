@@ -3,7 +3,18 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ConfigStore } from '../config/app-config';
-import { PagamentoFiadoRequest, PagamentoFiadoResponse } from './models/financeiro';
+import {
+  AbrirCaixaRequest,
+  CaixaResponse,
+  CreateDespesaRequest,
+  CreateTipoDespesaRequest,
+  FecharCaixaRequest,
+  FechamentoResponse,
+  PagamentoFiadoRequest,
+  PagamentoFiadoResponse,
+  ResumoCaixaResponse,
+  TipoDespesaResponse,
+} from './models/financeiro';
 
 @Injectable({ providedIn: 'root' })
 export class FinanceiroApi {
@@ -22,5 +33,30 @@ export class FinanceiroApi {
       `${this.base}/clientes/${clienteId}/fiado/pagamentos`,
       request,
     );
+  }
+
+  abrirCaixa(request: AbrirCaixaRequest): Observable<CaixaResponse> {
+    return this.http.post<CaixaResponse>(`${this.base}/caixas`, request);
+  }
+
+  /** `data` em yyyy-MM-dd. */
+  obterResumoCaixa(data: string): Observable<ResumoCaixaResponse> {
+    return this.http.get<ResumoCaixaResponse>(`${this.base}/caixas/${data}`);
+  }
+
+  lancarDespesa(caixaId: string, request: CreateDespesaRequest): Observable<void> {
+    return this.http.post<void>(`${this.base}/caixas/${caixaId}/despesas`, request);
+  }
+
+  fecharCaixa(caixaId: string, request: FecharCaixaRequest): Observable<FechamentoResponse> {
+    return this.http.post<FechamentoResponse>(`${this.base}/caixas/${caixaId}/fechamento`, request);
+  }
+
+  listarTiposDespesa(): Observable<TipoDespesaResponse[]> {
+    return this.http.get<TipoDespesaResponse[]>(`${this.base}/tipos-despesa`);
+  }
+
+  criarTipoDespesa(request: CreateTipoDespesaRequest): Observable<TipoDespesaResponse> {
+    return this.http.post<TipoDespesaResponse>(`${this.base}/tipos-despesa`, request);
   }
 }

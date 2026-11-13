@@ -10,7 +10,7 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
   template: `
     <input
       class="campo"
-      [id]="id() ?? null"
+      [attr.id]="id()"
       [type]="tipo()"
       [placeholder]="placeholder()"
       [attr.inputmode]="inputmode()"

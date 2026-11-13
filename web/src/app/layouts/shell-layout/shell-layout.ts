@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
 import { OperatorStore } from '../../core/operator/operator-store';
+import { PermissionService } from '../../core/permissions/permission-service';
 import { BottomNav, BottomNavItem } from '../../ui/organisms/bottom-nav';
 
 /**
@@ -27,4 +28,8 @@ export class ShellLayout {
     { path: '/financeiro/caixa', label: 'Caixa', icone: 'dinheiro' },
     { path: '/mais', label: 'Mais', icone: 'menu' },
   ];
+
+  constructor() {
+    inject(PermissionService).recarregar();
+  }
 }

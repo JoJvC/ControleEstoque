@@ -12,6 +12,7 @@ export interface Operator {
   readonly nome: string;
   readonly cargoId: string;
   readonly cargoNome: string | null;
+  readonly permissoes: string[];
 }
 
 const STORAGE_KEY = 'ce.operador';
@@ -19,7 +20,7 @@ const STORAGE_KEY = 'ce.operador';
 @Injectable({ providedIn: 'root' })
 export class OperatorStore {
   private readonly storage = inject(StorageService);
-  private readonly current = signal<Operator | null>(this.storage.get<Operator>(STORAGE_KEY));
+  private readonly current = signal<Operator | null>(this.lerSalvo());
 
   readonly operator = this.current.asReadonly();
   readonly isSelected = computed(() => this.current() !== null);
@@ -29,8 +30,23 @@ export class OperatorStore {
     this.storage.set(STORAGE_KEY, operator);
   }
 
+  atualizarPermissoes(permissoes: string[]): void {
+    const atual = this.current();
+    if (!atual) return;
+    const atualizado = { ...atual, permissoes };
+    this.current.set(atualizado);
+    this.storage.set(STORAGE_KEY, atualizado);
+  }
+
   clear(): void {
     this.current.set(null);
     this.storage.remove(STORAGE_KEY);
+  }
+
+  /** Registro salvo antes da F8a não tem `permissoes`: lê como sem permissão até recarregar. */
+  private lerSalvo(): Operator | null {
+    const salvo = this.storage.get<Operator>(STORAGE_KEY);
+    if (!salvo) return null;
+    return { ...salvo, permissoes: Array.isArray(salvo.permissoes) ? salvo.permissoes : [] };
   }
 }

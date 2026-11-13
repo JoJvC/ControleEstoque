@@ -27,7 +27,13 @@ class FakeStorage extends StorageService {
   }
 }
 
-const OPERADOR: Operator = { id: 'f1', nome: 'Maria Silva', cargoId: 'c1', cargoNome: 'ADM' };
+const OPERADOR: Operator = {
+  id: 'f1',
+  nome: 'Maria Silva',
+  cargoId: 'c1',
+  cargoNome: 'ADM',
+  permissoes: [],
+};
 
 function rodarGuard(): ReturnType<typeof operatorGuard> {
   return TestBed.runInInjectionContext(() =>

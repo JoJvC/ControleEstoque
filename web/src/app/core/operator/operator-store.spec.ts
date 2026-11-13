@@ -24,6 +24,7 @@ const OPERADOR: Operator = {
   nome: 'Maria Silva',
   cargoId: 'c1',
   cargoNome: 'ADM',
+  permissoes: ['vendas.registrar'],
 };
 
 function criarStore(storage: FakeStorage): OperatorStore {
@@ -69,5 +70,41 @@ describe('OperatorStore', () => {
 
     expect(store.operator()).toBeNull();
     expect(storage.get<Operator>('ce.operador')).toBeNull();
+  });
+
+  it('select persiste as permissões no storage', () => {
+    const storage = new FakeStorage();
+    criarStore(storage).select(OPERADOR);
+
+    expect(storage.get<Operator>('ce.operador')?.permissoes).toEqual(['vendas.registrar']);
+  });
+
+  it('registro antigo sem permissoes é lido com []', () => {
+    const storage = new FakeStorage();
+    const { id, nome, cargoId, cargoNome } = OPERADOR;
+    storage.set('ce.operador', { id, nome, cargoId, cargoNome });
+
+    expect(criarStore(storage).operator()?.permissoes).toEqual([]);
+  });
+
+  it('atualizarPermissoes troca no signal e persiste', () => {
+    const storage = new FakeStorage();
+    const store = criarStore(storage);
+    store.select(OPERADOR);
+
+    store.atualizarPermissoes(['*']);
+
+    expect(store.operator()?.permissoes).toEqual(['*']);
+    expect(storage.get<Operator>('ce.operador')?.permissoes).toEqual(['*']);
+  });
+
+  it('atualizarPermissoes sem operador não faz nada', () => {
+    const storage = new FakeStorage();
+    const store = criarStore(storage);
+
+    store.atualizarPermissoes(['*']);
+
+    expect(store.operator()).toBeNull();
+    expect(storage.get('ce.operador')).toBeNull();
   });
 });

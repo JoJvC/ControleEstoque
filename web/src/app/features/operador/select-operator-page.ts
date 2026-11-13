@@ -1,9 +1,11 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { forkJoin } from 'rxjs';
 
 import { RhApi } from '../../core/api/rh-api';
-import { FuncionarioResponse } from '../../core/api/models/rh';
+import { CargoResponse, FuncionarioResponse } from '../../core/api/models/rh';
 import { OperatorStore } from '../../core/operator/operator-store';
+import { permissoesDoCargo } from '../../core/permissions/permissoes-do-cargo';
 
 type Status = 'loading' | 'ok' | 'error';
 
@@ -20,6 +22,7 @@ export class SelectOperatorPage {
 
   protected readonly status = signal<Status>('loading');
   protected readonly funcionarios = signal<FuncionarioResponse[]>([]);
+  private cargos: CargoResponse[] = [];
 
   constructor() {
     this.carregar();
@@ -27,9 +30,13 @@ export class SelectOperatorPage {
 
   protected carregar(): void {
     this.status.set('loading');
-    this.rhApi.listarFuncionarios().subscribe({
-      next: (lista) => {
-        this.funcionarios.set(lista.filter((f) => f.ativo));
+    forkJoin({
+      funcionarios: this.rhApi.listarFuncionarios(),
+      cargos: this.rhApi.listarCargos(),
+    }).subscribe({
+      next: ({ funcionarios, cargos }) => {
+        this.cargos = cargos;
+        this.funcionarios.set(funcionarios.filter((f) => f.ativo));
         this.status.set('ok');
       },
       error: () => this.status.set('error'),
@@ -42,6 +49,7 @@ export class SelectOperatorPage {
       nome: funcionario.nome,
       cargoId: funcionario.cargoId,
       cargoNome: funcionario.cargo,
+      permissoes: permissoesDoCargo(this.cargos, funcionario.cargoId),
     });
     this.router.navigateByUrl('/home');
   }

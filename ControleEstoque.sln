@@ -85,6 +85,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ControleEstoque.Vendas.Repo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ControleEstoque.Vendas.Tests", "src\vendas\ControleEstoque.Vendas.Tests\ControleEstoque.Vendas.Tests.csproj", "{68726D6C-2B40-4A06-BA9C-86185EA4A0D9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ControleEstoque.Shared.Hosting.Tests", "src\shared\ControleEstoque.Shared.Hosting.Tests\ControleEstoque.Shared.Hosting.Tests.csproj", "{52218E69-6B90-4634-8F36-16D74C9B4B8B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -503,6 +505,18 @@ Global
 		{68726D6C-2B40-4A06-BA9C-86185EA4A0D9}.Release|x64.Build.0 = Release|Any CPU
 		{68726D6C-2B40-4A06-BA9C-86185EA4A0D9}.Release|x86.ActiveCfg = Release|Any CPU
 		{68726D6C-2B40-4A06-BA9C-86185EA4A0D9}.Release|x86.Build.0 = Release|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Debug|x64.Build.0 = Debug|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Debug|x86.Build.0 = Debug|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Release|x64.ActiveCfg = Release|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Release|x64.Build.0 = Release|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Release|x86.ActiveCfg = Release|Any CPU
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -548,5 +562,6 @@ Global
 		{555563E1-7D00-4687-A22B-C2F725B2A6D0} = {1090C7B2-D6BA-09C0-4563-5AE6CFD2207F}
 		{C1A6EFC6-8FDA-4401-853A-4133FCB2FEE2} = {1090C7B2-D6BA-09C0-4563-5AE6CFD2207F}
 		{68726D6C-2B40-4A06-BA9C-86185EA4A0D9} = {1090C7B2-D6BA-09C0-4563-5AE6CFD2207F}
+		{52218E69-6B90-4634-8F36-16D74C9B4B8B} = {C8E42992-5E42-0C2B-DBFE-AA848D06431C}
 	EndGlobalSection
 EndGlobal

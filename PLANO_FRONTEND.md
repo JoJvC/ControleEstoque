@@ -279,11 +279,11 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 - **Critério de aceite:** walkthrough 7 do plano do backend reproduzido inteiro pela UI no celular: venda de 5 águas, 3 cascos devolvidos, 1 sucata, R$ 200 em PIX → tela de sucesso mostra PARCIAL, fiado R$ 50, saldo de casco 2.
 
 ### Sprint F6 — Casco, Sucata e Fiado (operações do cliente)
-- [ ] Detalhe do cliente com os 3 saldos (chips independentes e visualmente distintos)
-- [ ] Pagar Casco — sheet com 2 modos: devolução física (quantidade) | conversão em valor (quantidade + valor unitário; 422 `CONVERSAO_MAIOR_QUE_SALDO` inline)
-- [ ] Entregar Sucata avulsa (quantidade + conversão em crédito opcional), com o aviso fixo "não abate débito de casco"
-- [ ] Receber Fiado (valor + forma; 422 `PAGAMENTO_EXCEDE_SALDO`) — via `financeiro-api.ts`
-- [ ] Extratos (se endpoint disponível) ou saldos recarregados pós-operação
+- [x] Detalhe do cliente com os 3 saldos (chips independentes e visualmente distintos)
+- [x] Pagar Casco — sheet com 2 modos: devolução física (quantidade) | conversão em valor (quantidade + valor unitário; 422 `CONVERSAO_MAIOR_QUE_SALDO` inline)
+- [x] Entregar Sucata avulsa (quantidade + conversão em crédito opcional), com o aviso fixo "não abate débito de casco"
+- [x] Receber Fiado (valor + forma; 422 `PAGAMENTO_EXCEDE_SALDO`) — via `financeiro-api.ts`
+- [x] Extratos (se endpoint disponível) ou saldos recarregados pós-operação — não há endpoint de extrato por cliente; os saldos são recarregados (`GET /saldos`) depois de cada operação
 - **Critério de aceite:** sequência mista (devolução → conversão → sucata com crédito → pagamento de fiado) termina com os 3 chips batendo com `GET /saldos`.
 
 ### Sprint F7 — Financeiro (Caixa)

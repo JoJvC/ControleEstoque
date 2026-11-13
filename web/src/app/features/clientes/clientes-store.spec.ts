@@ -1,0 +1,142 @@
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+
+import { ConfigStore } from '../../core/config/app-config';
+import { ApiError } from '../../core/http/api-error';
+import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
+import { ClientesStore } from './clientes-store';
+
+const CLIENTES = '/api/clientes/v1/clientes';
+const FIADO = '/api/financeiro/v1/clientes/c-1/fiado/pagamentos';
+
+describe('ClientesStore — saldos e operações', () => {
+  let store: ClientesStore;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([apiErrorInterceptor])),
+        provideHttpClientTesting(),
+        { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
+      ],
+    });
+    store = TestBed.inject(ClientesStore);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('carregarSaldos põe os saldos e status ok', () => {
+    store.carregarSaldos('c-1');
+    expect(store.statusSaldos()).toBe('loading');
+    http
+      .expectOne(`${CLIENTES}/c-1/saldos`)
+      .flush({ saldoCascos: 3, sucataEntregue: 1, saldoFiado: 50 });
+    expect(store.saldos()).toEqual({ saldoCascos: 3, sucataEntregue: 1, saldoFiado: 50 });
+    expect(store.statusSaldos()).toBe('ok');
+    expect(store.erroSaldos()).toBeNull();
+  });
+
+  it('4xx guarda a mensagem em erroSaldos', () => {
+    store.carregarSaldos('c-1');
+    http
+      .expectOne(`${CLIENTES}/c-1/saldos`)
+      .flush(
+        { code: 'CLIENTE_NAO_ENCONTRADO', message: 'x', traceId: 't' },
+        { status: 404, statusText: 'Not Found' },
+      );
+    expect(store.statusSaldos()).toBe('error');
+    expect(store.erroSaldos()).toBe('Cliente não encontrado.');
+    expect(store.saldos()).toBeNull();
+  });
+
+  it('trocar de cliente zera os saldos antes da resposta', () => {
+    store.carregarSaldos('c-1');
+    http
+      .expectOne(`${CLIENTES}/c-1/saldos`)
+      .flush({ saldoCascos: 3, sucataEntregue: 1, saldoFiado: 50 });
+
+    store.carregarSaldos('c-2');
+    expect(store.saldos()).toBeNull();
+    expect(store.statusSaldos()).toBe('loading');
+    http
+      .expectOne(`${CLIENTES}/c-2/saldos`)
+      .flush({ saldoCascos: 0, sucataEntregue: 0, saldoFiado: 0 });
+    expect(store.saldos()?.saldoCascos).toBe(0);
+  });
+
+  it('resposta atrasada de outro cliente não sobrescreve os saldos atuais', () => {
+    store.carregarSaldos('c-1');
+    const antiga = http.expectOne(`${CLIENTES}/c-1/saldos`);
+    store.carregarSaldos('c-2');
+    expect(antiga.cancelled).toBe(true);
+    http
+      .expectOne(`${CLIENTES}/c-2/saldos`)
+      .flush({ saldoCascos: 7, sucataEntregue: 0, saldoFiado: 0 });
+    expect(store.saldos()?.saldoCascos).toBe(7);
+    expect(store.statusSaldos()).toBe('ok');
+  });
+
+  it('devolverCascos: POST /cascos/devolucoes com { quantidade }', async () => {
+    const p = store.devolverCascos('c-1', 2);
+    const req = http.expectOne(`${CLIENTES}/c-1/cascos/devolucoes`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ quantidade: 2 });
+    req.flush({ novoSaldoCascos: 1 });
+    expect(await p).toEqual({ novoSaldoCascos: 1 });
+  });
+
+  it('converterCascos: POST /cascos/conversoes com { quantidade, valorUnitario }', async () => {
+    const p = store.converterCascos('c-1', 2, 30);
+    const req = http.expectOne(`${CLIENTES}/c-1/cascos/conversoes`);
+    expect(req.request.body).toEqual({ quantidade: 2, valorUnitario: 30 });
+    req.flush({ novoSaldoCascos: 0, novoSaldoFiado: 60 });
+    expect(await p).toEqual({ novoSaldoCascos: 0, novoSaldoFiado: 60 });
+  });
+
+  it('entregarSucata: POST /sucatas com e sem valorConversao', async () => {
+    const com = store.entregarSucata('c-1', 3, 15);
+    const r1 = http.expectOne(`${CLIENTES}/c-1/sucatas`);
+    expect(r1.request.body).toEqual({ quantidade: 3, valorConversao: 15 });
+    r1.flush({ totalSucataEntregue: 3, novoSaldoFiado: 5 });
+    await com;
+
+    const sem = store.entregarSucata('c-1', 3, null);
+    const r2 = http.expectOne(`${CLIENTES}/c-1/sucatas`);
+    expect(r2.request.body).toEqual({ quantidade: 3, valorConversao: null });
+    r2.flush({ totalSucataEntregue: 6, novoSaldoFiado: 5 });
+    await sem;
+  });
+
+  it('pagarFiado: POST na Financeiro com { valor, forma }', async () => {
+    const p = store.pagarFiado('c-1', 50, 'PIX');
+    const req = http.expectOne(FIADO);
+    expect(req.request.body).toEqual({ valor: 50, forma: 'PIX' });
+    req.flush({ novoSaldoFiado: 0 });
+    expect(await p).toEqual({ novoSaldoFiado: 0 });
+  });
+
+  it.each([
+    ['devolverCascos', () => store.devolverCascos('c-1', 1), `${CLIENTES}/c-1/cascos/devolucoes`],
+    [
+      'converterCascos',
+      () => store.converterCascos('c-1', 1, 1),
+      `${CLIENTES}/c-1/cascos/conversoes`,
+    ],
+    ['entregarSucata', () => store.entregarSucata('c-1', 1, null), `${CLIENTES}/c-1/sucatas`],
+    ['pagarFiado', () => store.pagarFiado('c-1', 1, null), FIADO],
+  ])('%s propaga o ApiError', async (_nome, chamar, url) => {
+    const p = chamar();
+    http
+      .expectOne(url)
+      .flush(
+        { code: 'CAIXA_FECHADO', message: 'x', traceId: 't' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    const erro = await p.catch((e: unknown) => e);
+    expect(erro).toBeInstanceOf(ApiError);
+    expect((erro as ApiError).code).toBe('CAIXA_FECHADO');
+  });
+});

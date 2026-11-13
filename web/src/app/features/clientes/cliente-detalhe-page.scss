@@ -91,3 +91,20 @@
   font-size: var(--ce-font-sm);
   color: var(--ce-text-muted);
 }
+
+.saldos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--ce-space-3);
+}
+
+.acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ce-space-2);
+}
+
+.erro {
+  color: var(--ce-danger);
+  font-size: var(--ce-font-sm);
+}

@@ -52,7 +52,29 @@
 
     <section class="secao secao--saldos">
       <h2 class="secao__titulo">Saldos (casco, sucata e fiado)</h2>
-      <p class="vazio">Chegam na Sprint F6, com as ações de pagar casco e entregar sucata.</p>
+
+      @if (statusSaldos() === 'error') {
+        <p class="erro" role="alert">
+          {{ erroSaldos() ?? 'Não foi possível carregar os saldos.' }}
+        </p>
+        <ce-button variante="ghost" (click)="carregarSaldos()">Tentar novamente</ce-button>
+      } @else if (saldos(); as s) {
+        <div class="saldos">
+          <ce-saldo-chip rotulo="Cascos" cor="warning">{{ s.saldoCascos }}</ce-saldo-chip>
+          <ce-saldo-chip rotulo="Sucata entregue" cor="neutral">{{
+            s.sucataEntregue
+          }}</ce-saldo-chip>
+          <ce-saldo-chip rotulo="Fiado" cor="danger">{{ s.saldoFiado | cePreco }}</ce-saldo-chip>
+        </div>
+      } @else {
+        <div class="centro"><ce-spinner /></div>
+      }
+
+      <div class="acoes">
+        <ce-button variante="ghost" (click)="pagarCasco()">Pagar casco</ce-button>
+        <ce-button variante="ghost" (click)="entregarSucata()">Entregar sucata</ce-button>
+        <ce-button variante="ghost" (click)="receberFiado()">Receber fiado</ce-button>
+      </div>
     </section>
   </div>
 } @else {

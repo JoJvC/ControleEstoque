@@ -7,6 +7,9 @@ import { vi } from 'vitest';
 
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
+import { OperatorStore } from '../../core/operator/operator-store';
+import { FakeStorage, operadorValido } from '../../core/permissions/testing';
+import { StorageService } from '../../core/platform/storage-service';
 import { SheetService } from '../../core/overlay/sheet-service';
 import { ToastService } from '../../core/toast/toast-service';
 import { ClienteDetalhePage } from './cliente-detalhe-page';
@@ -24,16 +27,18 @@ async function assentar(fixture: ComponentFixture<unknown>): Promise<void> {
   await fixture.whenStable();
 }
 
-async function montar() {
+async function montar(permissoes: string[] = ['*']) {
   const abrir = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       { provide: SheetService, useValue: { abrir } },
+      { provide: StorageService, useValue: new FakeStorage() },
       provideHttpClient(withInterceptors([apiErrorInterceptor])),
       provideHttpClientTesting(),
       { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
     ],
   });
+  TestBed.inject(OperatorStore).select(operadorValido(permissoes));
   const http = TestBed.inject(HttpTestingController);
   vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
   const fixture = TestBed.createComponent(ClienteDetalhePage);
@@ -64,6 +69,26 @@ async function montar() {
       })),
   };
 }
+
+describe('ClienteDetalhePage — permissão clientes.cadastrar', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('sem a chave: Editar e Adicionar endereço somem; ações financeiras continuam', async () => {
+    const t = await montar([]);
+    expect(t.botao('Editar')).toBeUndefined();
+    expect(t.botao('Adicionar')).toBeUndefined();
+    expect(t.botao('Receber fiado')).toBeTruthy();
+  });
+
+  it('com clientes.cadastrar: Editar navega para a edição e Adicionar abre a sheet de endereço', async () => {
+    const t = await montar(['clientes.cadastrar']);
+    t.abrir.mockReturnValue({ closed: of(undefined) });
+    t.botao('Editar').click();
+    expect(TestBed.inject(Router).navigateByUrl).toHaveBeenCalledWith('/clientes/c-1/editar');
+    t.botao('Adicionar').click();
+    expect(t.abrir).toHaveBeenCalled();
+  });
+});
 
 describe('ClienteDetalhePage — saldos', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());

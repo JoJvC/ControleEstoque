@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { FechamentoResponse } from '../../core/api/models/financeiro';
 import { ApiError } from '../../core/http/api-error';
 import { SheetService } from '../../core/overlay/sheet-service';
+import { CePermissao } from '../../core/permissions/ce-permissao';
 import { ToastService } from '../../core/toast/toast-service';
 import { hojeLocal } from '../../core/util/data-local';
 import { Badge } from '../../ui/atoms/badge';
@@ -25,6 +26,7 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
   selector: 'ce-caixa-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    CePermissao,
     ReactiveFormsModule,
     AppHeader,
     Badge,
@@ -89,7 +91,7 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
               </dl>
               <div class="acoes">
                 <ce-button variante="ghost" (click)="lancarDespesa()">Lançar despesa</ce-button>
-                <ce-button (click)="fechar()">Fechar caixa</ce-button>
+                <ce-button *cePermissao="'caixa.fechar'" (click)="fechar()">Fechar caixa</ce-button>
               </div>
             }
 

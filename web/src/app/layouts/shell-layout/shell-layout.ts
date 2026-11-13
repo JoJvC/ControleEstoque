@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
 import { OperatorStore } from '../../core/operator/operator-store';
@@ -21,15 +21,27 @@ export class ShellLayout {
 
   protected readonly operator = this.operatorStore.operator;
 
-  protected readonly navItems: readonly BottomNavItem[] = [
+  private readonly permissions = inject(PermissionService);
+
+  private readonly todosItens: readonly BottomNavItem[] = [
     { path: '/home', label: 'Início', icone: 'home' },
-    { path: '/vendas/nova', label: 'Vender', icone: 'gota', destaque: true },
+    {
+      path: '/vendas/nova',
+      label: 'Vender',
+      icone: 'gota',
+      destaque: true,
+      permissao: 'vendas.registrar',
+    },
     { path: '/clientes', label: 'Clientes', icone: 'usuario' },
     { path: '/financeiro/caixa', label: 'Caixa', icone: 'dinheiro' },
     { path: '/mais', label: 'Mais', icone: 'menu' },
   ];
 
+  protected readonly navItems = computed(() =>
+    this.todosItens.filter((i) => !i.permissao || this.permissions.has(i.permissao)),
+  );
+
   constructor() {
-    inject(PermissionService).recarregar();
+    this.permissions.recarregar();
   }
 }

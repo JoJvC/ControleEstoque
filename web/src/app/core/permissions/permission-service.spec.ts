@@ -18,28 +18,9 @@ import { ToastService } from '../toast/toast-service';
 import { CePermissao } from './ce-permissao';
 import { permissaoGuard } from './permissao-guard';
 import { PermissionService } from './permission-service';
-
-class FakeStorage extends StorageService {
-  private readonly data = new Map<string, unknown>();
-
-  override get<T>(key: string): T | null {
-    return (this.data.get(key) as T | undefined) ?? null;
-  }
-
-  override set(key: string, value: unknown): void {
-    this.data.set(key, value);
-  }
-
-  override remove(key: string): void {
-    this.data.delete(key);
-  }
-}
+import { FakeStorage, operador } from './testing';
 
 const URL_CARGOS = '/api/rh/v1/cargos';
-
-function operador(permissoes: string[]): Operator {
-  return { id: 'f1', nome: 'Maria', cargoId: 'c1', cargoNome: 'Vendedor', permissoes };
-}
 
 @Component({
   imports: [CePermissao],

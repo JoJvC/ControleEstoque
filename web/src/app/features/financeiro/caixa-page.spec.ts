@@ -6,6 +6,9 @@ import { vi } from 'vitest';
 
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
+import { OperatorStore } from '../../core/operator/operator-store';
+import { FakeStorage, operadorValido } from '../../core/permissions/testing';
+import { StorageService } from '../../core/platform/storage-service';
 import { SheetService } from '../../core/overlay/sheet-service';
 import { ToastService } from '../../core/toast/toast-service';
 import { hojeLocal } from '../../core/util/data-local';
@@ -57,16 +60,18 @@ async function assentar(fixture: ComponentFixture<unknown>): Promise<void> {
   await fixture.whenStable();
 }
 
-async function montar(resumo: object | 404) {
+async function montar(resumo: object | 404, permissoes: string[] = ['*']) {
   const abrir = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       { provide: SheetService, useValue: { abrir } },
+      { provide: StorageService, useValue: new FakeStorage() },
       provideHttpClient(withInterceptors([apiErrorInterceptor])),
       provideHttpClientTesting(),
       { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
     ],
   });
+  TestBed.inject(OperatorStore).select(operadorValido(permissoes));
   const http = TestBed.inject(HttpTestingController);
   const fixture = TestBed.createComponent(CaixaPage);
   fixture.detectChanges();
@@ -98,6 +103,17 @@ async function montar(resumo: object | 404) {
 }
 
 describe('CaixaPage', () => {
+  it('sem caixa.fechar: vê a tela e o lançamento de despesa, mas não Fechar caixa', async () => {
+    const { botao } = await montar(RESUMO_ABERTO, []);
+    expect(botao('Lançar despesa')).toBeTruthy();
+    expect(botao('Fechar caixa')).toBeUndefined();
+  });
+
+  it('com caixa.fechar o botão Fechar caixa aparece', async () => {
+    const { botao } = await montar(RESUMO_ABERTO, ['caixa.fechar']);
+    expect(botao('Fechar caixa')).toBeTruthy();
+  });
+
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
   it('nao-aberto: digitar o saldo e clicar "Abrir caixa" faz POST com hojeLocal() e depois GET', async () => {

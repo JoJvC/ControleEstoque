@@ -3,6 +3,8 @@ import { Router } from '@angular/router';
 
 import { EstoqueApi } from '../../core/api/estoque-api';
 import { ProdutoResponse, TipoProduto } from '../../core/api/models/estoque';
+import { CePermissao } from '../../core/permissions/ce-permissao';
+import { PermissionService } from '../../core/permissions/permission-service';
 import { Button } from '../../ui/atoms/button';
 import { Icon } from '../../ui/atoms/icon';
 import { Select } from '../../ui/atoms/select';
@@ -24,10 +26,20 @@ const TIPO_LABEL: Record<TipoProduto, string> = {
 @Component({
   selector: 'ce-produtos-lista-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, Button, Icon, Select, SearchBox, DataList, ProdutoCard, FormsModule],
+  imports: [
+    CePermissao,
+    AppHeader,
+    Button,
+    Icon,
+    Select,
+    SearchBox,
+    DataList,
+    ProdutoCard,
+    FormsModule,
+  ],
   template: `
     <ce-app-header titulo="Produtos" [mostrarVoltar]="true" (voltar)="voltarParaMais()">
-      <ce-button variante="ghost" (click)="novo()"
+      <ce-button *cePermissao="'estoque.editar'" variante="ghost" (click)="novo()"
         ><ce-icon nome="mais" [tamanho]="18" /> Novo</ce-button
       >
     </ce-app-header>
@@ -79,6 +91,7 @@ export class ProdutosListaPage {
   protected readonly store = inject(ProdutosStore);
   protected readonly api = inject(EstoqueApi);
   private readonly router = inject(Router);
+  private readonly permissions = inject(PermissionService);
 
   protected readonly busca = signal('');
   protected readonly tipoFiltro = signal<string | null>(null);
@@ -116,6 +129,8 @@ export class ProdutosListaPage {
   }
 
   protected editar(produto: ProdutoResponse): void {
+    // o card é o alvo do clique: some só a ação, não o item de consulta
+    if (!this.permissions.has('estoque.editar')) return;
     this.router.navigateByUrl(`/produtos/${produto.id}/editar`);
   }
 

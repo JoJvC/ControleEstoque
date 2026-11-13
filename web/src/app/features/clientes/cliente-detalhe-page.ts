@@ -11,6 +11,7 @@ import {
 } from '../../core/api/models/clientes';
 import { PagamentoFiadoResponse } from '../../core/api/models/financeiro';
 import { SheetService } from '../../core/overlay/sheet-service';
+import { CePermissao } from '../../core/permissions/ce-permissao';
 import { ToastService } from '../../core/toast/toast-service';
 import { Button } from '../../ui/atoms/button';
 import { Icon } from '../../ui/atoms/icon';
@@ -30,7 +31,7 @@ const preco = new PrecoPipe();
 @Component({
   selector: 'ce-cliente-detalhe-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, Button, Icon, Spinner, EmptyState, SaldoChip, PrecoPipe],
+  imports: [CePermissao, AppHeader, Button, Icon, Spinner, EmptyState, SaldoChip, PrecoPipe],
   templateUrl: './cliente-detalhe-page.html',
   styleUrl: './cliente-detalhe-page.scss',
 })

@@ -1,5 +1,7 @@
 import { Routes } from '@angular/router';
 
+import { permissaoGuard } from '../../core/permissions/permissao-guard';
+
 export const VENDAS_ROUTES: Routes = [
   {
     path: '',
@@ -7,10 +9,12 @@ export const VENDAS_ROUTES: Routes = [
   },
   {
     path: 'nova',
+    canActivate: [permissaoGuard('vendas.registrar')],
     loadComponent: () => import('./pdv-page').then((m) => m.PdvPage),
   },
   {
     path: 'editar/:id',
+    canActivate: [permissaoGuard('vendas.editar')],
     loadComponent: () => import('./pdv-page').then((m) => m.PdvPage),
   },
   {

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { ClienteResponse } from '../../core/api/models/clientes';
+import { CePermissao } from '../../core/permissions/ce-permissao';
 import { Avatar } from '../../ui/atoms/avatar';
 import { Button } from '../../ui/atoms/button';
 import { Icon } from '../../ui/atoms/icon';
@@ -14,10 +15,10 @@ import { ClientesStore } from './clientes-store';
 @Component({
   selector: 'ce-clientes-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, Avatar, Button, Icon, ListItem, SearchBox, DataList],
+  imports: [CePermissao, AppHeader, Avatar, Button, Icon, ListItem, SearchBox, DataList],
   template: `
     <ce-app-header titulo="Clientes">
-      <ce-button variante="ghost" (click)="novo()">
+      <ce-button *cePermissao="'clientes.cadastrar'" variante="ghost" (click)="novo()">
         <ce-icon nome="mais" [tamanho]="18" /> Novo
       </ce-button>
     </ce-app-header>

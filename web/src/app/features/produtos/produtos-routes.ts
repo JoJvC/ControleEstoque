@@ -1,5 +1,7 @@
 import { Routes } from '@angular/router';
 
+import { permissaoGuard } from '../../core/permissions/permissao-guard';
+
 export const PRODUTOS_ROUTES: Routes = [
   {
     path: '',
@@ -7,10 +9,12 @@ export const PRODUTOS_ROUTES: Routes = [
   },
   {
     path: 'novo',
+    canActivate: [permissaoGuard('estoque.editar')],
     loadComponent: () => import('./produto-form-page').then((m) => m.ProdutoFormPage),
   },
   {
     path: ':id/editar',
+    canActivate: [permissaoGuard('estoque.editar')],
     loadComponent: () => import('./produto-form-page').then((m) => m.ProdutoFormPage),
   },
 ];

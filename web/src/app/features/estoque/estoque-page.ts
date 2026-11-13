@@ -4,6 +4,8 @@ import { firstValueFrom } from 'rxjs';
 
 import { EstoqueItemResponse } from '../../core/api/models/estoque';
 import { SheetService } from '../../core/overlay/sheet-service';
+import { CePermissao } from '../../core/permissions/ce-permissao';
+import { PermissionService } from '../../core/permissions/permission-service';
 import { ToastService } from '../../core/toast/toast-service';
 import { Badge } from '../../ui/atoms/badge';
 import { Button } from '../../ui/atoms/button';
@@ -26,7 +28,7 @@ const TIPO_LABEL: Record<string, string> = {
 @Component({
   selector: 'ce-estoque-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, Badge, Button, Icon, ListItem, DataList],
+  imports: [CePermissao, AppHeader, Badge, Button, Icon, ListItem, DataList],
   template: `
     <ce-app-header titulo="Estoque" [mostrarVoltar]="true" (voltar)="voltarParaMais()" />
 
@@ -56,10 +58,12 @@ const TIPO_LABEL: Record<string, string> = {
     </div>
 
     <div class="acoes">
-      <ce-button [block]="true" (click)="abastecer()">
+      <ce-button *cePermissao="'estoque.editar'" [block]="true" (click)="abastecer()">
         <ce-icon nome="caixa" [tamanho]="18" /> Abastecer
       </ce-button>
-      <ce-button variante="ghost" (click)="baixaCasco()">Baixa de casco</ce-button>
+      <ce-button *cePermissao="'estoque.editar'" variante="ghost" (click)="baixaCasco()"
+        >Baixa de casco</ce-button
+      >
     </div>
   `,
   styles: `
@@ -116,6 +120,7 @@ export class EstoquePage {
   private readonly sheet = inject(SheetService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
+  private readonly permissions = inject(PermissionService);
 
   constructor() {
     this.store.carregar();
@@ -128,6 +133,8 @@ export class EstoquePage {
   }
 
   protected async ajustar(item: EstoqueItemResponse): Promise<void> {
+    // a linha é o alvo do clique: some só a ação, não o item de consulta
+    if (!this.permissions.has('estoque.editar')) return;
     const ref = this.sheet.abrir<boolean, AjusteSheetDados>(AjusteSheet, { item });
     if (await firstValueFrom(ref.closed)) {
       this.toast.success('Ajuste registrado!');

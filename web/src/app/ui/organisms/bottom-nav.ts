@@ -8,6 +8,8 @@ export interface BottomNavItem {
   readonly label: string;
   readonly icone: IconeNome;
   readonly destaque?: boolean;
+  /** Chave de permissão exigida; o filtro é de quem monta a lista. */
+  readonly permissao?: string;
 }
 
 /**

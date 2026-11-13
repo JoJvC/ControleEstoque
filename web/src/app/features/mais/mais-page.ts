@@ -1,10 +1,18 @@
-import { ChangeDetectionStrategy, Component, inject, isDevMode } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, isDevMode } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 
 import { RhApi } from '../../core/api/rh-api';
 import { ApiError } from '../../core/http/api-error';
 import { OperatorStore } from '../../core/operator/operator-store';
+import { PermissionService } from '../../core/permissions/permission-service';
 import { ToastService } from '../../core/toast/toast-service';
+
+interface MaisLink {
+  readonly path: string;
+  readonly label: string;
+  readonly icon: string;
+  readonly permissao?: string;
+}
 
 @Component({
   selector: 'ce-mais-page',
@@ -18,17 +26,22 @@ export class MaisPage {
   private readonly router = inject(Router);
   private readonly rhApi = inject(RhApi);
   private readonly toast = inject(ToastService);
+  private readonly permissions = inject(PermissionService);
 
   protected readonly dev = isDevMode();
 
-  protected readonly links = [
+  private readonly todosLinks: readonly MaisLink[] = [
     { path: '/vendas', label: 'Histórico de vendas', icon: '🧾' },
     { path: '/estoque', label: 'Estoque', icon: '📦' },
     { path: '/produtos', label: 'Produtos', icon: '🫙' },
     { path: '/marcas', label: 'Marcas', icon: '🏷️' },
     { path: '/rh', label: 'Funcionários e cargos', icon: '🪪' },
-    { path: '/relatorios', label: 'Relatórios', icon: '📊' },
-  ] as const;
+    { path: '/relatorios', label: 'Relatórios', icon: '📊', permissao: 'relatorios.ver' },
+  ];
+
+  protected readonly links = computed(() =>
+    this.todosLinks.filter((l) => !l.permissao || this.permissions.has(l.permissao)),
+  );
 
   protected trocarOperador(): void {
     this.operatorStore.clear();

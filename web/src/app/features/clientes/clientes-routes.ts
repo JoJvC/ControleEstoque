@@ -1,5 +1,7 @@
 import { Routes } from '@angular/router';
 
+import { permissaoGuard } from '../../core/permissions/permissao-guard';
+
 export const CLIENTES_ROUTES: Routes = [
   {
     path: '',
@@ -7,6 +9,7 @@ export const CLIENTES_ROUTES: Routes = [
   },
   {
     path: 'novo',
+    canActivate: [permissaoGuard('clientes.cadastrar')],
     loadComponent: () => import('./cliente-form-page').then((m) => m.ClienteFormPage),
   },
   {
@@ -15,6 +18,7 @@ export const CLIENTES_ROUTES: Routes = [
   },
   {
     path: ':id/editar',
+    canActivate: [permissaoGuard('clientes.cadastrar')],
     loadComponent: () => import('./cliente-form-page').then((m) => m.ClienteFormPage),
   },
 ];

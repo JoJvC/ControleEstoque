@@ -9,7 +9,10 @@ import { VendaDetalheResponse } from '../../core/api/models/vendas';
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { SheetService } from '../../core/overlay/sheet-service';
+import { OperatorStore } from '../../core/operator/operator-store';
+import { FakeStorage, operadorValido } from '../../core/permissions/testing';
 import { PrintService } from '../../core/platform/print-service';
+import { StorageService } from '../../core/platform/storage-service';
 import { VendaStore } from './venda-store';
 import { VendaDetalhePage } from './venda-detalhe-page';
 
@@ -52,18 +55,20 @@ async function assentar(fixture: ComponentFixture<unknown>): Promise<void> {
   await fixture.whenStable();
 }
 
-async function montar() {
+async function montar(permissoes: string[] = ['*']) {
   const abrir = vi.fn();
   const printHtml = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       { provide: SheetService, useValue: { abrir } },
       { provide: PrintService, useValue: { printHtml } },
+      { provide: StorageService, useValue: new FakeStorage() },
       provideHttpClient(withInterceptors([apiErrorInterceptor])),
       provideHttpClientTesting(),
       { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
     ],
   });
+  TestBed.inject(OperatorStore).select(operadorValido(permissoes));
   const http = TestBed.inject(HttpTestingController);
   const navegar = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
   const fixture = TestBed.createComponent(VendaDetalhePage);
@@ -136,6 +141,22 @@ describe('VendaDetalhePage', () => {
     )!;
     voltar.click();
     expect(t.navegar).toHaveBeenCalledWith('/vendas');
+  });
+
+  it('sem vendas.editar o botão Editar some; com a chave, aparece', async () => {
+    for (const [permissoes, esperado] of [
+      [[], false],
+      [['vendas.editar'], true],
+    ] as const) {
+      TestBed.resetTestingModule();
+      const t = await montar([...permissoes]);
+      t.http.expectOne(`${URL_VENDAS}/v-1`).flush(VENDA);
+      t.http.expectOne(`${URL_CLIENTES}/c-1`).flush({ id: 'c-1', nome: 'Maria' });
+      t.http.expectOne(`${URL_PRODUTOS}/p-agua`).flush({ id: 'p-agua', nome: 'Água 20L' });
+      await assentar(t.fixture);
+      expect(t.texto().includes('Editar')).toBe(esperado);
+      t.http.verify();
+    }
   });
 
   it('área de ações tem Editar (navega), Adicionar pagamento e Emitir cupom fiscal', async () => {

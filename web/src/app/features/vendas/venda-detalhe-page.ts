@@ -14,6 +14,7 @@ import { firstValueFrom } from 'rxjs';
 import { VendaDetalheResponse } from '../../core/api/models/vendas';
 import { ApiError } from '../../core/http/api-error';
 import { SheetService } from '../../core/overlay/sheet-service';
+import { CePermissao } from '../../core/permissions/ce-permissao';
 import { PrintService } from '../../core/platform/print-service';
 import { Button } from '../../ui/atoms/button';
 import { Spinner } from '../../ui/atoms/spinner';
@@ -29,7 +30,7 @@ import { rotuloCliente, rotuloForma, rotuloProduto, rotuloStatusPagamento } from
 @Component({
   selector: 'ce-venda-detalhe-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, AppHeader, Button, EmptyState, PrecoPipe, Spinner],
+  imports: [CePermissao, DatePipe, AppHeader, Button, EmptyState, PrecoPipe, Spinner],
   template: `
     <ce-app-header titulo="Venda" />
 
@@ -127,7 +128,7 @@ import { rotuloCliente, rotuloForma, rotuloProduto, rotuloStatusPagamento } from
             </dl>
 
             <section class="venda-detalhe__acoes" data-testid="venda-acoes">
-              <ce-button (click)="editar()">Editar</ce-button>
+              <ce-button *cePermissao="'vendas.editar'" (click)="editar()">Editar</ce-button>
               @if (saldoAPagar(venda.totalLiquido, venda.pagamentos) > 0) {
                 <ce-button (click)="adicionarPagamento(venda)">Adicionar pagamento</ce-button>
               }

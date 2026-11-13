@@ -29,4 +29,24 @@ export const RELATORIOS_ROUTES: Routes = [
     canActivate: [permissaoGuard('relatorios.ver')],
     loadComponent: () => import('./fiado-page').then((m) => m.FiadoPage),
   },
+  {
+    path: 'cascos',
+    canActivate: [permissaoGuard('relatorios.ver')],
+    loadComponent: () => import('./cascos-page').then((m) => m.CascosPage),
+  },
+  {
+    path: 'sucata',
+    canActivate: [permissaoGuard('relatorios.ver')],
+    loadComponent: () => import('./sucata-page').then((m) => m.SucataPage),
+  },
+  {
+    path: 'estoque',
+    canActivate: [permissaoGuard('relatorios.ver')],
+    loadComponent: () => import('./estoque-relatorio-page').then((m) => m.EstoqueRelatorioPage),
+  },
+  {
+    path: 'conta-funcionarios',
+    canActivate: [permissaoGuard('relatorios.ver')],
+    loadComponent: () => import('./conta-funcionarios-page').then((m) => m.ContaFuncionariosPage),
+  },
 ];

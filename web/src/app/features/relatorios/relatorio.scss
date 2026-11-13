@@ -105,3 +105,8 @@ h2 {
   color: var(--ce-danger);
   font-size: var(--ce-font-sm);
 }
+
+.abaixo-minimo {
+  border-left: 4px solid var(--ce-warning);
+  background: var(--ce-warning-soft);
+}

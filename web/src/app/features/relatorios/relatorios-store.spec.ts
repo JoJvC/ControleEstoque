@@ -93,4 +93,48 @@ describe('RelatoriosStore', () => {
     expect(store.fiado().carregando).toBe(false);
     expect(store.caixa().erro).toBeNull();
   });
+
+  it.each([
+    [
+      'cascos',
+      'clientes',
+      'cascos',
+      'carregarCascos',
+      [{ clienteId: 'c1', nome: 'A', saldoCascos: 3 }],
+    ],
+    [
+      'sucata',
+      'clientes',
+      'sucata',
+      'carregarSucata',
+      [{ clienteId: 'c1', nome: 'A', totalEntregue: 2 }],
+    ],
+    ['estoque', 'estoque', 'estoque', 'carregarEstoque', { itens: [], alertasEstoqueMinimo: [] }],
+    [
+      'contaFuncionarios',
+      'rh',
+      'conta-funcionarios',
+      'carregarContaFuncionarios',
+      [{ funcionarioId: 'f1', nome: 'Ana', saldoAPagar: 10 }],
+    ],
+  ] as const)(
+    '%s: sucesso, erro e recarga mantendo os dados',
+    async (campo, svc, fim, loader, dados) => {
+      const url = `/api/${svc}/v1/relatorios/${fim}`;
+      const p1 = store[loader]();
+      expect(store[campo]().carregando).toBe(true);
+      http.expectOne(url).flush(dados);
+      await p1;
+      expect(store[campo]()).toEqual({ dados, carregando: false, erro: null });
+
+      const p2 = store[loader]();
+      expect(store[campo]().carregando).toBe(true);
+      expect(store[campo]().dados).toEqual(dados);
+      http.expectOne(url).flush({}, { status: 500, statusText: 'Erro' });
+      await p2;
+      expect(store[campo]().dados).toBeNull();
+      expect(store[campo]().erro).toBeTruthy();
+      expect(store[campo]().carregando).toBe(false);
+    },
+  );
 });

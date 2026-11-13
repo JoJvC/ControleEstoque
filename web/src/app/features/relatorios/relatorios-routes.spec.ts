@@ -11,6 +11,10 @@ const GUARDADAS: Record<string, string> = {
   'vendas-por-funcionario': 'relatorios.ver',
   caixa: 'relatorios.ver',
   fiado: 'relatorios.ver',
+  cascos: 'relatorios.ver',
+  sucata: 'relatorios.ver',
+  estoque: 'relatorios.ver',
+  'conta-funcionarios': 'relatorios.ver',
 };
 
 const COMPONENTES: Record<string, string> = {
@@ -19,6 +23,10 @@ const COMPONENTES: Record<string, string> = {
   'vendas-por-funcionario': 'VendasPorFuncionarioPage',
   caixa: 'CaixaRelatorioPage',
   fiado: 'FiadoPage',
+  cascos: 'CascosPage',
+  sucata: 'SucataPage',
+  estoque: 'EstoqueRelatorioPage',
+  'conta-funcionarios': 'ContaFuncionariosPage',
 };
 
 describe('RELATORIOS_ROUTES', () => {

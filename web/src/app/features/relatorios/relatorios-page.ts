@@ -86,5 +86,25 @@ export class RelatoriosPage {
       titulo: 'Fiado',
       descricao: 'Saldo devedor de cada cliente.',
     },
+    {
+      rota: 'cascos',
+      titulo: 'Cascos',
+      descricao: 'Saldo de cascos de cada cliente.',
+    },
+    {
+      rota: 'sucata',
+      titulo: 'Sucata',
+      descricao: 'Sucata entregue por cada cliente.',
+    },
+    {
+      rota: 'estoque',
+      titulo: 'Estoque',
+      descricao: 'Itens em estoque, com os abaixo do mínimo em destaque.',
+    },
+    {
+      rota: 'conta-funcionarios',
+      titulo: 'Conta de funcionários',
+      descricao: 'Saldo a pagar de cada funcionário.',
+    },
   ];
 }

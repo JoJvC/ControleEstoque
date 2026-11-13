@@ -108,4 +108,47 @@ describe('VendasApi', () => {
     req.flush({ numero: 1 });
     expect(resp).toEqual({ numero: 1 });
   });
+
+  describe('relatórios', () => {
+    const REL = '/api/vendas/v1/relatorios';
+
+    it('relatorioFaturamento: GET com inicio, fim e produtoId', () => {
+      let resp: unknown;
+      api.relatorioFaturamento('2026-11-01', '2026-11-13', 'p1').subscribe((r) => (resp = r));
+      const req = http.expectOne((r) => r.url === `${REL}/faturamento`);
+      expect(req.request.method).toBe('GET');
+      expect(req.request.params.keys().sort()).toEqual(['fim', 'inicio', 'produtoId']);
+      expect(req.request.params.get('inicio')).toBe('2026-11-01');
+      expect(req.request.params.get('fim')).toBe('2026-11-13');
+      expect(req.request.params.get('produtoId')).toBe('p1');
+      const corpo = {
+        totalBruto: 10,
+        totalDesconto: 1,
+        totalLiquido: 9,
+        porProduto: [],
+        porDia: [],
+      };
+      req.flush(corpo);
+      expect(resp).toEqual(corpo);
+    });
+
+    it('relatorioFaturamento: sem produtoId não envia produtoId', () => {
+      api.relatorioFaturamento('2026-11-01', '2026-11-13').subscribe();
+      const req = http.expectOne((r) => r.url === `${REL}/faturamento`);
+      expect(req.request.params.keys().sort()).toEqual(['fim', 'inicio']);
+      req.flush({});
+    });
+
+    it('relatorioVendasPorFuncionario: GET com inicio e fim', () => {
+      let resp: unknown;
+      api.relatorioVendasPorFuncionario('2026-11-01', '2026-11-13').subscribe((r) => (resp = r));
+      const req = http.expectOne((r) => r.url === `${REL}/vendas-por-funcionario`);
+      expect(req.request.method).toBe('GET');
+      expect(req.request.params.keys().sort()).toEqual(['fim', 'inicio']);
+      expect(req.request.params.get('inicio')).toBe('2026-11-01');
+      expect(req.request.params.get('fim')).toBe('2026-11-13');
+      req.flush([{ funcionarioId: 'f1' }]);
+      expect(resp).toEqual([{ funcionarioId: 'f1' }]);
+    });
+  });
 });

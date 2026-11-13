@@ -12,6 +12,7 @@ import {
   LancamentoContaRequest,
   SaldoContaResponse,
 } from './models/rh';
+import { SaldoFuncionario } from './models/relatorios';
 
 @Injectable({ providedIn: 'root' })
 export class RhApi {
@@ -66,5 +67,9 @@ export class RhApi {
 
   atualizarCargo(id: string, request: CreateCargoRequest): Observable<CargoResponse> {
     return this.http.put<CargoResponse>(`${this.base}/cargos/${id}`, request);
+  }
+
+  relatorioContaFuncionarios(): Observable<SaldoFuncionario[]> {
+    return this.http.get<SaldoFuncionario[]>(`${this.base}/relatorios/conta-funcionarios`);
   }
 }

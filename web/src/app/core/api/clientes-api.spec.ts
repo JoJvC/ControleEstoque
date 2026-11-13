@@ -113,4 +113,24 @@ describe('ClientesApi', () => {
     expect(req.request.body).toEqual(body);
     req.flush({});
   });
+
+  it('relatorioCascos: GET /relatorios/cascos sem query', () => {
+    let resp: unknown;
+    api.relatorioCascos().subscribe((r) => (resp = r));
+    const req = http.expectOne('/api/clientes/v1/relatorios/cascos');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.keys()).toEqual([]);
+    req.flush([{ clienteId: 'c1' }]);
+    expect(resp).toEqual([{ clienteId: 'c1' }]);
+  });
+
+  it('relatorioSucata: GET /relatorios/sucata sem query', () => {
+    let resp: unknown;
+    api.relatorioSucata().subscribe((r) => (resp = r));
+    const req = http.expectOne('/api/clientes/v1/relatorios/sucata');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.keys()).toEqual([]);
+    req.flush([{ clienteId: 'c1' }]);
+    expect(resp).toEqual([{ clienteId: 'c1' }]);
+  });
 });

@@ -131,4 +131,15 @@ describe('EstoqueApi', () => {
     expect(req.request.body).toEqual(body);
     req.flush({ id: 'b1' });
   });
+
+  it('relatorioEstoque: GET /relatorios/estoque sem query repassa o wrapper', () => {
+    let resp: unknown;
+    api.relatorioEstoque().subscribe((r) => (resp = r));
+    const req = http.expectOne(`${BASE}/relatorios/estoque`);
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.keys()).toEqual([]);
+    const corpo = { itens: [{ produtoId: 'p1' }], alertasEstoqueMinimo: [] };
+    req.flush(corpo);
+    expect(resp).toEqual(corpo);
+  });
 });

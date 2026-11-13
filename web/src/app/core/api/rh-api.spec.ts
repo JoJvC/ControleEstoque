@@ -114,4 +114,14 @@ describe('RhApi', () => {
     expect(req.request.body).toEqual(body);
     req.flush({ saldoAPagar: 0 });
   });
+
+  it('relatorioContaFuncionarios: GET /relatorios/conta-funcionarios sem query', () => {
+    let resp: unknown;
+    api.relatorioContaFuncionarios().subscribe((r) => (resp = r));
+    const req = http.expectOne(`${BASE}/relatorios/conta-funcionarios`);
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.keys()).toEqual([]);
+    req.flush([{ funcionarioId: 'f1' }]);
+    expect(resp).toEqual([{ funcionarioId: 'f1' }]);
+  });
 });

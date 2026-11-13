@@ -1,0 +1,107 @@
+@use 'mixins';
+
+:host {
+  display: block;
+}
+
+.conteudo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-3);
+  padding: var(--ce-space-4);
+}
+
+.totais {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--ce-space-2);
+  margin: 0;
+
+  @include mixins.from-tablet {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.total,
+.card {
+  padding: var(--ce-space-3);
+  border: 1px solid var(--ce-border);
+  border-radius: var(--ce-radius-md);
+  background: var(--ce-surface);
+}
+
+.total dt,
+.card dt {
+  font-size: var(--ce-font-sm);
+  color: var(--ce-text-muted);
+}
+
+.total dd,
+.card dd {
+  margin: 0;
+  font-weight: 600;
+  @include mixins.tabular-numbers;
+}
+
+h2 {
+  margin: var(--ce-space-2) 0 0;
+  font-size: var(--ce-font-md);
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  @include mixins.from-desktop {
+    display: none;
+  }
+}
+
+.card dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--ce-space-1) var(--ce-space-3);
+  margin: 0;
+}
+
+.card__titulo {
+  grid-column: 1 / -1;
+  font-weight: 600;
+}
+
+.tabela {
+  display: none;
+
+  @include mixins.from-desktop {
+    display: block;
+    @include mixins.scroll-x;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    @include mixins.tabular-numbers;
+  }
+
+  th,
+  td {
+    padding: var(--ce-space-2) var(--ce-space-3);
+    border-bottom: 1px solid var(--ce-border);
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .num {
+    text-align: right;
+  }
+}
+
+.erro {
+  margin: 0;
+  color: var(--ce-danger);
+  font-size: var(--ce-font-sm);
+}

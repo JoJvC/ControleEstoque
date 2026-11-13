@@ -10,6 +10,8 @@ import {
   VendaDetalheResponse,
   VendaResponse,
 } from './models/vendas';
+import { RelatorioFaturamento, VendasPorFuncionario } from './models/relatorios';
+import { periodoParams } from './periodo-params';
 
 export interface VendaFiltros {
   clienteId?: string;
@@ -67,5 +69,24 @@ export class VendasApi {
 
   emitirCupom(id: string): Observable<CupomFiscalResponse> {
     return this.http.post<CupomFiscalResponse>(`${this.base}/vendas/${id}/cupom-fiscal`, null);
+  }
+
+  /** Datas em yyyy-MM-dd; `produtoId` só vai na query quando vier. */
+  relatorioFaturamento(
+    inicio?: string,
+    fim?: string,
+    produtoId?: string,
+  ): Observable<RelatorioFaturamento> {
+    let params = periodoParams(inicio, fim);
+    if (produtoId) {
+      params = params.set('produtoId', produtoId);
+    }
+    return this.http.get<RelatorioFaturamento>(`${this.base}/relatorios/faturamento`, { params });
+  }
+
+  relatorioVendasPorFuncionario(inicio?: string, fim?: string): Observable<VendasPorFuncionario[]> {
+    return this.http.get<VendasPorFuncionario[]>(`${this.base}/relatorios/vendas-por-funcionario`, {
+      params: periodoParams(inicio, fim),
+    });
   }
 }

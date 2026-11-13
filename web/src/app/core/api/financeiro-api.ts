@@ -15,6 +15,8 @@ import {
   ResumoCaixaResponse,
   TipoDespesaResponse,
 } from './models/financeiro';
+import { RelatorioCaixa, SaldoFiadoCliente } from './models/relatorios';
+import { periodoParams } from './periodo-params';
 
 @Injectable({ providedIn: 'root' })
 export class FinanceiroApi {
@@ -58,5 +60,16 @@ export class FinanceiroApi {
 
   criarTipoDespesa(request: CreateTipoDespesaRequest): Observable<TipoDespesaResponse> {
     return this.http.post<TipoDespesaResponse>(`${this.base}/tipos-despesa`, request);
+  }
+
+  /** Datas em yyyy-MM-dd. */
+  relatorioCaixa(inicio?: string, fim?: string): Observable<RelatorioCaixa> {
+    return this.http.get<RelatorioCaixa>(`${this.base}/relatorios/caixa`, {
+      params: periodoParams(inicio, fim),
+    });
+  }
+
+  relatorioFiado(): Observable<SaldoFiadoCliente[]> {
+    return this.http.get<SaldoFiadoCliente[]>(`${this.base}/relatorios/fiado`);
   }
 }

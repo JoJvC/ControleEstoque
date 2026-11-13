@@ -16,6 +16,7 @@ import {
   ProdutoResponse,
   TipoProduto,
 } from './models/estoque';
+import { RelatorioEstoque } from './models/relatorios';
 
 export interface ProdutoFiltros {
   tipo?: TipoProduto;
@@ -91,5 +92,9 @@ export class EstoqueApi {
 
   criarBaixaCasco(request: CreateBaixaCascoRequest): Observable<CreatedResponse> {
     return this.http.post<CreatedResponse>(`${this.base}/estoque/cascos/baixas`, request);
+  }
+
+  relatorioEstoque(): Observable<RelatorioEstoque> {
+    return this.http.get<RelatorioEstoque>(`${this.base}/relatorios/estoque`);
   }
 }

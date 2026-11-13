@@ -8,4 +8,25 @@ export const RELATORIOS_ROUTES: Routes = [
     canActivate: [permissaoGuard('relatorios.ver')],
     loadComponent: () => import('./relatorios-page').then((m) => m.RelatoriosPage),
   },
+  {
+    path: 'faturamento',
+    canActivate: [permissaoGuard('relatorios.ver')],
+    loadComponent: () => import('./faturamento-page').then((m) => m.FaturamentoPage),
+  },
+  {
+    path: 'vendas-por-funcionario',
+    canActivate: [permissaoGuard('relatorios.ver')],
+    loadComponent: () =>
+      import('./vendas-por-funcionario-page').then((m) => m.VendasPorFuncionarioPage),
+  },
+  {
+    path: 'caixa',
+    canActivate: [permissaoGuard('relatorios.ver')],
+    loadComponent: () => import('./caixa-relatorio-page').then((m) => m.CaixaRelatorioPage),
+  },
+  {
+    path: 'fiado',
+    canActivate: [permissaoGuard('relatorios.ver')],
+    loadComponent: () => import('./fiado-page').then((m) => m.FiadoPage),
+  },
 ];

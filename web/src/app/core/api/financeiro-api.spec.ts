@@ -80,4 +80,26 @@ describe('FinanceiroApi', () => {
     expect(req.request.body).toEqual({ nome: 'Luz' });
     req.flush({ id: 't-1', nome: 'Luz' });
   });
+
+  it('relatorioCaixa: GET /relatorios/caixa com inicio e fim', () => {
+    let resp: unknown;
+    api.relatorioCaixa('2026-11-01', '2026-11-13').subscribe((r) => (resp = r));
+    const req = http.expectOne((r) => r.url === `${BASE}/relatorios/caixa`);
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.keys().sort()).toEqual(['fim', 'inicio']);
+    expect(req.request.params.get('inicio')).toBe('2026-11-01');
+    expect(req.request.params.get('fim')).toBe('2026-11-13');
+    req.flush({ dias: [], despesasPorTipo: [] });
+    expect(resp).toEqual({ dias: [], despesasPorTipo: [] });
+  });
+
+  it('relatorioFiado: GET /relatorios/fiado sem query', () => {
+    let resp: unknown;
+    api.relatorioFiado().subscribe((r) => (resp = r));
+    const req = http.expectOne(`${BASE}/relatorios/fiado`);
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.keys()).toEqual([]);
+    req.flush([{ clienteId: 'c1' }]);
+    expect(resp).toEqual([{ clienteId: 'c1' }]);
+  });
 });

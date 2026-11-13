@@ -134,4 +134,22 @@ public sealed class VendaCalculosTests
 
         Assert.Equal(esperado, status.ToString());
     }
+
+    [Fact]
+    public void Calcular_QuandoTipoDescontoForaDaFaixa_LancaValorEnumInvalido()
+    {
+        var e = Assert.Throws<RequestValidationException>(() => VendaCalculos.Calcular(
+            [new ItemVenda(ProdutoA, 1, 50m, new Desconto((TipoDesconto)99, 10m, "motivo"))], []));
+
+        Assert.Equal("VALOR_ENUM_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public void Calcular_QuandoFormaPagamentoForaDaFaixa_LancaValorEnumInvalido()
+    {
+        var e = Assert.Throws<RequestValidationException>(() => VendaCalculos.Calcular(
+            [new ItemVenda(ProdutoA, 1, 50m, null)], [new PagamentoVenda((FormaPagamento)99, 10m)]));
+
+        Assert.Equal("VALOR_ENUM_INVALIDO", e.Code);
+    }
 }

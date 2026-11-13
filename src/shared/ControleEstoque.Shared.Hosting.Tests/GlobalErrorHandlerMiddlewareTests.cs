@@ -47,6 +47,16 @@ public class GlobalErrorHandlerMiddlewareTests
     }
 
     [Fact]
+    public async Task RequestValidation_devolve_400_com_codigo_da_excecao()
+    {
+        var (status, body) = await InvocarAsync(new RequestValidationException("VALOR_ENUM_INVALIDO", "enum inválido"));
+
+        Assert.Equal(400, status);
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("VALOR_ENUM_INVALIDO", json.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task ControlledFailure_devolve_status_code_e_mensagem_de_negocio()
     {
         var (status, body) = await InvocarAsync(new ControlledFailureException("ESTOQUE_INSUFICIENTE", 409, "mensagem-de-negocio"));

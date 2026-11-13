@@ -76,10 +76,17 @@ public sealed class ProdutoService : IProdutoService
 
     public Task<IReadOnlyList<Produto>> ListarAsync(
         TipoProduto? tipo, Guid? marcaId, string? categoria, CancellationToken cancellationToken)
-        => produtos.ListAsync(tipo, marcaId, categoria, cancellationToken);
+    {
+        Validacao.EnumDefinido(tipo, "Tipo");
+        return produtos.ListAsync(tipo, marcaId, categoria, cancellationToken);
+    }
 
     private async Task ValidarAsync(Produto produto, CancellationToken cancellationToken)
     {
+        Validacao.EnumDefinido(produto.Tipo, "Tipo");
+        Validacao.IdPreenchido(produto.MarcaId, "MarcaId");
+        Validacao.NaoNegativo(produto.EstoqueMinimo, "EstoqueMinimo");
+
         if (string.IsNullOrWhiteSpace(produto.Nome))
         {
             throw new RequestValidationException("NOME_OBRIGATORIO", "Nome do produto é obrigatório.");

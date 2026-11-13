@@ -35,6 +35,34 @@ public sealed class EstoqueServiceTests
     }
 
     [Fact]
+    public async Task BaixarCascoAsync_QuandoResponsavelIdVazio_LancaIdInvalido()
+    {
+        var baixa = new NovaBaixaCasco(2, "quebrou", [Guid.NewGuid(), Guid.Empty]);
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.BaixarCascoAsync(baixa, CancellationToken.None));
+
+        Assert.Equal("ID_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task AjustarAsync_QuandoProdutoIdVazio_LancaIdInvalido()
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.AjustarAsync(Guid.Empty, 1, null, CancellationToken.None));
+
+        Assert.Equal("ID_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task AjustarAsync_QuandoProdutoValido_Ajusta()
+    {
+        await sut.AjustarAsync(casco.Id, 3, null, CancellationToken.None);
+
+        Assert.Equal(3, estoque.GetSaldo(casco.Id));
+    }
+
+    [Fact]
     public async Task BaixarCascoAsync_QuandoSaldoInsuficiente_LancaInsufficientStock()
     {
         estoque.SetSaldo(casco.Id, 1);

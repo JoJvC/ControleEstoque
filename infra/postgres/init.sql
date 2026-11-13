@@ -220,6 +220,24 @@ ALTER TABLE movimentos_estoque
     ADD CONSTRAINT fk_mov_estoque_abastecimento
     FOREIGN KEY (abastecimento_id) REFERENCES abastecimentos(id);
 
+-- Valores não negativos (acompanham a validação de domínio); guarda por nome para rodar mais de uma vez.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_produtos_preco_referencia_nao_negativo') THEN
+        ALTER TABLE produtos ADD CONSTRAINT chk_produtos_preco_referencia_nao_negativo CHECK (preco_referencia >= 0);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_produtos_estoque_minimo_nao_negativo') THEN
+        ALTER TABLE produtos ADD CONSTRAINT chk_produtos_estoque_minimo_nao_negativo CHECK (estoque_minimo >= 0);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_abastecimentos_custo_total_nao_negativo') THEN
+        ALTER TABLE abastecimentos ADD CONSTRAINT chk_abastecimentos_custo_total_nao_negativo CHECK (custo_total >= 0);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_abastecimento_itens_custo_unitario_nao_negativo') THEN
+        ALTER TABLE abastecimento_itens ADD CONSTRAINT chk_abastecimento_itens_custo_unitario_nao_negativo CHECK (custo_unitario >= 0);
+    END IF;
+END
+$$;
+
 -- ----------------------------------------------------------------------------
 -- VENDAS
 -- ----------------------------------------------------------------------------

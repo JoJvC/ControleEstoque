@@ -24,6 +24,7 @@ public static class VendaCalculos
 
         foreach (var pagamento in pagamentos)
         {
+            Validacao.EnumDefinido(pagamento.Forma, "Forma");
             if (pagamento.Valor <= 0)
             {
                 throw new RequestValidationException(
@@ -79,6 +80,7 @@ public static class VendaCalculos
                 throw new RequestValidationException("DESCONTO_INVALIDO", "Valor do desconto deve ser positivo.");
             }
 
+            Validacao.EnumDefinido(desconto.Tipo, "Tipo");
             valorDesconto = desconto.Tipo switch
             {
                 TipoDesconto.PERCENTUAL when desconto.Valor > 100 =>

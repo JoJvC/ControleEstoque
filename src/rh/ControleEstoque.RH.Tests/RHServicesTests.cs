@@ -33,12 +33,65 @@ public sealed class CargoServiceTests
         Assert.Equal(2, atualizado.Permissoes.Count);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("  ")]
+    public async Task CriarAsync_QuandoPermissaoNulaOuEmBranco_LancaItemInvalido(string? permissao)
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.CriarAsync("Entregador", ["vendas.registrar", permissao!], CancellationToken.None));
+
+        Assert.Equal("ITEM_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task AtualizarAsync_QuandoPermissaoNula_LancaItemInvalido()
+    {
+        var cargo = cargos.Add("Vendedor", nativo: false);
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.AtualizarAsync(cargo.Id, "Vendedor", [null!], CancellationToken.None));
+
+        Assert.Equal("ITEM_INVALIDO", e.Code);
+    }
+
     [Fact]
     public async Task CriarAsync_SempreCriaComoNaoNativo()
     {
         var cargo = await sut.CriarAsync("Entregador", ["vendas.registrar"], CancellationToken.None);
 
         Assert.False(cargo.Nativo);
+    }
+}
+
+public sealed class FuncionarioServiceTests
+{
+    private readonly FakeFuncionarioRepository funcionarios = new();
+    private readonly FakeCargoRepository cargos = new();
+    private readonly FuncionarioService sut;
+
+    public FuncionarioServiceTests() => sut = new FuncionarioService(funcionarios, cargos);
+
+    [Fact]
+    public async Task CriarAsync_QuandoCargoIdVazio_LancaIdInvalido()
+    {
+        var funcionario = new Funcionario(Guid.Empty, "Ana", null, Guid.Empty, null, 80m, true);
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.CriarAsync(funcionario, CancellationToken.None));
+
+        Assert.Equal("ID_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoCargoValido_Cria()
+    {
+        var cargo = cargos.Add("Vendedor", nativo: false);
+        var funcionario = new Funcionario(Guid.Empty, "Ana", null, cargo.Id, null, 80m, true);
+
+        var criado = await sut.CriarAsync(funcionario, CancellationToken.None);
+
+        Assert.Equal(cargo.Id, criado.CargoId);
     }
 }
 

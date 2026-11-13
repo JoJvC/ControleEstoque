@@ -62,12 +62,16 @@ public sealed class VendaService : IVendaService
     public Task<IReadOnlyList<Venda>> ListarAsync(
         Guid? clienteId, DateOnly? inicio, DateOnly? fim, int page, int pageSize,
         CancellationToken cancellationToken)
-        => vendas.ListAsync(clienteId, inicio, fim, Math.Max(1, page), Math.Clamp(pageSize, 1, 200),
+    {
+        Validacao.Periodo(inicio, fim);
+        return vendas.ListAsync(clienteId, inicio, fim, Math.Max(1, page), Math.Clamp(pageSize, 1, 200),
             cancellationToken);
+    }
 
     public async Task<ResultadoVenda> AdicionarPagamentoAsync(
         Guid vendaId, FormaPagamento forma, decimal valor, CancellationToken cancellationToken)
     {
+        Validacao.EnumDefinido(forma, "Forma");
         if (valor <= 0)
         {
             throw new RequestValidationException("PAGAMENTO_INVALIDO", "Valor de pagamento deve ser positivo.");
@@ -113,6 +117,13 @@ public sealed class VendaService : IVendaService
     private async Task<VendaGravacao> MontarGravacaoAsync(
         Guid vendaId, NovaVenda venda, CancellationToken cancellationToken)
     {
+        Validacao.IdPreenchido(venda.ClienteId, "ClienteId");
+        Validacao.IdPreenchido(venda.FuncionarioId, "FuncionarioId");
+        foreach (var item in venda.Itens)
+        {
+            Validacao.IdPreenchido(item.ProdutoId, "ProdutoId");
+        }
+
         if (venda.CascosDevolvidos < 0 || venda.SucataEntregue < 0)
         {
             throw new RequestValidationException(

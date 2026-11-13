@@ -329,6 +329,64 @@ public sealed class VendaServiceTests
         Assert.Equal(0, lookup.SaldosEstoque[agua.Id]);
     }
 
+    [Fact]
+    public async Task CriarAsync_QuandoClienteIdVazio_LancaIdInvalido()
+    {
+        var venda = NovaVendaDe(agua.Id, 1, 50m) with { ClienteId = Guid.Empty };
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.CriarAsync(venda, CancellationToken.None));
+
+        Assert.Equal("ID_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoFuncionarioIdVazio_LancaIdInvalido()
+    {
+        var venda = NovaVendaDe(agua.Id, 1, 50m) with { FuncionarioId = Guid.Empty };
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.CriarAsync(venda, CancellationToken.None));
+
+        Assert.Equal("ID_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoProdutoIdDoItemVazio_LancaIdInvalido()
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.CriarAsync(NovaVendaDe(Guid.Empty, 1, 50m), CancellationToken.None));
+
+        Assert.Equal("ID_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task AdicionarPagamentoAsync_QuandoFormaForaDaFaixa_LancaValorEnumInvalido()
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.AdicionarPagamentoAsync(Guid.NewGuid(), (FormaPagamento)99, 10m, CancellationToken.None));
+
+        Assert.Equal("VALOR_ENUM_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task ListarAsync_QuandoInicioDepoisDoFim_LancaPeriodoInvalido()
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(() => sut.ListarAsync(
+            null, new DateOnly(2026, 2, 1), new DateOnly(2026, 1, 1), 1, 50, CancellationToken.None));
+
+        Assert.Equal("PERIODO_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task ListarAsync_QuandoPeriodoValido_Lista()
+    {
+        var lista = await sut.ListarAsync(
+            null, new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 1), 1, 50, CancellationToken.None);
+
+        Assert.Empty(lista);
+    }
+
     private NovaVenda NovaVendaDe(
         Guid produtoId,
         int quantidade,

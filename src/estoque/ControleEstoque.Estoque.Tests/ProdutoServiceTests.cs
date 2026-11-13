@@ -65,6 +65,55 @@ public sealed class ProdutoServiceTests
             () => sut.AtualizarAsync(produto, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task CriarAsync_QuandoTipoForaDaFaixa_LancaValorEnumInvalido()
+    {
+        var produto = CreateProduto((TipoProduto)99, null);
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.CriarAsync(produto, CancellationToken.None));
+
+        Assert.Equal("VALOR_ENUM_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoMarcaIdVazio_LancaIdInvalido()
+    {
+        var produto = CreateProduto(TipoProduto.AGUA, Guid.Empty);
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.CriarAsync(produto, CancellationToken.None));
+
+        Assert.Equal("ID_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoEstoqueMinimoNegativo_LancaValorInvalido()
+    {
+        var produto = CreateProduto(TipoProduto.DESCARTAVEL, null) with { EstoqueMinimo = -1 };
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.CriarAsync(produto, CancellationToken.None));
+
+        Assert.Equal("VALOR_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task ListarAsync_QuandoTipoForaDaFaixa_LancaValorEnumInvalido()
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.ListarAsync((TipoProduto)99, null, null, CancellationToken.None));
+
+        Assert.Equal("VALOR_ENUM_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task ListarAsync_QuandoTipoNuloOuValido_Lista()
+    {
+        Assert.Empty(await sut.ListarAsync(null, null, null, CancellationToken.None));
+        Assert.Empty(await sut.ListarAsync(TipoProduto.AGUA, null, null, CancellationToken.None));
+    }
+
     private static Produto CreateProduto(TipoProduto tipo, Guid? marcaId) => new(
         Guid.Empty, tipo, "Produto Teste", marcaId, null, null, "20L", null, 50m, 5);
 }

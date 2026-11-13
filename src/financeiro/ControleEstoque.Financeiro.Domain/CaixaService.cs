@@ -57,6 +57,8 @@ public sealed class CaixaService : ICaixaService
             throw new RequestValidationException("VALOR_INVALIDO", "Valor da despesa deve ser positivo.");
         }
 
+        Validacao.IdPreenchido(tipoDespesaId, "TipoDespesaId");
+
         // A checagem de caixa fechado é do repositório (atômica com o INSERT).
         await ObterCaixaAsync(caixaId, cancellationToken);
 
@@ -73,6 +75,11 @@ public sealed class CaixaService : ICaixaService
     public async Task<ResultadoFechamento> FecharAsync(
         Guid caixaId, IReadOnlyList<Guid> funcionariosPresentes, CancellationToken cancellationToken)
     {
+        foreach (var funcionarioId in funcionariosPresentes)
+        {
+            Validacao.IdPreenchido(funcionarioId, "FuncionarioId");
+        }
+
         // Falta = funcionário simplesmente não listado; diária usa o valor do cadastro.
         if (funcionariosPresentes.Distinct().Count() != funcionariosPresentes.Count)
         {

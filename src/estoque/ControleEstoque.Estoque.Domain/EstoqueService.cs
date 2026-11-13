@@ -31,6 +31,7 @@ public sealed class EstoqueService : IEstoqueService
     public async Task AjustarAsync(
         Guid produtoId, int quantidade, string? observacao, CancellationToken cancellationToken)
     {
+        Validacao.IdPreenchido(produtoId, "ProdutoId");
         if (quantidade == 0)
         {
             throw new RequestValidationException("QUANTIDADE_INVALIDA", "Quantidade do ajuste não pode ser zero.");
@@ -51,6 +52,11 @@ public sealed class EstoqueService : IEstoqueService
         if (baixa.Quantidade <= 0)
         {
             throw new RequestValidationException("QUANTIDADE_INVALIDA", "Quantidade da baixa deve ser positiva.");
+        }
+
+        foreach (var responsavelId in baixa.ResponsaveisIds)
+        {
+            Validacao.IdPreenchido(responsavelId, "ResponsaveisIds");
         }
 
         if (baixa.ResponsaveisIds.Count == 0)

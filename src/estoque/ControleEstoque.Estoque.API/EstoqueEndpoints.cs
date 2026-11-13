@@ -104,7 +104,7 @@ public static class EstoqueEndpoints
             IAbastecimentoService abastecimentos,
             CancellationToken cancellationToken) =>
         {
-            var itens = (request.Itens ?? [])
+            var itens = Validacao.SemNulos(request.Itens, "Itens")
                 .Select(i => new AbastecimentoItem(i.ProdutoId, i.Quantidade, i.CustoUnitario))
                 .ToList();
             var id = await abastecimentos.RegistrarAsync(

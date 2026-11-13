@@ -24,6 +24,8 @@ public sealed class CargoService : ICargoService
             throw new RequestValidationException("NOME_OBRIGATORIO", "Nome do cargo é obrigatório.");
         }
 
+        Validacao.SemNulos<string>(permissoes, "Permissoes");
+
         var cargo = new Cargo(Guid.NewGuid(), nome.Trim(), false, permissoes);
         await cargos.CreateAsync(cargo, cancellationToken);
         return cargo;
@@ -36,6 +38,8 @@ public sealed class CargoService : ICargoService
         {
             throw new RequestValidationException("NOME_OBRIGATORIO", "Nome do cargo é obrigatório.");
         }
+
+        Validacao.SemNulos<string>(permissoes, "Permissoes");
 
         var existente = await cargos.GetAsync(id, cancellationToken)
             ?? throw new EntityNotFoundException("CARGO_NAO_ENCONTRADO", $"Cargo {id} não encontrado.");
@@ -113,6 +117,8 @@ public sealed class FuncionarioService : IFuncionarioService
         {
             throw new RequestValidationException("DIARIA_INVALIDA", "Valor da diária não pode ser negativo.");
         }
+
+        Validacao.IdPreenchido(funcionario.CargoId, "CargoId");
 
         if (!await cargos.ExistsAsync(funcionario.CargoId, cancellationToken))
         {

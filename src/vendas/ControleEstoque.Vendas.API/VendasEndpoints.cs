@@ -1,3 +1,4 @@
+using ControleEstoque.Shared.Results;
 using ControleEstoque.Shared.Telemetry;
 using ControleEstoque.Vendas.Contracts;
 using ControleEstoque.Vendas.Domain;
@@ -57,12 +58,18 @@ public static class VendasEndpoints
         app.MapGet("/v1/relatorios/faturamento", async (
             DateOnly? inicio, DateOnly? fim, Guid? produtoId,
             IRelatorioVendasRepository relatorios, CancellationToken cancellationToken) =>
-            Results.Ok(await relatorios.FaturamentoAsync(inicio, fim, produtoId, cancellationToken)));
+        {
+            Validacao.Periodo(inicio, fim);
+            return Results.Ok(await relatorios.FaturamentoAsync(inicio, fim, produtoId, cancellationToken));
+        });
 
         app.MapGet("/v1/relatorios/vendas-por-funcionario", async (
             DateOnly? inicio, DateOnly? fim,
             IRelatorioVendasRepository relatorios, CancellationToken cancellationToken) =>
-            Results.Ok(await relatorios.VendasPorFuncionarioAsync(inicio, fim, cancellationToken)));
+        {
+            Validacao.Periodo(inicio, fim);
+            return Results.Ok(await relatorios.VendasPorFuncionarioAsync(inicio, fim, cancellationToken));
+        });
 
         return app;
     }
@@ -71,11 +78,11 @@ public static class VendasEndpoints
         request.ClienteId,
         request.FuncionarioId,
         request.EnderecoEntregaId,
-        (request.Itens ?? []).Select(i => new ItemVenda(
+        Validacao.SemNulos(request.Itens, "Itens").Select(i => new ItemVenda(
             i.ProdutoId, i.Quantidade, i.PrecoUnitario,
             i.Desconto is null ? null : new Desconto(
                 i.Desconto.Tipo, i.Desconto.Valor, i.Desconto.Motivo ?? string.Empty))).ToList(),
-        (request.Pagamentos ?? []).Select(p => new PagamentoVenda(p.Forma, p.Valor)).ToList(),
+        Validacao.SemNulos(request.Pagamentos, "Pagamentos").Select(p => new PagamentoVenda(p.Forma, p.Valor)).ToList(),
         request.CascosDevolvidos,
         request.CascosDevolvidosNaHora,
         request.SucataEntregue,

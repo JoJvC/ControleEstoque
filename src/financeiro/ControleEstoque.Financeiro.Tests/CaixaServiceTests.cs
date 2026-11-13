@@ -140,4 +140,33 @@ public sealed class CaixaServiceTests
         await Assert.ThrowsAsync<ConflictException>(
             () => sut.AbrirAsync(new DateOnly(2026, 7, 7), 0m, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task AdicionarDespesaAsync_QuandoTipoDespesaIdVazio_LancaIdInvalido()
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.AdicionarDespesaAsync(Guid.NewGuid(), Guid.Empty, 10m, null, CancellationToken.None));
+
+        Assert.Equal("ID_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task FecharAsync_QuandoFuncionarioIdVazio_LancaIdInvalido()
+    {
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 100m);
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.FecharAsync(caixa.Id, [Guid.Empty], CancellationToken.None));
+
+        Assert.Equal("ID_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task AdicionarDespesaAsync_QuandoEntradaValida_Adiciona()
+    {
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 100m);
+        var tipo = tipos.Add("Combustível");
+
+        await sut.AdicionarDespesaAsync(caixa.Id, tipo.Id, 10m, null, CancellationToken.None);
+    }
 }

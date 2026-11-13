@@ -20,6 +20,14 @@ public sealed class AbastecimentoService : IAbastecimentoService
 
     public async Task<Guid> RegistrarAsync(NovoAbastecimento abastecimento, CancellationToken cancellationToken)
     {
+        Validacao.EnumDefinido(abastecimento.TipoFrete, "TipoFrete");
+        Validacao.IdPreenchido(abastecimento.FuncionarioId, "FuncionarioId");
+        foreach (var item in abastecimento.Itens)
+        {
+            Validacao.IdPreenchido(item.ProdutoId, "ProdutoId");
+            Validacao.NaoNegativo(item.CustoUnitario, "CustoUnitario");
+        }
+
         if (abastecimento.Itens.Count == 0)
         {
             throw new RequestValidationException("ITENS_OBRIGATORIOS", "Abastecimento deve ter ao menos um item.");

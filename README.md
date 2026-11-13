@@ -10,6 +10,11 @@ Documentos de referência:
 
 ## Subir o ambiente
 
+1. Copie `infra/.env.example` para `infra/.env` e preencha `POSTGRES_PASSWORD`; sem isso o compose falha.
+2. Para rodar uma API fora do compose, defina `ControleEstoque__<X>__ConnectionString` (X = Vendas, Clientes, Estoque, Financeiro, RH), ex.: `ControleEstoque__Vendas__ConnectionString="Host=127.0.0.1;Port=5432;Database=controle_estoque;Username=postgres;Password=<senha>"`.
+3. O Postgres e as APIs publicam só em 127.0.0.1; a entrada externa é o gateway na porta 8080.
+4. O `nginx.conf` vai dentro da imagem do gateway: ao mudá-lo, rode `docker compose -f infra/docker-compose.yml build gateway`.
+
 ```bash
 docker compose -f infra/docker-compose.yml up -d --build
 ```

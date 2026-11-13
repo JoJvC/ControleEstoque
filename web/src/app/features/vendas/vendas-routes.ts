@@ -10,6 +10,10 @@ export const VENDAS_ROUTES: Routes = [
     loadComponent: () => import('./pdv-page').then((m) => m.PdvPage),
   },
   {
+    path: 'editar/:id',
+    loadComponent: () => import('./pdv-page').then((m) => m.PdvPage),
+  },
+  {
     path: 'detalhe/:id',
     loadComponent: () => import('./venda-detalhe-page').then((m) => m.VendaDetalhePage),
   },

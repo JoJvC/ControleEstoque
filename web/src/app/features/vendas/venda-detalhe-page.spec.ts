@@ -37,6 +37,8 @@ const VENDA: VendaDetalheResponse = {
     },
   ],
   pagamentos: [{ forma: 'PIX', valor: 40 }],
+  cascosDevolvidos: 0,
+  sucataEntregue: 0,
 };
 
 async function assentar(fixture: ComponentFixture<unknown>): Promise<void> {
@@ -118,7 +120,7 @@ describe('VendaDetalhePage', () => {
     expect(t.navegar).toHaveBeenCalledWith('/vendas');
   });
 
-  it('área de ações existe e não tem botões', async () => {
+  it('área de ações tem só o botão Editar, que navega para a edição', async () => {
     const t = await montar();
     t.http.expectOne(`${URL_VENDAS}/v-1`).flush(VENDA);
     t.http.expectOne(`${URL_CLIENTES}/c-1`).flush({ id: 'c-1', nome: 'Maria' });
@@ -126,7 +128,11 @@ describe('VendaDetalhePage', () => {
     await assentar(t.fixture);
     const acoes = t.el.querySelector('[data-testid="venda-acoes"]');
     expect(acoes).not.toBeNull();
-    expect(acoes?.querySelectorAll('button')).toHaveLength(0);
+    const botoes = acoes!.querySelectorAll('button');
+    expect(botoes).toHaveLength(1);
+    expect(botoes[0].textContent).toContain('Editar');
+    botoes[0].click();
+    expect(t.navegar).toHaveBeenCalledWith('/vendas/editar/v-1');
   });
 
   it('produto 404 mostra "Produto removido"', async () => {

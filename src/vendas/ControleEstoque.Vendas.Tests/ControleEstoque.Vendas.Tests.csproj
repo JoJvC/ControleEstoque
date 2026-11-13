@@ -13,5 +13,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ControleEstoque.Vendas.Domain\ControleEstoque.Vendas.Domain.csproj" />
+    <ProjectReference Include="..\ControleEstoque.Vendas.Contracts\ControleEstoque.Vendas.Contracts.csproj" />
   </ItemGroup>
 </Project>

@@ -91,7 +91,9 @@ public sealed record Venda(
     string? Observacao,
     bool CupomEmitido,
     IReadOnlyList<ItemCalculado> Itens,
-    IReadOnlyList<PagamentoVenda> Pagamentos);
+    IReadOnlyList<PagamentoVenda> Pagamentos,
+    int CascosDevolvidos,
+    int SucataEntregue);
 
 public sealed record CupomFiscal(Guid Id, string Numero, DateTimeOffset EmitidoEm);
 

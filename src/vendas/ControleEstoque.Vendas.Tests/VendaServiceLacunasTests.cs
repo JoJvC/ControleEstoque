@@ -1,4 +1,5 @@
 using ControleEstoque.Shared.Results;
+using ControleEstoque.Vendas.Contracts;
 using ControleEstoque.Vendas.Domain;
 
 namespace ControleEstoque.Vendas.Tests;
@@ -53,6 +54,44 @@ public sealed class VendaServiceLacunasTests
         var venda = await sut.ObterAsync(criada.Id, CancellationToken.None);
 
         Assert.Equal(criada.Id, venda.Id);
+    }
+
+    [Fact]
+    public async Task ObterAsync_QuandoVendaTemCascosESucata_DevolveOsDoisValores()
+    {
+        var nova = NovaVendaDe(agua.Id, 1, 50m) with { CascosDevolvidos = 2, SucataEntregue = 1 };
+        var criada = await sut.CriarAsync(nova, CancellationToken.None);
+
+        var venda = await sut.ObterAsync(criada.Id, CancellationToken.None);
+        var resposta = VendaDetalheResponse.From(venda);
+
+        Assert.Equal(2, venda.CascosDevolvidos);
+        Assert.Equal(1, venda.SucataEntregue);
+        Assert.Equal(2, resposta.CascosDevolvidos);
+        Assert.Equal(1, resposta.SucataEntregue);
+    }
+
+    [Fact]
+    public async Task ObterAsync_QuandoVendaSemLancamento_CascosESucataValemZero()
+    {
+        var criada = await sut.CriarAsync(NovaVendaDe(agua.Id, 1, 50m), CancellationToken.None);
+
+        var resposta = VendaDetalheResponse.From(await sut.ObterAsync(criada.Id, CancellationToken.None));
+
+        Assert.Equal(0, resposta.CascosDevolvidos);
+        Assert.Equal(0, resposta.SucataEntregue);
+    }
+
+    [Fact]
+    public void VendaDetalheResponseFrom_LevaCascosESucataDoDominio()
+    {
+        var venda = new Venda(Guid.NewGuid(), clienteId, funcionarioId, null, DateTimeOffset.UtcNow,
+            0m, 0m, 0m, StatusPagamento.PENDENTE, null, false, [], [], 3, 4);
+
+        var resposta = VendaDetalheResponse.From(venda);
+
+        Assert.Equal(3, resposta.CascosDevolvidos);
+        Assert.Equal(4, resposta.SucataEntregue);
     }
 
     [Fact]

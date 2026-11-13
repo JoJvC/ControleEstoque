@@ -3,7 +3,11 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 
 import { ClienteResponse } from '../../core/api/models/clientes';
-import { CupomFiscalResponse, VendaDetalheResponse } from '../../core/api/models/vendas';
+import {
+  CreateVendaRequest,
+  CupomFiscalResponse,
+  VendaDetalheResponse,
+} from '../../core/api/models/vendas';
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { VendaStore } from './venda-store';
@@ -48,6 +52,39 @@ describe('VendaStore.emitirCupom', () => {
   });
 });
 
+describe('VendaStore.editar', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('PUT na URL da venda com o corpo dado e, em seguida, GET da listagem com os filtros atuais', async () => {
+    const { store, http } = criarStore();
+    store.buscar({ clienteId: 'c-1' });
+    http.expectOne((r) => r.url === URL_VENDAS).flush([]);
+    const corpo: CreateVendaRequest = {
+      clienteId: 'c-1',
+      funcionarioId: 'f-1',
+      enderecoEntregaId: null,
+      itens: [{ produtoId: 'p-1', quantidade: 3, precoUnitario: 10, desconto: null }],
+      pagamentos: [{ forma: 'PIX', valor: 30 }],
+      cascosDevolvidos: 2,
+      cascosDevolvidosNaHora: false,
+      sucataEntregue: 1,
+      observacao: null,
+    };
+
+    const promessa = store.editar('v-1', corpo);
+    const put = http.expectOne(`${URL_VENDAS}/v-1`);
+    expect(put.request.method).toBe('PUT');
+    expect(put.request.body).toEqual(corpo);
+    put.flush({ id: 'v-1' });
+    await promessa;
+
+    const lista = http.expectOne((r) => r.url === URL_VENDAS);
+    expect(lista.request.method).toBe('GET');
+    expect(lista.request.params.get('clienteId')).toBe('c-1');
+    lista.flush([]);
+  });
+});
+
 // ApiError só existe com o interceptor, que o setup acima não tem.
 function criarStoreComInterceptor(): { store: VendaStore; http: HttpTestingController } {
   TestBed.configureTestingModule({
@@ -75,6 +112,8 @@ function venda(id: string, clienteId: string): VendaDetalheResponse {
     cupomEmitido: false,
     itens: [],
     pagamentos: [],
+    cascosDevolvidos: 0,
+    sucataEntregue: 0,
   };
 }
 

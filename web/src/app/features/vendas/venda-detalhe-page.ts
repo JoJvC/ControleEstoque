@@ -108,7 +108,9 @@ import { rotuloCliente, rotuloForma, rotuloProduto, rotuloStatusPagamento } from
               </div>
             </dl>
 
-            <section class="venda-detalhe__acoes" data-testid="venda-acoes"></section>
+            <section class="venda-detalhe__acoes" data-testid="venda-acoes">
+              <ce-button (click)="editar()">Editar</ce-button>
+            </section>
           }
         }
         @default {
@@ -186,6 +188,10 @@ export class VendaDetalhePage {
       const id = this.id();
       untracked(() => this.store.obter(id));
     });
+  }
+
+  protected editar(): void {
+    this.router.navigateByUrl('/vendas/editar/' + this.id());
   }
 
   protected voltar(): void {

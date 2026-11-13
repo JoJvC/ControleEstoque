@@ -161,7 +161,9 @@ internal sealed class FakeVendaRepository : IVendaRepository
         Task.FromResult<Venda?>(VendasExistentes.Contains(vendaId)
             ? new Venda(vendaId, Guid.NewGuid(), Guid.NewGuid(), null, DateTimeOffset.UtcNow,
                 0m, 0m, InfoPagamento?.TotalLiquido ?? 0m, InfoPagamento?.Status ?? StatusPagamento.PENDENTE,
-                null, false, [], [])
+                null, false, [], [],
+                UltimaGravacao?.VendaId == vendaId ? UltimaGravacao.CascosDevolvidos : 0,
+                UltimaGravacao?.VendaId == vendaId ? UltimaGravacao.SucataEntregue : 0)
             : null);
 
     public Task<IReadOnlyList<Venda>> ListAsync(

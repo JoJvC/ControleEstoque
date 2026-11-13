@@ -1,10 +1,12 @@
 import { ProdutoResponse } from '../../core/api/models/estoque';
+import { VendaDetalheResponse } from '../../core/api/models/vendas';
 import {
   ItemCarrinho,
   fiadoDe,
   pagamentoExcede,
   paraCreateVendaRequest,
   quantidadeAgua,
+  rascunhoDeVenda,
   temAgua,
   totaisDe,
   totalPagoDe,
@@ -134,5 +136,94 @@ describe('paraCreateVendaRequest', () => {
     expect(request.cascosDevolvidos).toBe(0);
     expect(request.cascosDevolvidosNaHora).toBe(false);
     expect(request.sucataEntregue).toBe(0);
+  });
+});
+
+describe('rascunhoDeVenda', () => {
+  const agua = produto('AGUA', 'p-agua');
+  const carvao = produto('DESCARTAVEL', 'p-carvao');
+  const mapa = new Map([
+    [agua.id, agua],
+    [carvao.id, carvao],
+  ]);
+  const venda: VendaDetalheResponse = {
+    id: 'v-1',
+    clienteId: 'c-1',
+    funcionarioId: 'f-orig',
+    enderecoEntregaId: 'e-1',
+    data: '2026-01-02T10:00:00',
+    totalBruto: 100,
+    totalDesconto: 5,
+    totalLiquido: 95,
+    statusPagamento: 'PARCIAL',
+    observacao: null,
+    cupomEmitido: false,
+    itens: [
+      {
+        produtoId: 'p-agua',
+        quantidade: 1,
+        precoUnitario: 50,
+        descontoTipo: null,
+        descontoValor: null,
+        motivoDesconto: null,
+        totalItem: 50,
+      },
+      {
+        produtoId: 'p-carvao',
+        quantidade: 1,
+        precoUnitario: 50,
+        descontoTipo: 'PERCENTUAL',
+        descontoValor: 10,
+        motivoDesconto: null,
+        totalItem: 45,
+      },
+    ],
+    pagamentos: [
+      { forma: 'DINHEIRO', valor: 30 },
+      { forma: 'PIX', valor: 20 },
+    ],
+    cascosDevolvidos: 2,
+    sucataEntregue: 1,
+  };
+
+  it('item sem desconto e item com desconto (motivo null vira vazio)', () => {
+    const { itens } = rascunhoDeVenda(venda, mapa);
+    expect(itens[0]).toEqual({ produto: agua, quantidade: 1, precoUnitario: 50, desconto: null });
+    expect(itens[1]).toEqual({
+      produto: carvao,
+      quantidade: 1,
+      precoUnitario: 50,
+      desconto: { tipo: 'PERCENTUAL', valor: 10, motivo: '' },
+    });
+  });
+
+  it('pagamentos, cascos, sucata, vendedor e endereço vêm da venda; na hora é false', () => {
+    const r = rascunhoDeVenda(venda, mapa);
+    expect(r.pagamentos).toEqual([
+      { forma: 'DINHEIRO', valor: 30 },
+      { forma: 'PIX', valor: 20 },
+    ]);
+    expect(r.cascosDevolvidos).toBe(2);
+    expect(r.sucataEntregue).toBe(1);
+    expect(r.cascosDevolvidosNaHora).toBe(false);
+    expect(r.funcionarioId).toBe('f-orig');
+    expect(r.enderecoEntregaId).toBe('e-1');
+    expect(r.clienteId).toBe('c-1');
+  });
+
+  it('ida e volta: paraCreateVendaRequest reproduz itens, pagamentos, cascos e sucata', () => {
+    const req = paraCreateVendaRequest(rascunhoDeVenda(venda, mapa));
+    expect(req.itens).toEqual([
+      { produtoId: 'p-agua', quantidade: 1, precoUnitario: 50, desconto: null },
+      {
+        produtoId: 'p-carvao',
+        quantidade: 1,
+        precoUnitario: 50,
+        desconto: { tipo: 'PERCENTUAL', valor: 10, motivo: '' },
+      },
+    ]);
+    expect(req.pagamentos).toEqual(venda.pagamentos);
+    expect(req.cascosDevolvidos).toBe(2);
+    expect(req.sucataEntregue).toBe(1);
   });
 });

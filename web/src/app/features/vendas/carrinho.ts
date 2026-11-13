@@ -4,6 +4,7 @@ import {
   FormaPagamento,
   ItemVendaRequest,
   TipoDesconto,
+  VendaDetalheResponse,
 } from '../../core/api/models/vendas';
 import { PagamentoEdicao } from '../../ui/organisms/pagamento-lista';
 
@@ -116,5 +117,30 @@ export function paraCreateVendaRequest(rascunho: RascunhoVenda): CreateVendaRequ
     cascosDevolvidosNaHora: comCascos && rascunho.cascosDevolvidosNaHora,
     sucataEntregue: comCascos ? rascunho.sucataEntregue : 0,
     observacao: null,
+  };
+}
+
+// Pré-carga da edição: venda já gravada → rascunho do PDV. O vendedor original é mantido.
+export function rascunhoDeVenda(
+  venda: VendaDetalheResponse,
+  produtos: ReadonlyMap<string, ProdutoResponse>,
+): RascunhoVenda {
+  return {
+    clienteId: venda.clienteId,
+    funcionarioId: venda.funcionarioId,
+    enderecoEntregaId: venda.enderecoEntregaId,
+    itens: venda.itens.map((i) => ({
+      produto: produtos.get(i.produtoId) as ProdutoResponse,
+      quantidade: i.quantidade,
+      precoUnitario: i.precoUnitario,
+      desconto:
+        i.descontoTipo === null
+          ? null
+          : { tipo: i.descontoTipo, valor: i.descontoValor ?? 0, motivo: i.motivoDesconto ?? '' },
+    })),
+    pagamentos: venda.pagamentos.map((p) => ({ forma: p.forma, valor: p.valor })),
+    cascosDevolvidos: venda.cascosDevolvidos ?? 0,
+    cascosDevolvidosNaHora: false,
+    sucataEntregue: venda.sucataEntregue ?? 0,
   };
 }

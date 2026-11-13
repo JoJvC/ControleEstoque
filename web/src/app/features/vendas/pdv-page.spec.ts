@@ -1,12 +1,13 @@
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
 
 import { ClienteResponse } from '../../core/api/models/clientes';
 import { ProdutoResponse } from '../../core/api/models/estoque';
-import { VendaResponse } from '../../core/api/models/vendas';
+import { VendaDetalheResponse, VendaResponse } from '../../core/api/models/vendas';
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { OperatorStore } from '../../core/operator/operator-store';
@@ -67,7 +68,7 @@ const RESPOSTA: VendaResponse = {
   saldoCascoCliente: 2,
 };
 
-async function montar() {
+async function montar(idVenda?: string) {
   const abrir = vi.fn();
   const confirmar = vi.fn();
   TestBed.configureTestingModule({
@@ -83,7 +84,11 @@ async function montar() {
     ],
   });
   const http = TestBed.inject(HttpTestingController);
+  const navegar = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
   const fixture = TestBed.createComponent(PdvPage);
+  if (idVenda) {
+    fixture.componentRef.setInput('id', idVenda);
+  }
   const el = fixture.nativeElement as HTMLElement;
   http.expectOne('/api/estoque/v1/produtos').flush([AGUA, GALAO]);
   await assentar(fixture);
@@ -144,6 +149,7 @@ async function montar() {
   return {
     fixture,
     http,
+    navegar,
     el,
     abrir,
     confirmar,
@@ -166,6 +172,63 @@ async function assentar(fixture: ComponentFixture<unknown>): Promise<void> {
   await new Promise((r) => setTimeout(r, 0));
   await fixture.whenStable();
 }
+
+const VENDA_EDICAO: VendaDetalheResponse = {
+  id: 'v-1',
+  clienteId: 'c-1',
+  funcionarioId: 'f-orig',
+  enderecoEntregaId: 'c-1-e1',
+  data: '2026-01-02T10:00:00',
+  totalBruto: 100,
+  totalDesconto: 5,
+  totalLiquido: 95,
+  statusPagamento: 'PARCIAL',
+  observacao: 'entregar à tarde',
+  cupomEmitido: false,
+  itens: [
+    {
+      produtoId: 'p-agua',
+      quantidade: 1,
+      precoUnitario: 50,
+      descontoTipo: 'PERCENTUAL',
+      descontoValor: 10,
+      motivoDesconto: null,
+      totalItem: 45,
+    },
+    {
+      produtoId: 'p-galao',
+      quantidade: 1,
+      precoUnitario: 50,
+      descontoTipo: null,
+      descontoValor: null,
+      motivoDesconto: null,
+      totalItem: 50,
+    },
+  ],
+  pagamentos: [{ forma: 'DINHEIRO', valor: 30 }],
+  cascosDevolvidos: 2,
+  sucataEntregue: 1,
+};
+
+const CORPO_ORIGINAL = {
+  clienteId: 'c-1',
+  funcionarioId: 'f-orig',
+  enderecoEntregaId: 'c-1-e1',
+  itens: [
+    {
+      produtoId: 'p-agua',
+      quantidade: 1,
+      precoUnitario: 50,
+      desconto: { tipo: 'PERCENTUAL', valor: 10, motivo: '' },
+    },
+    { produtoId: 'p-galao', quantidade: 1, precoUnitario: 50, desconto: null },
+  ],
+  pagamentos: [{ forma: 'DINHEIRO', valor: 30 }],
+  cascosDevolvidos: 2,
+  cascosDevolvidosNaHora: false,
+  sucataEntregue: 1,
+  observacao: 'entregar à tarde',
+};
 
 describe('PdvPage', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
@@ -509,5 +572,154 @@ describe('PdvPage', () => {
     await assentar(t.fixture);
 
     expect(t.alertas()).toContain('Cupom fiscal já emitido para esta venda.');
+  });
+});
+
+describe('PdvPage em modo edição', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  async function montarEdicao(venda: VendaDetalheResponse = VENDA_EDICAO) {
+    const t = await montar('v-1');
+    t.http.expectOne(`${URL_VENDAS}/v-1`).flush(venda);
+    await assentar(t.fixture);
+    t.http.expectOne('/api/clientes/v1/clientes/c-1').flush(cliente('c-1', 'Ana'));
+    await assentar(t.fixture);
+    return t;
+  }
+
+  async function responderLista(t: Awaited<ReturnType<typeof montar>>) {
+    t.http.expectOne((r) => r.method === 'GET' && r.url === URL_VENDAS).flush([]);
+    await assentar(t.fixture);
+  }
+
+  it('(a) pré-carga: cliente, itens, cascos e sucata aparecem; título e botão de edição', async () => {
+    const t = await montarEdicao();
+
+    expect(t.texto()).toContain('Editar venda');
+    expect(t.texto()).toMatch(/Cliente ?Ana/);
+    expect(t.texto()).toMatch(/Cascos devolvidos ?2/);
+    expect(t.texto()).toMatch(/Sucata entregue ?1/);
+    await t.clicar('Itens');
+    expect(t.el.querySelectorAll('ce-item-venda-card')).toHaveLength(2);
+    expect(t.texto()).toContain('Água 20L');
+    expect(t.texto()).toContain('Galão vazio');
+    await t.ate('Revisão');
+    expect(t.botao('Salvar alterações')).toBeTruthy();
+    expect(t.texto()).not.toContain('Registrar venda');
+  });
+
+  it('(b) altera a quantidade de um item e salva: PUT com o corpo esperado e navega ao detalhe', async () => {
+    const t = await montarEdicao();
+    await t.clicar('Itens');
+    const existente = itemDe(AGUA, 1);
+    t.abrir.mockReturnValueOnce({
+      closed: of({
+        ...existente,
+        quantidade: 3,
+        desconto: { tipo: 'PERCENTUAL', valor: 10, motivo: '' },
+      }),
+    });
+    t.el.querySelector<HTMLElement>('ce-item-venda-card button')!.click();
+    await assentar(t.fixture);
+    await t.ate('Revisão');
+
+    await t.clicar('Salvar alterações');
+    const req = t.http.expectOne(`${URL_VENDAS}/v-1`);
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({
+      ...CORPO_ORIGINAL,
+      itens: [{ ...CORPO_ORIGINAL.itens[0], quantidade: 3 }, CORPO_ORIGINAL.itens[1]],
+    });
+    req.flush(RESPOSTA);
+    await assentar(t.fixture);
+    await responderLista(t);
+
+    expect(t.navegar).toHaveBeenCalledWith('/vendas/detalhe/v-1');
+  });
+
+  it('(c) salvar sem mexer reenvia cascos, sucata, pagamentos e vendedor originais', async () => {
+    const t = await montarEdicao();
+
+    await t.clicar('Salvar alterações');
+    const req = t.http.expectOne(`${URL_VENDAS}/v-1`);
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual(CORPO_ORIGINAL);
+    req.flush(RESPOSTA);
+    await assentar(t.fixture);
+    await responderLista(t);
+  });
+
+  it('(d) 409 CAIXA_FECHADO aparece inline e mantém o rascunho e o botão', async () => {
+    const t = await montarEdicao();
+
+    await t.clicar('Salvar alterações');
+    t.http
+      .expectOne(`${URL_VENDAS}/v-1`)
+      .flush(
+        { code: 'CAIXA_FECHADO', message: 'caixa fechado', traceId: 't' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await assentar(t.fixture);
+
+    expect(t.alertas()).toContain('O caixa do dia já está fechado.');
+    expect(t.texto()).toMatch(/Líquido ?R\$ 95,00/);
+    expect(t.botao('Salvar alterações').disabled).toBe(false);
+    expect(t.navegar).not.toHaveBeenCalled();
+  });
+
+  it('(e) 400 aparece inline com a mensagem do servidor', async () => {
+    const t = await montarEdicao();
+
+    await t.clicar('Salvar alterações');
+    t.http
+      .expectOne(`${URL_VENDAS}/v-1`)
+      .flush(
+        { code: 'ITEM_INVALIDO', message: 'Quantidade do item deve ser positiva.', traceId: 't' },
+        { status: 400, statusText: 'Bad Request' },
+      );
+    await assentar(t.fixture);
+
+    expect(t.alertas()).toContain('Quantidade do item deve ser positiva.');
+    expect(t.botao('Salvar alterações').disabled).toBe(false);
+  });
+
+  it('(f) 422 VENDA_JA_FATURADA aparece inline', async () => {
+    const t = await montarEdicao();
+
+    await t.clicar('Salvar alterações');
+    t.http
+      .expectOne(`${URL_VENDAS}/v-1`)
+      .flush(
+        { code: 'VENDA_JA_FATURADA', message: 'x', traceId: 't' },
+        { status: 422, statusText: 'Unprocessable Entity' },
+      );
+    await assentar(t.fixture);
+
+    expect(t.alertas()).toContain('Venda com cupom fiscal emitido não pode ser editada.');
+  });
+
+  it('(g) cupomEmitido: aviso somente leitura, sem botão de salvar e sem PUT', async () => {
+    const t = await montarEdicao({ ...VENDA_EDICAO, cupomEmitido: true });
+
+    const aviso = t.el.querySelector('[data-testid="venda-somente-leitura"]');
+    expect(aviso?.textContent).toContain('Venda com cupom emitido não pode ser editada.');
+    expect(t.texto()).not.toContain('Salvar alterações');
+    expect(t.el.querySelector('.acoes button')).toBeNull();
+    // verify() no afterEach garante que nenhum PUT foi feito.
+  });
+
+  it('GET da venda com 404 mostra mensagem inline e nenhum botão de salvar', async () => {
+    const t = await montar('v-1');
+    t.http
+      .expectOne(`${URL_VENDAS}/v-1`)
+      .flush(
+        { code: 'VENDA_NAO_ENCONTRADA', message: 'Venda não encontrada.', traceId: 't' },
+        { status: 404, statusText: 'Not Found' },
+      );
+    await assentar(t.fixture);
+
+    expect(t.alertas()).toHaveLength(1);
+    expect(t.texto()).not.toContain('Salvar alterações');
+    expect(t.el.querySelector('.acoes button')).toBeNull();
   });
 });

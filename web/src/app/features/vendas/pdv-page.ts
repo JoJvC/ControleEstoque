@@ -1,12 +1,26 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  OnInit,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 import { ClientesApi } from '../../core/api/clientes-api';
 import { EstoqueApi } from '../../core/api/estoque-api';
 import { ClienteResponse, EnderecoResponse } from '../../core/api/models/clientes';
 import { ProdutoResponse } from '../../core/api/models/estoque';
-import { CupomFiscalResponse, VendaResponse } from '../../core/api/models/vendas';
+import {
+  CupomFiscalResponse,
+  VendaDetalheResponse,
+  VendaResponse,
+} from '../../core/api/models/vendas';
+import { VendasApi } from '../../core/api/vendas-api';
 import { ApiError } from '../../core/http/api-error';
 import { mensagemDoErro } from '../../core/http/error-messages';
 import { OperatorStore } from '../../core/operator/operator-store';
@@ -29,6 +43,7 @@ import {
   pagamentoExcede,
   paraCreateVendaRequest,
   quantidadeAgua,
+  rascunhoDeVenda,
   temAgua,
   totaisDe,
   totalItemDe,
@@ -70,7 +85,7 @@ const semAcento = (texto: string): string =>
     SearchBox,
   ],
   template: `
-    <ce-app-header titulo="Nova venda" />
+    <ce-app-header [titulo]="id() ? 'Editar venda' : 'Nova venda'" />
 
     <div class="conteudo">
       @if (venda(); as v) {
@@ -110,8 +125,17 @@ const semAcento = (texto: string): string =>
             <p class="erro" role="alert">{{ mensagem }}</p>
           }
         </section>
+      } @else if (carga() === 'carregando') {
+        <p class="dica">Carregando venda…</p>
+      } @else if (carga() === 'erro') {
+        <p class="erro" role="alert">{{ erroCarga() }}</p>
       } @else {
-        <ol class="passos">
+        @if (somenteLeitura()) {
+          <p class="erro" role="alert" data-testid="venda-somente-leitura">
+            Venda com cupom emitido não pode ser editada.
+          </p>
+        }
+        <ol class="passos" [attr.inert]="somenteLeitura() ? '' : null">
           @for (p of passos(); track p; let i = $index) {
             <li class="passo" [class.passo--ativo]="p === passo()">
               <button
@@ -294,14 +318,16 @@ const semAcento = (texto: string): string =>
           }
         </ol>
 
-        <ce-button variante="ghost" (click)="cancelar()">Cancelar venda</ce-button>
+        @if (!id()) {
+          <ce-button variante="ghost" (click)="cancelar()">Cancelar venda</ce-button>
+        }
       }
     </div>
 
     <div class="acoes">
       @if (venda()) {
         <ce-button [block]="true" (click)="reiniciar()">Nova venda</ce-button>
-      } @else {
+      } @else if (carga() === 'ok' && !somenteLeitura()) {
         @if (indice() > 0) {
           <ce-button variante="ghost" (click)="voltar()">Voltar</ce-button>
         }
@@ -312,7 +338,7 @@ const semAcento = (texto: string): string =>
             [disabled]="excede()"
             (click)="registrar()"
           >
-            Registrar venda
+            {{ id() ? 'Salvar alterações' : 'Registrar venda' }}
           </ce-button>
         } @else {
           <ce-button [block]="true" [disabled]="!podeAvancar()" (click)="avancar()">
@@ -478,12 +504,14 @@ const semAcento = (texto: string): string =>
     }
   `,
 })
-export class PdvPage {
+export class PdvPage implements OnInit {
   private readonly vendaStore = inject(VendaStore);
   private readonly clientesApi = inject(ClientesApi);
   private readonly estoqueApi = inject(EstoqueApi);
   private readonly operador = inject(OperatorStore);
   private readonly sheet = inject(SheetService);
+  private readonly vendasApi = inject(VendasApi);
+  private readonly router = inject(Router);
 
   protected readonly mensagemExcede = mensagemDoErro('PAGAMENTO_EXCEDE_TOTAL', 422);
 
@@ -495,6 +523,13 @@ export class PdvPage {
   protected readonly cascosNaHora = signal(false);
   protected readonly sucataEntregue = signal(0);
   protected readonly pagamentos = signal<readonly PagamentoEdicao[]>([]);
+
+  // Edição: com `id` (rota editar/:id) a página pré-carrega a venda e salva por PUT.
+  readonly id = input<string>();
+  private readonly vendaCarregada = signal<VendaDetalheResponse | null>(null);
+  protected readonly carga = signal<'carregando' | 'erro' | 'ok'>('ok');
+  protected readonly erroCarga = signal<string | null>(null);
+  protected readonly somenteLeitura = computed(() => this.vendaCarregada()?.cupomEmitido === true);
 
   // Fluxo
   protected readonly passo = signal<Passo>('cliente');
@@ -552,8 +587,46 @@ export class PdvPage {
     }
   });
 
+  private produtosPronto: Promise<void> = Promise.resolve();
+
   constructor() {
     this.carregarProdutos();
+  }
+
+  ngOnInit(): void {
+    const id = this.id();
+    if (id) {
+      void this.carregarVenda(id);
+    }
+  }
+
+  private async carregarVenda(id: string): Promise<void> {
+    this.carga.set('carregando');
+    try {
+      const venda = await firstValueFrom(this.vendasApi.obter(id));
+      const cliente = await firstValueFrom(this.clientesApi.obter(venda.clienteId));
+      await this.produtosPronto;
+      const produtos = new Map(this.produtos().map((p) => [p.id, p]));
+      for (const { produtoId } of venda.itens) {
+        if (!produtos.has(produtoId)) {
+          produtos.set(produtoId, await firstValueFrom(this.estoqueApi.obterProduto(produtoId)));
+        }
+      }
+      const rascunho = rascunhoDeVenda(venda, produtos);
+      this.selecionarCliente(cliente);
+      this.enderecoId.set(rascunho.enderecoEntregaId);
+      this.itens.set(rascunho.itens);
+      this.pagamentos.set(rascunho.pagamentos);
+      this.cascosDevolvidos.set(rascunho.cascosDevolvidos);
+      this.cascosNaHora.set(rascunho.cascosDevolvidosNaHora);
+      this.sucataEntregue.set(rascunho.sucataEntregue);
+      this.vendaCarregada.set(venda);
+      this.passo.set('revisao');
+      this.carga.set('ok');
+    } catch (e) {
+      this.erroCarga.set(e instanceof ApiError ? e.userMessage : 'Erro ao carregar a venda.');
+      this.carga.set('erro');
+    }
   }
 
   protected rotulo(passo: Passo): string {
@@ -643,12 +716,18 @@ export class PdvPage {
 
   protected carregarProdutos(): void {
     this.produtosStatus.set('loading');
-    this.estoqueApi.listarProdutos().subscribe({
-      next: (lista) => {
-        this.produtos.set(lista);
-        this.produtosStatus.set('ok');
-      },
-      error: () => this.produtosStatus.set('error'),
+    this.produtosPronto = new Promise((resolve) => {
+      this.estoqueApi.listarProdutos().subscribe({
+        next: (lista) => {
+          this.produtos.set(lista);
+          this.produtosStatus.set('ok');
+          resolve();
+        },
+        error: () => {
+          this.produtosStatus.set('error');
+          resolve();
+        },
+      });
     });
   }
 
@@ -715,27 +794,33 @@ export class PdvPage {
   // Registro
 
   protected async registrar(): Promise<void> {
-    const funcionarioId = this.operador.operator()?.id;
+    const original = this.vendaCarregada();
+    const funcionarioId = original?.funcionarioId ?? this.operador.operator()?.id;
     const cliente = this.cliente();
-    if (this.enviando() || this.excede() || !funcionarioId || !cliente) {
+    const edicaoBloqueada = this.id() !== undefined && (!original || original.cupomEmitido);
+    if (this.enviando() || this.excede() || !funcionarioId || !cliente || edicaoBloqueada) {
       return;
     }
     this.enviando.set(true);
     this.erro.set(null);
     try {
-      const venda = await this.vendaStore.criar(
-        paraCreateVendaRequest({
-          clienteId: cliente.id,
-          funcionarioId,
-          enderecoEntregaId: this.enderecoId(),
-          itens: this.itens(),
-          pagamentos: this.pagamentos(),
-          cascosDevolvidos: this.cascosDevolvidos(),
-          cascosDevolvidosNaHora: this.cascosNaHora(),
-          sucataEntregue: this.sucataEntregue(),
-        }),
-      );
-      this.venda.set(venda);
+      const request = paraCreateVendaRequest({
+        clienteId: cliente.id,
+        funcionarioId,
+        enderecoEntregaId: this.enderecoId(),
+        itens: this.itens(),
+        pagamentos: this.pagamentos(),
+        cascosDevolvidos: this.cascosDevolvidos(),
+        cascosDevolvidosNaHora: this.cascosNaHora(),
+        sucataEntregue: this.sucataEntregue(),
+      });
+      if (original) {
+        // O PUT sobrescreve a observação: reenvia a da venda carregada.
+        await this.vendaStore.editar(original.id, { ...request, observacao: original.observacao });
+        await this.router.navigateByUrl(`/vendas/detalhe/${original.id}`);
+      } else {
+        this.venda.set(await this.vendaStore.criar(request));
+      }
     } catch (e) {
       // Rede/5xx já viraram toast no interceptor; 4xx (CAIXA_FECHADO, 400/422) fica inline.
       if (!(e instanceof ApiError)) {

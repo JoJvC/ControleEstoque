@@ -77,6 +77,8 @@ export interface VendaDetalheResponse {
   cupomEmitido: boolean;
   itens: ItemVendaResponse[];
   pagamentos: PagamentoResponse[];
+  cascosDevolvidos: number;
+  sucataEntregue: number;
 }
 
 export interface AddPagamentoRequest {

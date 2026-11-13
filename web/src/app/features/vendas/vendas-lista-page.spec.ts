@@ -28,6 +28,8 @@ function venda(id: string, clienteId = 'c-1'): VendaDetalheResponse {
     cupomEmitido: true,
     itens: [],
     pagamentos: [],
+    cascosDevolvidos: 0,
+    sucataEntregue: 0,
   };
 }
 

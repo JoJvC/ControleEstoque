@@ -483,7 +483,9 @@ public sealed class PostgresVendaRepository : IVendaRepository
         reader.IsDBNull(9) ? null : reader.GetString(9),
         reader.GetBoolean(10),
         [],
-        []);
+        [],
+        reader.GetInt32(11),
+        reader.GetInt32(12));
 
     private static ItemCalculado MapItem(NpgsqlDataReader reader)
     {
@@ -510,7 +512,11 @@ public sealed class PostgresVendaRepository : IVendaRepository
                    v.total_bruto, v.total_desconto, v.total_liquido, v.status_pagamento::text,
                    v.observacao,
                    EXISTS (SELECT 1 FROM cupons_fiscais cf
-                           WHERE cf.venda_id = v.id AND cf.deleted_at IS NULL)
+                           WHERE cf.venda_id = v.id AND cf.deleted_at IS NULL),
+                   (SELECT COALESCE(SUM(m.quantidade), 0)::int FROM movimentos_casco_cliente m
+                    WHERE m.venda_id = v.id AND m.tipo = 'DEVOLUCAO' AND m.deleted_at IS NULL),
+                   (SELECT COALESCE(SUM(s.quantidade), 0)::int FROM entregas_sucata_cliente s
+                    WHERE s.venda_id = v.id AND s.deleted_at IS NULL)
             FROM vendas v
             """;
 

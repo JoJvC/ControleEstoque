@@ -12,7 +12,7 @@ services:
     environment:
       POSTGRES_DB: controle_estoque
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD em infra/.env}
     ports:
       - "5432:5432"
     volumes:
@@ -33,7 +33,7 @@ services:
         CONTEXT: vendas
         PROJECT: ControleEstoque.Vendas.API
     environment:
-      ControleEstoque__Vendas__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=postgres"
+      ControleEstoque__Vendas__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=${POSTGRES_PASSWORD}"
     ports:
       - "5101:8080"
 
@@ -46,7 +46,7 @@ services:
         CONTEXT: clientes
         PROJECT: ControleEstoque.Clientes.API
     environment:
-      ControleEstoque__Clientes__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=postgres"
+      ControleEstoque__Clientes__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=${POSTGRES_PASSWORD}"
     ports:
       - "5102:8080"
 
@@ -59,7 +59,7 @@ services:
         CONTEXT: estoque
         PROJECT: ControleEstoque.Estoque.API
     environment:
-      ControleEstoque__Estoque__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=postgres"
+      ControleEstoque__Estoque__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=${POSTGRES_PASSWORD}"
       ControleEstoque__Estoque__MediaPath: /media
     volumes:
       - media:/media
@@ -75,7 +75,7 @@ services:
         CONTEXT: financeiro
         PROJECT: ControleEstoque.Financeiro.API
     environment:
-      ControleEstoque__Financeiro__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=postgres"
+      ControleEstoque__Financeiro__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=${POSTGRES_PASSWORD}"
     ports:
       - "5104:8080"
 
@@ -88,7 +88,7 @@ services:
         CONTEXT: rh
         PROJECT: ControleEstoque.RH.API
     environment:
-      ControleEstoque__RH__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=postgres"
+      ControleEstoque__RH__ConnectionString: "Host=postgres;Port=5432;Database=controle_estoque;Username=postgres;Password=${POSTGRES_PASSWORD}"
     ports:
       - "5105:8080"
 

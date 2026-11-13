@@ -269,7 +269,7 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 - [x] Ajuste manual de movimento; baixa de casco por quebra (validação: ≥1 responsável; 422 `ESTOQUE_INSUFICIENTE` tratado inline)
 - **Critério de aceite:** abastecer → ver saldos subirem; baixar casco → CASCO desce e SUCATA sobe na mesma tela. *(Verificado via HTTP no gateway: abastecimento de 10 águas + 5 cascos subiu AGUA 15→25 e CASCO 13→18; baixa de 2 cascos com 1 responsável desceu CASCO 18→16 e subiu SUCATA 1→3 — a tela `/estoque` lista ambos e recarrega do servidor após cada escrita. Erros conferidos: 400 `RESPONSAVEL_OBRIGATORIO`, 422 `ESTOQUE_INSUFICIENTE`, 400 `QUANTIDADE_INVALIDA` — todos no mapa pt-BR e exibidos inline nos sheets. Ajuste manual −1 confirmado. Ações da página em barra sticky acima da bottom-nav, ao alcance do polegar.)*
 
-### Sprint F5 — PDV e Vendas (core do sistema)
+### Sprint F5 — PDV e Vendas (core do sistema) ✅ (concluída em 2026-11-13)
 - [x] `vendas-api.ts` + models; `VendaStore`
 - [x] PDV completo (Seção 6.3), incluindo: seção de cascos condicionada a item de ÁGUA; toggle "devolvidos na hora" (preenche e mantém editável); desconto por item com motivo obrigatório (validação client-side espelhando `DESCONTO_SEM_MOTIVO`); pagamentos N formas com faltante→fiado explícito; bloqueio client-side de `SUM(pagamentos) > total`
 - [x] Lista de vendas (filtros + paginação) e detalhe
@@ -278,7 +278,7 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 - [x] Cupom fiscal: emitir (409 já emitido → mostrar existente) e visualizar via `PrintService` (impl. web: `window.print` de view formatada)
 - **Critério de aceite:** walkthrough 7 do plano do backend reproduzido inteiro pela UI no celular: venda de 5 águas, 3 cascos devolvidos, 1 sucata, R$ 200 em PIX → tela de sucesso mostra PARCIAL, fiado R$ 50, saldo de casco 2.
 
-### Sprint F6 — Casco, Sucata e Fiado (operações do cliente)
+### Sprint F6 — Casco, Sucata e Fiado (operações do cliente) ✅ (concluída em 2026-11-13)
 - [x] Detalhe do cliente com os 3 saldos (chips independentes e visualmente distintos)
 - [x] Pagar Casco — sheet com 2 modos: devolução física (quantidade) | conversão em valor (quantidade + valor unitário; 422 `CONVERSAO_MAIOR_QUE_SALDO` inline)
 - [x] Entregar Sucata avulsa (quantidade + conversão em crédito opcional), com o aviso fixo "não abate débito de casco"
@@ -286,31 +286,31 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 - [x] Extratos (se endpoint disponível) ou saldos recarregados pós-operação — não há endpoint de extrato por cliente; os saldos são recarregados (`GET /saldos`) depois de cada operação
 - **Critério de aceite:** sequência mista (devolução → conversão → sucata com crédito → pagamento de fiado) termina com os 3 chips batendo com `GET /saldos`.
 
-### Sprint F7 — Financeiro (Caixa)
-- [ ] Caixa do dia: abrir (409 → carrega o existente), resumo ao vivo (entradas, despesas, diárias, saldo parcial)
-- [ ] Despesas: form com tipo obrigatório (combo de `GET /v1/tipos-despesa` + cadastro rápido)
-- [ ] Fechamento: checklist de funcionários que trabalharam (falta = desmarcar), confirmação com resumo, estado FECHADO bloqueia novas despesas (422 `CAIXA_FECHADO`/`CAIXA_JA_FECHADO` tratados)
+### Sprint F7 — Financeiro (Caixa) ✅ (concluída em 2026-11-13)
+- [x] Caixa do dia: abrir (409 → carrega o existente), resumo ao vivo (entradas, despesas, diárias, saldo parcial)
+- [x] Despesas: form com tipo obrigatório (combo de `GET /v1/tipos-despesa` + cadastro rápido)
+- [x] Fechamento: checklist de funcionários que trabalharam (falta = desmarcar), confirmação com resumo, estado FECHADO bloqueia novas despesas (422 `CAIXA_FECHADO`/`CAIXA_JA_FECHADO` tratados)
 - **Critério de aceite:** dia simulado inteiro pela UI (abrir → vender no PDV → despesa → fechar com 2 diárias) e resumo final correto.
 
-### Sprint F8 — RH e Permissionamento
-- [ ] Funcionários: CRUD com valor de diária; conta-corrente (extrato, saldo, vale, pagamento — 422 `PAGAMENTO_EXCEDE_SALDO`)
-- [ ] Cargos: CRUD com editor de permissões granulares; ADM exibido como nativo e travado (422 `CARGO_NATIVO` nunca deve ser alcançável pela UI)
-- [ ] `PermissionService`: permissões do cargo do operador; diretiva estrutural `*cePermissao="'vendas.registrar'"` escondendo ações; guard de rota por permissão; curinga `*` do ADM
-- [ ] Aplicar `*cePermissao` retroativamente nas ações sensíveis (registrar/editar venda, fechar caixa, editar estoque, relatórios, cadastros)
+### Sprint F8 — RH e Permissionamento ✅ (concluída em 2026-11-13)
+- [x] Funcionários: CRUD com valor de diária; conta-corrente (extrato, saldo, vale, pagamento — 422 `PAGAMENTO_EXCEDE_SALDO`)
+- [x] Cargos: CRUD com editor de permissões granulares; ADM exibido como nativo e travado (422 `CARGO_NATIVO` nunca deve ser alcançável pela UI)
+- [x] `PermissionService`: permissões do cargo do operador; diretiva estrutural `*cePermissao="'vendas.registrar'"` escondendo ações; guard de rota por permissão; curinga `*` do ADM
+- [x] Aplicar `*cePermissao` retroativamente nas ações sensíveis (registrar/editar venda, fechar caixa, editar estoque, relatórios, cadastros)
 - **Critério de aceite:** operador com cargo restrito não vê nem acessa (por URL direta) telas fora de suas permissões; ciclo diária→vale→pagamento fecha o saldo na tela.
 
-### Sprint F9 — Relatórios e Home
-- [ ] Hub de relatórios + 8 telas (Seção 5.2), filtros de período/produto, cards mobile / tabela desktop com `overflow-x: auto`
-- [ ] Home/dashboard: caixa do dia (status), total vendido hoje, alertas de estoque mínimo, atalhos
+### Sprint F9 — Relatórios e Home ✅ (concluída em 2026-11-13)
+- [x] Hub de relatórios + 8 telas (Seção 5.2), filtros de período/produto, cards mobile / tabela desktop com `overflow-x: auto`
+- [x] Home/dashboard: caixa do dia (status), total vendido hoje, alertas de estoque mínimo, atalhos
 - **Critério de aceite:** relatório de faturamento por período e produto confere com as vendas registradas nas sprints anteriores.
 
-### Sprint F10 — Qualidade e prontidão Capacitor
+### Sprint F10 — Qualidade e prontidão Capacitor ✅ (concluída em 2026-11-13)
 - [x] `@angular/pwa` (manifest, ícones, service worker com estratégia network-first para `/api`)
-- [ ] Gateway servindo o build do front em `/` (compose completo: `docker compose up` → sistema inteiro em uma porta)
-- [ ] Playwright: smoke e2e do fluxo crítico (operador → PDV → venda parcial → caixa) rodando contra o compose, viewport mobile
+- [x] Gateway servindo o build do front em `/` (compose completo: `docker compose up` → sistema inteiro em uma porta) — gateway `location /` com `try_files … /index.html` em `infra/gateway/nginx.conf:97-100`; build copiado em `infra/Dockerfile.web`
+- [x] Playwright: smoke e2e do fluxo crítico (operador → PDV → venda parcial → caixa) rodando contra o compose, viewport mobile — `web/e2e/smoke.spec.ts` (execução contra o compose no host)
 - [x] Auditoria da Seção 10 (checklist Capacitor) — corrigir violações (uso direto de `window`/`localStorage` fora de `core/platform`, etc.)
 - [x] Performance: budgets no `angular.json` (initial ≤ 500kb), `@defer` em relatórios/gráficos, a11y pass (labels, foco, contraste dos tokens) — @defer não aplicável: sem gráfico nem componente pesado; rotas lazy
-- [ ] `web/README.md`: setup em ≤ 5 comandos
+- [x] `web/README.md`: setup em ≤ 5 comandos
 - **Critério de aceite:** `docker compose up` do zero + smoke Playwright verde; Lighthouse mobile ≥ 90 em performance e a11y na home e no PDV.
 
 ---
@@ -360,7 +360,7 @@ Auditar na Sprint F10 (e respeitar desde a F1):
 - [x] **Safe areas** aplicadas no shell (`viewport-fit=cover` no index.html + `env(safe-area-inset-*)`)
 - [x] **Touch targets ≥ 44px** em todo elemento interativo (token + lint visual no `/dev/ui`)
 - [x] **Sem hover como única affordance** — todo estado hover tem equivalente de foco/ativo
-- [ ] Passo futuro documentado no `web/README.md`: `npm i @capacitor/core @capacitor/cli && npx cap init && npx cap add android` apontando `webDir` para o build
+- [x] Passo futuro documentado no `web/README.md`: `npm i @capacitor/core @capacitor/cli && npx cap init && npx cap add android` apontando `webDir` para o build
 
 ---
 

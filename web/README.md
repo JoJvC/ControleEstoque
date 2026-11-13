@@ -1,59 +1,58 @@
-# ControleEstoqueWeb
+# ControleEstoque Web
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.0.5.
+Front Angular 22 (zoneless, PWA, mobile-first) do ControleEstoque. Fala com o gateway nginx em `/api/<contexto>/v1` (`public/config.json`).
 
-## Development server
+## Setup
 
-To start a local development server, run:
-
-```bash
-ng serve
-```
-
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+Com o compose da raiz no ar (gateway em `http://localhost:8080`):
 
 ```bash
-ng generate component component-name
+git clone <repo> && cd <repo>/web
+npm ci
+npm start
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+`npm start` sobe o `ng serve` em `http://localhost:4200/`, com `proxy.conf.json` encaminhando `/api` ao gateway.
+
+## Build
 
 ```bash
-ng generate --help
+npm run build
 ```
 
-## Building
+Saída em `dist/controle-estoque-web/browser`. O gateway (`infra/Dockerfile.web`) serve essa pasta em `/`.
 
-To build the project run:
+## PWA
+
+O service worker (`ngsw-config.json`, network-first para `/api`) só roda no build de produção (`npm run build`), não no `ng serve`.
+
+## Testes unitários
 
 ```bash
-ng build
+npm test
 ```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+Vitest via `ng test`. Também: `npm run lint` e `npm run format:check`.
 
-## Running unit tests
+## Testes e2e (Playwright)
 
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
+Smoke do fluxo operador → PDV → venda com pagamento parcial → caixa, em viewport 390×844, pela UI. Precisa do compose no ar na porta 8080 (`docker compose -f infra/docker-compose.yml up -d --build`, na raiz).
 
 ```bash
-ng test
+npx playwright install chromium
+npm run e2e
 ```
 
-## Running end-to-end tests
+- Outra porta ou host: `E2E_BASE_URL=http://localhost:9090 npm run e2e`.
+- O spec cria os próprios dados pela API (cargo, operador, cliente, produto, abastecimento), com sufixo único.
+- Exige o caixa do dia aberto ou inexistente (abre um se faltar); com o caixa de hoje fechado o teste falha. Rode em base limpa.
 
-For end-to-end (e2e) testing, run:
+## Capacitor (passo futuro)
+
+Ainda não instalado. Para empacotar:
 
 ```bash
-ng e2e
+npm i @capacitor/core @capacitor/cli && npx cap init && npx cap add android
 ```
 
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Aponte `webDir` do `capacitor.config` para `dist/controle-estoque-web/browser`. Checklist em `PLANO_FRONTEND.md` §10.

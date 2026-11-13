@@ -38,6 +38,8 @@ Reproduz o fluxo completo de venda de água com troca de casco (walkthrough do p
 bash tools/smoke/controle-estoque-smoke.sh
 ```
 
+O smoke pela UI (Playwright) está na seção "Testes e2e" de [web/README.md](web/README.md).
+
 ## Build e testes (sem SDK local — via container)
 
 ```bash

@@ -141,9 +141,13 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
 
     .linha {
       display: grid;
-      grid-template-columns: auto 1fr;
+      grid-template-columns: auto minmax(0, 1fr);
       gap: var(--ce-space-3);
       align-items: start;
+    }
+
+    .linha > * {
+      min-width: 0;
     }
 
     .desconto {

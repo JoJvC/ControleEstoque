@@ -49,4 +49,13 @@ describe('RhApi', () => {
     expect(req.request.body).toEqual(body);
     req.flush({});
   });
+
+  it('atualizarCargo: PUT /cargos/<id> com o corpo', () => {
+    const body = { nome: 'Caixa', permissoes: ['caixa.fechar'] };
+    api.atualizarCargo('c1', body).subscribe();
+    const req = http.expectOne(`${BASE}/cargos/c1`);
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual(body);
+    req.flush({});
+  });
 });

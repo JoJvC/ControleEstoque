@@ -63,6 +63,21 @@ public sealed class ContaFuncionarioServiceTests
     }
 
     [Fact]
+    public async Task RegistrarPagamentoAsync_QuandoPagamentoConcorrenteEsgotaSaldo_NaoGrava()
+    {
+        var funcionario = funcionarios.Add("Pedro");
+        conta.Lancar(funcionario.Id, TipoLancamentoFuncionario.DIARIA, 100m);
+        // Quem lê o saldo vê 100; no mesmo instante outro pagamento de 80 é gravado (saldo real: 20).
+        conta.SimularPagamentoConcorrenteNaLeitura(funcionario.Id, 80m);
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => sut.RegistrarPagamentoAsync(funcionario.Id, 50m, null, CancellationToken.None));
+
+        Assert.Equal("PAGAMENTO_EXCEDE_SALDO", e.Code);
+        Assert.Equal(20m, await conta.GetSaldoAsync(funcionario.Id, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task SaldoEhDiariasMenosValesMenosPagamentos()
     {
         // Ciclo da semana: 5 diárias de 80, um vale de 50, pagamento do restante.
@@ -173,10 +188,35 @@ internal sealed class FakeContaFuncionarioRepository : IContaFuncionarioReposito
     public void Lancar(Guid funcionarioId, TipoLancamentoFuncionario tipo, decimal valor) =>
         lancamentos.Add((funcionarioId, tipo, valor));
 
-    public Task<decimal> GetSaldoAsync(Guid funcionarioId, CancellationToken cancellationToken) =>
-        Task.FromResult(lancamentos
+    private (Guid FuncionarioId, decimal Valor)? pagamentoConcorrente;
+
+    /// <summary>
+    /// Na próxima operação de saldo do funcionário, o pagamento concorrente é gravado logo antes.
+    /// Quem só lê o saldo (GetSaldoAsync) recebe o valor antigo, como numa leitura sem trava.
+    /// </summary>
+    public void SimularPagamentoConcorrenteNaLeitura(Guid funcionarioId, decimal valor) =>
+        pagamentoConcorrente = (funcionarioId, valor);
+
+    public Task<decimal> GetSaldoAsync(Guid funcionarioId, CancellationToken cancellationToken)
+    {
+        var saldo = Saldo(funcionarioId);
+        GravarPagamentoConcorrente(funcionarioId);
+        return Task.FromResult(saldo);
+    }
+
+    private void GravarPagamentoConcorrente(Guid funcionarioId)
+    {
+        if (pagamentoConcorrente is { } c && c.FuncionarioId == funcionarioId)
+        {
+            pagamentoConcorrente = null;
+            Lancar(funcionarioId, TipoLancamentoFuncionario.PAGAMENTO, c.Valor);
+        }
+    }
+
+    private decimal Saldo(Guid funcionarioId) =>
+        lancamentos
             .Where(l => l.FuncionarioId == funcionarioId)
-            .Sum(l => l.Tipo == TipoLancamentoFuncionario.DIARIA ? l.Valor : -l.Valor));
+            .Sum(l => l.Tipo == TipoLancamentoFuncionario.DIARIA ? l.Valor : -l.Valor);
 
     public Task AddLancamentoAsync(
         Guid funcionarioId, TipoLancamentoFuncionario tipo, decimal valor, string? observacao,
@@ -184,6 +224,20 @@ internal sealed class FakeContaFuncionarioRepository : IContaFuncionarioReposito
     {
         Lancar(funcionarioId, tipo, valor);
         return Task.CompletedTask;
+    }
+
+    public Task<(bool Registrado, decimal Saldo)> AddPagamentoAsync(
+        Guid funcionarioId, decimal valor, string? observacao, CancellationToken cancellationToken)
+    {
+        GravarPagamentoConcorrente(funcionarioId);
+        var saldo = Saldo(funcionarioId);
+        if (valor > saldo)
+        {
+            return Task.FromResult((false, saldo));
+        }
+
+        Lancar(funcionarioId, TipoLancamentoFuncionario.PAGAMENTO, valor);
+        return Task.FromResult((true, saldo - valor));
     }
 
     public Task<IReadOnlyList<LancamentoFuncionario>> GetLancamentosAsync(

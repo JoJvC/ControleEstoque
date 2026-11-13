@@ -34,6 +34,48 @@ public sealed class PostgresContaFuncionarioRepository : IContaFuncionarioReposi
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<(bool Registrado, decimal Saldo)> AddPagamentoAsync(
+        Guid funcionarioId, decimal valor, string? observacao, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // FOR UPDATE (e não NO KEY UPDATE): a FK dos lançamentos pega FOR KEY SHARE, então vale e
+        // pagamento concorrentes do mesmo funcionário esperam aqui e o saldo é relido já com eles.
+        await using (var command = new NpgsqlCommand(Sql.TravaFuncionario, connection, transaction))
+        {
+            command.Parameters.AddWithValue("funcionarioId", funcionarioId);
+            await command.ExecuteScalarAsync(cancellationToken);
+        }
+
+        decimal saldo;
+        await using (var command = new NpgsqlCommand(Sql.GetSaldo, connection, transaction))
+        {
+            command.Parameters.AddWithValue("funcionarioId", funcionarioId);
+            saldo = (decimal?)await command.ExecuteScalarAsync(cancellationToken) ?? 0m;
+        }
+
+        if (valor > saldo)
+        {
+            return (false, saldo);
+        }
+
+        await using (var command = new NpgsqlCommand(Sql.Insert, connection, transaction))
+        {
+            command.Parameters.AddWithValue("funcionarioId", funcionarioId);
+            command.Parameters.AddWithValue("tipo", nameof(TipoLancamentoFuncionario.PAGAMENTO));
+            command.Parameters.AddWithValue("valor", valor);
+            command.Parameters.Add(new NpgsqlParameter("observacao", NpgsqlDbType.Text)
+            {
+                Value = (object?)observacao ?? DBNull.Value
+            });
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return (true, saldo - valor);
+    }
+
     public async Task<IReadOnlyList<LancamentoFuncionario>> GetLancamentosAsync(
         Guid funcionarioId, CancellationToken cancellationToken)
     {
@@ -74,6 +116,9 @@ public sealed class PostgresContaFuncionarioRepository : IContaFuncionarioReposi
     {
         public const string GetSaldo =
             "SELECT saldo_a_pagar FROM vw_saldo_funcionario WHERE funcionario_id = @funcionarioId";
+
+        public const string TravaFuncionario =
+            "SELECT id FROM funcionarios WHERE id = @funcionarioId FOR UPDATE";
 
         public const string Insert = """
             INSERT INTO lancamentos_funcionario (funcionario_id, tipo, valor, observacao)

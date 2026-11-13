@@ -90,7 +90,8 @@ CREATE TABLE funcionarios (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by    UUID,
     updated_at    TIMESTAMPTZ,
-    deleted_at    TIMESTAMPTZ
+    deleted_at    TIMESTAMPTZ,
+    CONSTRAINT chk_funcionarios_valor_diaria_nao_negativo CHECK (valor_diaria >= 0)
 );
 
 CREATE INDEX idx_funcionarios_cargo ON funcionarios(cargo_id) WHERE deleted_at IS NULL;
@@ -240,7 +241,9 @@ CREATE TABLE vendas (
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by           UUID REFERENCES funcionarios(id),
     updated_at           TIMESTAMPTZ,
-    deleted_at           TIMESTAMPTZ
+    deleted_at           TIMESTAMPTZ,
+    CONSTRAINT chk_vendas_totais_nao_negativos
+        CHECK (total_bruto >= 0 AND total_desconto >= 0 AND total_liquido >= 0)
 );
 
 CREATE INDEX idx_vendas_cliente     ON vendas(cliente_id)     WHERE deleted_at IS NULL;

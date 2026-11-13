@@ -49,6 +49,28 @@ public sealed class VendaCalculosTests
     }
 
     [Fact]
+    public void Calcular_QuandoDescontoPercentualTerceiroDecimalCinco_ArredondaParaCima()
+    {
+        // 5% de 0,10 = 0,005: o ponto médio arredonda para 0,01 (AwayFromZero), não para 0,00.
+        var totais = VendaCalculos.Calcular(
+            [new ItemVenda(ProdutoA, 1, 0.10m, new Desconto(TipoDesconto.PERCENTUAL, 5m, "promoção"))],
+            []);
+
+        Assert.Equal(0.01m, totais.TotalDesconto);
+        Assert.Equal(0.09m, totais.TotalLiquido);
+    }
+
+    [Fact]
+    public void Calcular_QuandoPagamentosExcedemTotalLiquido_LancaPagamentoExcedeTotal()
+    {
+        var e = Assert.Throws<RequestValidationException>(() => VendaCalculos.Calcular(
+            [new ItemVenda(ProdutoA, 1, 100m, null)],
+            [new PagamentoVenda(FormaPagamento.PIX, 60m), new PagamentoVenda(FormaPagamento.DINHEIRO, 40.01m)]));
+
+        Assert.Equal("PAGAMENTO_EXCEDE_TOTAL", e.Code);
+    }
+
+    [Fact]
     public void Calcular_QuandoPagamentosCobremTotal_StatusPaga()
     {
         var totais = VendaCalculos.Calcular(

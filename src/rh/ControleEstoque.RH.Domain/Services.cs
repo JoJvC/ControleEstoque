@@ -167,17 +167,16 @@ public sealed class ContaFuncionarioService : IContaFuncionarioService
         ValidarValor(valor);
         await GarantirFuncionarioAsync(funcionarioId, cancellationToken);
 
-        var saldo = await conta.GetSaldoAsync(funcionarioId, cancellationToken);
-        if (valor > saldo)
+        var (registrado, saldo) = await conta.AddPagamentoAsync(
+            funcionarioId, valor, observacao, cancellationToken);
+        if (!registrado)
         {
             throw new BusinessRuleException(
                 "PAGAMENTO_EXCEDE_SALDO",
                 $"Pagamento de {valor:F2} excede o saldo a pagar de {saldo:F2}.");
         }
 
-        await conta.AddLancamentoAsync(
-            funcionarioId, TipoLancamentoFuncionario.PAGAMENTO, valor, observacao, cancellationToken);
-        return saldo - valor;
+        return saldo;
     }
 
     private static void ValidarValor(decimal valor)

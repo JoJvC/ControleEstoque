@@ -9,4 +9,8 @@ export const VENDAS_ROUTES: Routes = [
     path: 'nova',
     loadComponent: () => import('./pdv-page').then((m) => m.PdvPage),
   },
+  {
+    path: 'detalhe/:id',
+    loadComponent: () => import('./venda-detalhe-page').then((m) => m.VendaDetalhePage),
+  },
 ];

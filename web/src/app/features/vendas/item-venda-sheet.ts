@@ -83,7 +83,11 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
                 <ce-money-input [formControl]="descontoValor" />
               </ce-form-field>
             } @else {
-              <ce-form-field rotulo="Percentual do desconto" [obrigatorio]="true" dica="De 0 a 100.">
+              <ce-form-field
+                rotulo="Percentual do desconto"
+                [obrigatorio]="true"
+                dica="De 0 a 100."
+              >
                 <ce-input placeholder="10" inputmode="decimal" [formControl]="descontoPercentual" />
               </ce-form-field>
             }
@@ -218,9 +222,12 @@ export class ItemVendaSheet {
   protected readonly preco = new FormControl<number | null>(
     this.dados.existente?.precoUnitario ?? this.dados.produto.precoReferencia,
   );
-  protected readonly comDesconto = new FormControl(this.dados.existente?.desconto !== null && this.dados.existente !== null, {
-    nonNullable: true,
-  });
+  protected readonly comDesconto = new FormControl(
+    this.dados.existente?.desconto !== null && this.dados.existente !== null,
+    {
+      nonNullable: true,
+    },
+  );
   protected readonly tipoDesconto = signal<TipoDesconto>(
     this.dados.existente?.desconto?.tipo ?? 'VALOR',
   );
@@ -248,9 +255,7 @@ export class ItemVendaSheet {
 
   protected readonly comDescontoAtivo = computed(() => this.comDescontoSig());
 
-  protected readonly bruto = computed(
-    () => this.quantidadeSig() * (this.precoSig() ?? 0),
-  );
+  protected readonly bruto = computed(() => this.quantidadeSig() * (this.precoSig() ?? 0));
 
   protected readonly descontoCalculado = computed(() => {
     const item = this.montarItem();

@@ -26,7 +26,12 @@ import { PrecoPipe } from '../pipes/preco-pipe';
         }
       </button>
       <span class="item__total">{{ totalItem() | cePreco }}</span>
-      <button type="button" class="item__remover" aria-label="Remover item" (click)="remover.emit()">
+      <button
+        type="button"
+        class="item__remover"
+        aria-label="Remover item"
+        (click)="remover.emit()"
+      >
         <ce-icon nome="lixeira" [tamanho]="20" />
       </button>
     </div>

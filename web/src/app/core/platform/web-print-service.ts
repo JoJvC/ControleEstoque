@@ -27,8 +27,10 @@ export class WebPrintService extends PrintService {
     }
 
     doc.open();
-    doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head>` +
-      `<body>${html}</body></html>`);
+    doc.write(
+      `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head>` +
+        `<body>${html}</body></html>`,
+    );
     doc.close();
 
     iframe.contentWindow?.focus();

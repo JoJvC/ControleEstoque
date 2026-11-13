@@ -94,6 +94,17 @@ export function pagamentoExcede(liquido: number, pagamentos: readonly PagamentoE
   return totalPagoDe(pagamentos) > liquido;
 }
 
+// Saldo ainda a pagar de uma venda já gravada (pagamentos do detalhe); nunca negativo.
+export function saldoAPagar(liquido: number, pagamentos: readonly { valor: number }[]): number {
+  const pago = pagamentos.reduce((soma, p) => soma + Math.round(p.valor * 100), 0);
+  return Math.max(0, Math.round(liquido * 100) - pago) / 100;
+}
+
+// Regra 8.5: valor acima do saldo é bloqueado no cliente.
+export function excedeSaldo(saldo: number, valor: number): boolean {
+  return Math.round(valor * 100) > Math.round(saldo * 100);
+}
+
 export function temAgua(itens: readonly ItemCarrinho[]): boolean {
   return itens.some((i) => i.produto.tipo === 'AGUA');
 }

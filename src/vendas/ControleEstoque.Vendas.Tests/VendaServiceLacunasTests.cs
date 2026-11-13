@@ -95,6 +95,33 @@ public sealed class VendaServiceLacunasTests
     }
 
     [Fact]
+    public void VendaDetalheResponseFrom_ComCupom_LevaNumeroEData()
+    {
+        var emitidoEm = DateTimeOffset.UtcNow;
+        var venda = new Venda(Guid.NewGuid(), clienteId, funcionarioId, null, DateTimeOffset.UtcNow,
+            0m, 0m, 0m, StatusPagamento.PENDENTE, null, true, [], [], 0, 0, "CF-00000007", emitidoEm);
+
+        var resposta = VendaDetalheResponse.From(venda);
+
+        Assert.True(resposta.CupomEmitido);
+        Assert.Equal("CF-00000007", resposta.CupomNumero);
+        Assert.Equal(emitidoEm, resposta.CupomEmitidoEm);
+    }
+
+    [Fact]
+    public void VendaDetalheResponseFrom_SemCupom_NumeroEDataNulos()
+    {
+        var venda = new Venda(Guid.NewGuid(), clienteId, funcionarioId, null, DateTimeOffset.UtcNow,
+            0m, 0m, 0m, StatusPagamento.PENDENTE, null, false, [], [], 0, 0);
+
+        var resposta = VendaDetalheResponse.From(venda);
+
+        Assert.False(resposta.CupomEmitido);
+        Assert.Null(resposta.CupomNumero);
+        Assert.Null(resposta.CupomEmitidoEm);
+    }
+
+    [Fact]
     public async Task ObterAsync_QuandoVendaInexistente_LancaVendaNaoEncontrada()
     {
         var e = await Assert.ThrowsAsync<EntityNotFoundException>(

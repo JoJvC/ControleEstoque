@@ -93,7 +93,9 @@ public sealed record Venda(
     IReadOnlyList<ItemCalculado> Itens,
     IReadOnlyList<PagamentoVenda> Pagamentos,
     int CascosDevolvidos,
-    int SucataEntregue);
+    int SucataEntregue,
+    string? CupomNumero = null,
+    DateTimeOffset? CupomEmitidoEm = null);
 
 public sealed record CupomFiscal(Guid Id, string Numero, DateTimeOffset EmitidoEm);
 

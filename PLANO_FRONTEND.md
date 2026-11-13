@@ -270,12 +270,12 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 - **Critério de aceite:** abastecer → ver saldos subirem; baixar casco → CASCO desce e SUCATA sobe na mesma tela. *(Verificado via HTTP no gateway: abastecimento de 10 águas + 5 cascos subiu AGUA 15→25 e CASCO 13→18; baixa de 2 cascos com 1 responsável desceu CASCO 18→16 e subiu SUCATA 1→3 — a tela `/estoque` lista ambos e recarrega do servidor após cada escrita. Erros conferidos: 400 `RESPONSAVEL_OBRIGATORIO`, 422 `ESTOQUE_INSUFICIENTE`, 400 `QUANTIDADE_INVALIDA` — todos no mapa pt-BR e exibidos inline nos sheets. Ajuste manual −1 confirmado. Ações da página em barra sticky acima da bottom-nav, ao alcance do polegar.)*
 
 ### Sprint F5 — PDV e Vendas (core do sistema)
-- [ ] `vendas-api.ts` + models; `VendaStore`
-- [ ] PDV completo (Seção 6.3), incluindo: seção de cascos condicionada a item de ÁGUA; toggle "devolvidos na hora" (preenche e mantém editável); desconto por item com motivo obrigatório (validação client-side espelhando `DESCONTO_SEM_MOTIVO`); pagamentos N formas com faltante→fiado explícito; bloqueio client-side de `SUM(pagamentos) > total`
-- [ ] Lista de vendas (filtros + paginação) e detalhe
-- [ ] Edição de venda (mesmo form pré-carregado; `VENDA_JA_FATURADA` → tela somente leitura com aviso)
-- [ ] Pagamento pós-venda (sheet no detalhe; 422 `PAGAMENTO_EXCEDE_SALDO` inline)
-- [ ] Cupom fiscal: emitir (409 já emitido → mostrar existente) e visualizar via `PrintService` (impl. web: `window.print` de view formatada)
+- [x] `vendas-api.ts` + models; `VendaStore`
+- [x] PDV completo (Seção 6.3), incluindo: seção de cascos condicionada a item de ÁGUA; toggle "devolvidos na hora" (preenche e mantém editável); desconto por item com motivo obrigatório (validação client-side espelhando `DESCONTO_SEM_MOTIVO`); pagamentos N formas com faltante→fiado explícito; bloqueio client-side de `SUM(pagamentos) > total`
+- [x] Lista de vendas (filtros + paginação) e detalhe
+- [x] Edição de venda (mesmo form pré-carregado; `VENDA_JA_FATURADA` → tela somente leitura com aviso)
+- [x] Pagamento pós-venda (sheet no detalhe; 422 `PAGAMENTO_EXCEDE_SALDO` inline)
+- [x] Cupom fiscal: emitir (409 já emitido → mostrar existente) e visualizar via `PrintService` (impl. web: `window.print` de view formatada)
 - **Critério de aceite:** walkthrough 7 do plano do backend reproduzido inteiro pela UI no celular: venda de 5 águas, 3 cascos devolvidos, 1 sucata, R$ 200 em PIX → tela de sucesso mostra PARCIAL, fiado R$ 50, saldo de casco 2.
 
 ### Sprint F6 — Casco, Sucata e Fiado (operações do cliente)

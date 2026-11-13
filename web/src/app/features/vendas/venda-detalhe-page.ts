@@ -5,15 +5,24 @@ import {
   effect,
   inject,
   input,
+  signal,
   untracked,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 
+import { VendaDetalheResponse } from '../../core/api/models/vendas';
+import { ApiError } from '../../core/http/api-error';
+import { SheetService } from '../../core/overlay/sheet-service';
+import { PrintService } from '../../core/platform/print-service';
 import { Button } from '../../ui/atoms/button';
 import { Spinner } from '../../ui/atoms/spinner';
 import { EmptyState } from '../../ui/molecules/empty-state';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
+import { saldoAPagar } from './carrinho';
+import { cupomHtml } from './cupom-html';
+import { PagamentoSheet, PagamentoSheetDados, PagamentoSheetResultado } from './pagamento-sheet';
 import { VendaStore } from './venda-store';
 import { rotuloCliente, rotuloForma, rotuloProduto, rotuloStatusPagamento } from './venda-rotulos';
 
@@ -40,10 +49,19 @@ import { rotuloCliente, rotuloForma, rotuloProduto, rotuloStatusPagamento } from
               <p class="meta">{{ venda.data | date: 'dd/MM/yyyy HH:mm' }}</p>
               <p class="meta">
                 {{ rotuloStatusPagamento(venda.statusPagamento) }}
-                @if (venda.cupomEmitido) {
-                  · Cupom emitido
+                @if (saldoAPagar(venda.totalLiquido, venda.pagamentos) > 0) {
+                  · Saldo a pagar
+                  {{ saldoAPagar(venda.totalLiquido, venda.pagamentos) | cePreco }}
                 }
               </p>
+              @if (venda.cupomEmitido) {
+                <p class="meta" data-testid="venda-cupom">
+                  Cupom fiscal nº {{ venda.cupomNumero }}
+                  @if (venda.cupomEmitidoEm; as emitidoEm) {
+                    · {{ emitidoEm | date: 'dd/MM/yyyy HH:mm' }}
+                  }
+                </p>
+              }
               @if (venda.observacao) {
                 <p class="meta">{{ venda.observacao }}</p>
               }
@@ -110,6 +128,23 @@ import { rotuloCliente, rotuloForma, rotuloProduto, rotuloStatusPagamento } from
 
             <section class="venda-detalhe__acoes" data-testid="venda-acoes">
               <ce-button (click)="editar()">Editar</ce-button>
+              @if (saldoAPagar(venda.totalLiquido, venda.pagamentos) > 0) {
+                <ce-button (click)="adicionarPagamento(venda)">Adicionar pagamento</ce-button>
+              }
+              @if (venda.cupomEmitido) {
+                <ce-button variante="ghost" (click)="imprimir(venda)">Imprimir cupom</ce-button>
+              } @else {
+                <ce-button
+                  variante="ghost"
+                  [loading]="emitindoCupom()"
+                  (click)="emitirCupom(venda)"
+                >
+                  Emitir cupom fiscal
+                </ce-button>
+              }
+              @if (erroCupom(); as mensagem) {
+                <p class="erro" role="alert">{{ mensagem }}</p>
+              }
             </section>
           }
         }
@@ -165,6 +200,18 @@ import { rotuloCliente, rotuloForma, rotuloProduto, rotuloStatusPagamento } from
       font-weight: 600;
     }
 
+    .venda-detalhe__acoes {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--ce-space-2);
+    }
+
+    .erro {
+      color: var(--ce-danger);
+      font-size: var(--ce-font-sm);
+    }
+
     .carregando {
       display: flex;
       justify-content: center;
@@ -177,6 +224,12 @@ export class VendaDetalhePage {
 
   protected readonly store = inject(VendaStore);
   private readonly router = inject(Router);
+  private readonly sheet = inject(SheetService);
+  private readonly print = inject(PrintService);
+
+  protected readonly emitindoCupom = signal(false);
+  protected readonly erroCupom = signal<string | null>(null);
+  protected readonly saldoAPagar = saldoAPagar;
 
   protected readonly rotuloCliente = rotuloCliente;
   protected readonly rotuloForma = rotuloForma;
@@ -192,6 +245,48 @@ export class VendaDetalhePage {
 
   protected editar(): void {
     this.router.navigateByUrl('/vendas/editar/' + this.id());
+  }
+
+  // O sheet faz o POST pelo store, que já recarrega o detalhe (Regra 8.6).
+  protected async adicionarPagamento(venda: VendaDetalheResponse): Promise<void> {
+    const ref = this.sheet.abrir<PagamentoSheetResultado, PagamentoSheetDados>(PagamentoSheet, {
+      vendaId: venda.id,
+      saldo: saldoAPagar(venda.totalLiquido, venda.pagamentos),
+    });
+    await firstValueFrom(ref.closed);
+  }
+
+  protected async emitirCupom(venda: VendaDetalheResponse): Promise<void> {
+    this.emitindoCupom.set(true);
+    this.erroCupom.set(null);
+    try {
+      const cupom = await this.store.emitirCupom(venda.id);
+      this.imprimir({
+        ...venda,
+        cupomEmitido: true,
+        cupomNumero: cupom.numero,
+        cupomEmitidoEm: cupom.emitidoEm,
+      });
+    } catch (e) {
+      if (!(e instanceof ApiError)) {
+        throw e;
+      }
+      if (e.status === 409 && e.code === 'CUPOM_JA_EMITIDO') {
+        // Mostra o cupom que já existe, sem erro e sem imprimir sozinho.
+        this.store.obter(venda.id);
+      } else {
+        this.erroCupom.set(e.userMessage);
+      }
+    } finally {
+      this.emitindoCupom.set(false);
+    }
+  }
+
+  protected imprimir(venda: VendaDetalheResponse): void {
+    this.print.printHtml(
+      `Cupom fiscal ${venda.cupomNumero}`,
+      cupomHtml(venda, this.store.produtos()),
+    );
   }
 
   protected voltar(): void {

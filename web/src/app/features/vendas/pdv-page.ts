@@ -15,11 +15,7 @@ import { ClientesApi } from '../../core/api/clientes-api';
 import { EstoqueApi } from '../../core/api/estoque-api';
 import { ClienteResponse, EnderecoResponse } from '../../core/api/models/clientes';
 import { ProdutoResponse } from '../../core/api/models/estoque';
-import {
-  CupomFiscalResponse,
-  VendaDetalheResponse,
-  VendaResponse,
-} from '../../core/api/models/vendas';
+import { VendaDetalheResponse, VendaResponse } from '../../core/api/models/vendas';
 import { VendasApi } from '../../core/api/vendas-api';
 import { ApiError } from '../../core/http/api-error';
 import { mensagemDoErro } from '../../core/http/error-messages';
@@ -536,7 +532,8 @@ export class PdvPage implements OnInit {
   protected readonly erro = signal<string | null>(null);
   protected readonly enviando = signal(false);
   protected readonly venda = signal<VendaResponse | null>(null);
-  protected readonly cupom = signal<CupomFiscalResponse | null>(null);
+  // Cupom emitido agora (201) ou já existente (409): só o número é exibido.
+  protected readonly cupom = signal<{ numero: string } | null>(null);
   protected readonly erroCupom = signal<string | null>(null);
   protected readonly emitindoCupom = signal(false);
 
@@ -843,7 +840,11 @@ export class PdvPage implements OnInit {
       if (!(e instanceof ApiError)) {
         throw e;
       }
-      this.erroCupom.set(e.userMessage);
+      if (e.status === 409 && e.code === 'CUPOM_JA_EMITIDO') {
+        this.cupom.set(await this.vendaStore.cupomExistente(vendaId));
+      } else {
+        this.erroCupom.set(e.userMessage);
+      }
     } finally {
       this.emitindoCupom.set(false);
     }

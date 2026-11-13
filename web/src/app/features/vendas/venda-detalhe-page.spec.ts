@@ -2,11 +2,15 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
+import { of } from 'rxjs';
 import { vi } from 'vitest';
 
 import { VendaDetalheResponse } from '../../core/api/models/vendas';
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
+import { SheetService } from '../../core/overlay/sheet-service';
+import { PrintService } from '../../core/platform/print-service';
+import { VendaStore } from './venda-store';
 import { VendaDetalhePage } from './venda-detalhe-page';
 
 const URL_VENDAS = '/api/vendas/v1/vendas';
@@ -25,6 +29,8 @@ const VENDA: VendaDetalheResponse = {
   statusPagamento: 'PARCIAL',
   observacao: 'entregar à tarde',
   cupomEmitido: false,
+  cupomNumero: null,
+  cupomEmitidoEm: null,
   itens: [
     {
       produtoId: 'p-agua',
@@ -47,8 +53,12 @@ async function assentar(fixture: ComponentFixture<unknown>): Promise<void> {
 }
 
 async function montar() {
+  const abrir = vi.fn();
+  const printHtml = vi.fn();
   TestBed.configureTestingModule({
     providers: [
+      { provide: SheetService, useValue: { abrir } },
+      { provide: PrintService, useValue: { printHtml } },
       provideHttpClient(withInterceptors([apiErrorInterceptor])),
       provideHttpClientTesting(),
       { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
@@ -61,7 +71,15 @@ async function montar() {
   fixture.detectChanges();
   await assentar(fixture);
   const el = fixture.nativeElement as HTMLElement;
-  return { fixture, http, navegar, el, texto: () => (el.textContent ?? '').replace(/\s+/g, ' ') };
+  return {
+    fixture,
+    http,
+    navegar,
+    abrir,
+    printHtml,
+    el,
+    texto: () => (el.textContent ?? '').replace(/\s+/g, ' '),
+  };
 }
 
 describe('VendaDetalhePage', () => {
@@ -120,7 +138,7 @@ describe('VendaDetalhePage', () => {
     expect(t.navegar).toHaveBeenCalledWith('/vendas');
   });
 
-  it('área de ações tem só o botão Editar, que navega para a edição', async () => {
+  it('área de ações tem Editar (navega), Adicionar pagamento e Emitir cupom fiscal', async () => {
     const t = await montar();
     t.http.expectOne(`${URL_VENDAS}/v-1`).flush(VENDA);
     t.http.expectOne(`${URL_CLIENTES}/c-1`).flush({ id: 'c-1', nome: 'Maria' });
@@ -129,8 +147,11 @@ describe('VendaDetalhePage', () => {
     const acoes = t.el.querySelector('[data-testid="venda-acoes"]');
     expect(acoes).not.toBeNull();
     const botoes = acoes!.querySelectorAll('button');
-    expect(botoes).toHaveLength(1);
-    expect(botoes[0].textContent).toContain('Editar');
+    expect(Array.from(botoes).map((b) => b.textContent?.trim())).toEqual([
+      'Editar',
+      'Adicionar pagamento',
+      'Emitir cupom fiscal',
+    ]);
     botoes[0].click();
     expect(t.navegar).toHaveBeenCalledWith('/vendas/editar/v-1');
   });
@@ -147,5 +168,136 @@ describe('VendaDetalhePage', () => {
       );
     await assentar(t.fixture);
     expect(t.texto()).toContain('Produto removido');
+  });
+});
+
+describe('VendaDetalhePage: pagamento e cupom', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  const CLIENTE = { id: 'c-1', nome: 'Maria', telefone: null, observacoes: null, enderecos: [] };
+
+  async function aberta(venda: VendaDetalheResponse = VENDA) {
+    const t = await montar();
+    t.http.expectOne(`${URL_VENDAS}/v-1`).flush(venda);
+    t.http.expectOne(`${URL_CLIENTES}/c-1`).flush(CLIENTE);
+    t.http.expectOne(`${URL_PRODUTOS}/p-agua`).flush({ id: 'p-agua', nome: 'Água 20L' });
+    await assentar(t.fixture);
+    const botao = (rotulo: string) =>
+      Array.from(t.el.querySelectorAll('button')).find((b) => b.textContent?.includes(rotulo));
+    return { ...t, botao };
+  }
+
+  function erro(status: number, code: string) {
+    return [
+      { code, message: 'x', traceId: 't' },
+      { status, statusText: 'Erro' },
+    ] as const;
+  }
+
+  it('mostra o saldo a pagar e abre o sheet com { vendaId, saldo }; ao fechar, status e saldo novos', async () => {
+    const t = await aberta();
+    expect(t.texto()).toContain('Saldo a pagar R$ 60,00');
+    t.abrir.mockImplementation(() => {
+      // o sheet real faz este POST pelo store, que recarrega o detalhe
+      void TestBed.inject(VendaStore).adicionarPagamento('v-1', { forma: 'PIX', valor: 60 });
+      return { closed: of({ id: 'v-1' }) };
+    });
+
+    t.botao('Adicionar pagamento')!.click();
+    await assentar(t.fixture);
+
+    expect(t.abrir).toHaveBeenCalledWith(expect.anything(), { vendaId: 'v-1', saldo: 60 });
+    t.http.expectOne(`${URL_VENDAS}/v-1/pagamentos`).flush({ id: 'v-1' });
+    await assentar(t.fixture);
+    t.http.expectOne((r) => r.method === 'GET' && r.url === URL_VENDAS).flush([]);
+    t.http.expectOne(`${URL_VENDAS}/v-1`).flush({
+      ...VENDA,
+      statusPagamento: 'PAGA',
+      pagamentos: [
+        { forma: 'PIX', valor: 40 },
+        { forma: 'PIX', valor: 60 },
+      ],
+    });
+    await assentar(t.fixture);
+
+    expect(t.texto()).toContain('Paga');
+    expect(t.texto()).not.toContain('Saldo a pagar');
+    expect(t.botao('Adicionar pagamento')).toBeUndefined();
+  });
+
+  it('sheet cancelado não muda nada', async () => {
+    const t = await aberta();
+    t.abrir.mockReturnValue({ closed: of(undefined) });
+    t.botao('Adicionar pagamento')!.click();
+    await assentar(t.fixture);
+    expect(t.texto()).toContain('Saldo a pagar R$ 60,00');
+  });
+
+  it('Emitir cupom fiscal: 201 recarrega o detalhe e chama printHtml com número e itens', async () => {
+    const t = await aberta();
+    t.botao('Emitir cupom fiscal')!.click();
+    await assentar(t.fixture);
+    t.http
+      .expectOne(`${URL_VENDAS}/v-1/cupom-fiscal`)
+      .flush({ cupomId: 'k-1', numero: 'CF-00000001', emitidoEm: '2026-01-02T11:00:00Z' });
+    await assentar(t.fixture);
+    t.http.expectOne(`${URL_VENDAS}/v-1`).flush({
+      ...VENDA,
+      cupomEmitido: true,
+      cupomNumero: 'CF-00000001',
+      cupomEmitidoEm: '2026-01-02T11:00:00Z',
+    });
+    await assentar(t.fixture);
+
+    expect(t.printHtml).toHaveBeenCalledTimes(1);
+    const [titulo, html] = t.printHtml.mock.calls[0];
+    expect(titulo).toBe('Cupom fiscal CF-00000001');
+    expect(html).toContain('CF-00000001');
+    expect(html).toContain('Água 20L');
+    expect(t.texto()).toContain('Cupom fiscal nº CF-00000001');
+    expect(t.botao('Emitir cupom fiscal')).toBeUndefined();
+  });
+
+  it('409 CUPOM_JA_EMITIDO: GET, mostra número e data e não imprime', async () => {
+    const t = await aberta();
+    t.botao('Emitir cupom fiscal')!.click();
+    await assentar(t.fixture);
+    t.http.expectOne(`${URL_VENDAS}/v-1/cupom-fiscal`).flush(...erro(409, 'CUPOM_JA_EMITIDO'));
+    await assentar(t.fixture);
+    t.http.expectOne(`${URL_VENDAS}/v-1`).flush({
+      ...VENDA,
+      cupomEmitido: true,
+      cupomNumero: 'CF-00000007',
+      cupomEmitidoEm: '2026-01-02T11:00:00',
+    });
+    await assentar(t.fixture);
+
+    expect(t.texto()).toContain('Cupom fiscal nº CF-00000007 · 02/01/2026 11:00');
+    expect(t.el.querySelector('[role="alert"]')).toBeNull();
+    expect(t.printHtml).not.toHaveBeenCalled();
+  });
+
+  it('Imprimir cupom, com o cupom já emitido, chama printHtml', async () => {
+    const t = await aberta({
+      ...VENDA,
+      cupomEmitido: true,
+      cupomNumero: 'CF-00000009',
+      cupomEmitidoEm: '2026-01-02T11:00:00',
+    });
+    expect(t.botao('Emitir cupom fiscal')).toBeUndefined();
+    t.botao('Imprimir cupom')!.click();
+    expect(t.printHtml).toHaveBeenCalledTimes(1);
+    expect(t.printHtml.mock.calls[0][1]).toContain('CF-00000009');
+  });
+
+  it('outro erro ao emitir aparece inline e não imprime', async () => {
+    const t = await aberta();
+    t.botao('Emitir cupom fiscal')!.click();
+    await assentar(t.fixture);
+    t.http.expectOne(`${URL_VENDAS}/v-1/cupom-fiscal`).flush(...erro(404, 'VENDA_NAO_ENCONTRADA'));
+    await assentar(t.fixture);
+
+    expect(t.el.querySelector('[role="alert"]')?.textContent).toContain('Venda não encontrada.');
+    expect(t.printHtml).not.toHaveBeenCalled();
   });
 });

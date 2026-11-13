@@ -485,7 +485,9 @@ public sealed class PostgresVendaRepository : IVendaRepository
         [],
         [],
         reader.GetInt32(11),
-        reader.GetInt32(12));
+        reader.GetInt32(12),
+        reader.IsDBNull(13) ? null : reader.GetString(13),
+        reader.IsDBNull(14) ? null : reader.GetFieldValue<DateTimeOffset>(14));
 
     private static ItemCalculado MapItem(NpgsqlDataReader reader)
     {
@@ -516,8 +518,12 @@ public sealed class PostgresVendaRepository : IVendaRepository
                    (SELECT COALESCE(SUM(m.quantidade), 0)::int FROM movimentos_casco_cliente m
                     WHERE m.venda_id = v.id AND m.tipo = 'DEVOLUCAO' AND m.deleted_at IS NULL),
                    (SELECT COALESCE(SUM(s.quantidade), 0)::int FROM entregas_sucata_cliente s
-                    WHERE s.venda_id = v.id AND s.deleted_at IS NULL)
+                    WHERE s.venda_id = v.id AND s.deleted_at IS NULL),
+                   cf.numero, cf.emitido_em
             FROM vendas v
+            LEFT JOIN LATERAL (SELECT numero, emitido_em FROM cupons_fiscais
+                               WHERE venda_id = v.id AND deleted_at IS NULL
+                               ORDER BY emitido_em DESC LIMIT 1) cf ON true
             """;
 
         public const string InsertVenda = """

@@ -4,6 +4,8 @@ import {
   ItemCarrinho,
   fiadoDe,
   pagamentoExcede,
+  saldoAPagar,
+  excedeSaldo,
   paraCreateVendaRequest,
   quantidadeAgua,
   rascunhoDeVenda,
@@ -65,6 +67,21 @@ describe('pagamentos', () => {
     expect(fiadoDe(250, [pix(200)])).toBe(50);
     expect(fiadoDe(250, [])).toBe(250);
     expect(fiadoDe(250, [pix(300)])).toBe(0);
+  });
+
+  it('saldoAPagar: sem pagamento, parcial, quitado e soma de centavos', () => {
+    expect(saldoAPagar(100, [])).toBe(100);
+    expect(saldoAPagar(100, [{ valor: 30 }])).toBe(70);
+    expect(saldoAPagar(100, [{ valor: 100 }])).toBe(0);
+    expect(saldoAPagar(100, [{ valor: 120 }])).toBe(0);
+    expect(saldoAPagar(0.3, [{ valor: 0.1 }, { valor: 0.2 }])).toBe(0);
+    expect(saldoAPagar(1, [{ valor: 0.1 }, { valor: 0.2 }])).toBe(0.7);
+  });
+
+  it('excedeSaldo: igual ao saldo não excede; 1 centavo acima excede', () => {
+    expect(excedeSaldo(70, 70)).toBe(false);
+    expect(excedeSaldo(70, 70.01)).toBe(true);
+    expect(excedeSaldo(0.3, 0.1 + 0.2)).toBe(false);
   });
 
   it('pagamentoExcede só quando pago > líquido', () => {
@@ -158,6 +175,8 @@ describe('rascunhoDeVenda', () => {
     statusPagamento: 'PARCIAL',
     observacao: null,
     cupomEmitido: false,
+    cupomNumero: null,
+    cupomEmitidoEm: null,
     itens: [
       {
         produtoId: 'p-agua',

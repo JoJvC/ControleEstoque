@@ -185,6 +185,8 @@ const VENDA_EDICAO: VendaDetalheResponse = {
   statusPagamento: 'PARCIAL',
   observacao: 'entregar à tarde',
   cupomEmitido: false,
+  cupomNumero: null,
+  cupomEmitidoEm: null,
   itens: [
     {
       produtoId: 'p-agua',
@@ -554,7 +556,7 @@ describe('PdvPage', () => {
     expect(t.texto()).not.toContain('Ana');
   });
 
-  it('erro ao emitir o cupom aparece inline', async () => {
+  async function emitirComErro(status: number, code: string) {
     const t = await ateRevisao();
     await t.clicar('Registrar venda');
     t.http.expectOne(URL_VENDAS).flush({ ...RESPOSTA, id: 'v-9' });
@@ -565,13 +567,31 @@ describe('PdvPage', () => {
     await t.clicar('Emitir cupom fiscal');
     t.http
       .expectOne(`${URL_VENDAS}/v-9/cupom-fiscal`)
-      .flush(
-        { code: 'CUPOM_JA_EMITIDO', message: 'x', traceId: 't' },
-        { status: 422, statusText: 'Unprocessable Entity' },
-      );
+      .flush({ code, message: 'x', traceId: 't' }, { status, statusText: 'Erro' });
+    await assentar(t.fixture);
+    return t;
+  }
+
+  it('409 CUPOM_JA_EMITIDO mostra o cupom existente', async () => {
+    const t = await emitirComErro(409, 'CUPOM_JA_EMITIDO');
+    t.http.expectOne(`${URL_VENDAS}/v-9`).flush({
+      ...VENDA_EDICAO,
+      id: 'v-9',
+      cupomEmitido: true,
+      cupomNumero: 'CF-00000042',
+      cupomEmitidoEm: '2026-01-02T11:00:00',
+    });
     await assentar(t.fixture);
 
-    expect(t.alertas()).toContain('Cupom fiscal já emitido para esta venda.');
+    expect(t.texto()).toContain('Cupom fiscal nº CF-00000042');
+    expect(t.alertas()).toEqual([]);
+  });
+
+  it('outro erro ao emitir o cupom aparece inline', async () => {
+    const t = await emitirComErro(409, 'CAIXA_FECHADO');
+
+    expect(t.alertas()).toContain('O caixa do dia já está fechado.');
+    expect(t.texto()).not.toContain('Cupom fiscal nº');
   });
 });
 

@@ -61,7 +61,9 @@ public sealed record VendaDetalheResponse(
     IReadOnlyList<ItemVendaResponse> Itens,
     IReadOnlyList<PagamentoResponse> Pagamentos,
     int CascosDevolvidos,
-    int SucataEntregue)
+    int SucataEntregue,
+    string? CupomNumero,
+    DateTimeOffset? CupomEmitidoEm)
 {
     public static VendaDetalheResponse From(Venda v) => new(
         v.Id, v.ClienteId, v.FuncionarioId, v.EnderecoEntregaId, v.Data,
@@ -71,7 +73,7 @@ public sealed record VendaDetalheResponse(
             i.ProdutoId, i.Quantidade, i.PrecoUnitario,
             i.Desconto?.Tipo, i.Desconto?.Valor, i.Desconto?.Motivo, i.TotalItem)).ToList(),
         v.Pagamentos.Select(p => new PagamentoResponse(p.Forma, p.Valor)).ToList(),
-        v.CascosDevolvidos, v.SucataEntregue);
+        v.CascosDevolvidos, v.SucataEntregue, v.CupomNumero, v.CupomEmitidoEm);
 }
 
 public sealed record AddPagamentoRequest(FormaPagamento Forma, decimal Valor);

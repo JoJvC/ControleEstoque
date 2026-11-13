@@ -26,6 +26,8 @@ function venda(id: string, clienteId = 'c-1'): VendaDetalheResponse {
     statusPagamento: 'PARCIAL',
     observacao: null,
     cupomEmitido: true,
+    cupomNumero: null,
+    cupomEmitidoEm: null,
     itens: [],
     pagamentos: [],
     cascosDevolvidos: 0,

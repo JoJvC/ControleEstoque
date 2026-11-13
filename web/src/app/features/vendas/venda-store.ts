@@ -176,10 +176,26 @@ export class VendaStore {
   async adicionarPagamento(id: string, request: AddPagamentoRequest): Promise<VendaResponse> {
     const venda = await firstValueFrom(this.api.adicionarPagamento(id, request));
     this.buscar(this.filtros);
+    this.recarregarDetalheDe(id);
     return venda;
   }
 
   async emitirCupom(id: string): Promise<CupomFiscalResponse> {
-    return firstValueFrom(this.api.emitirCupom(id));
+    const cupom = await firstValueFrom(this.api.emitirCupom(id));
+    this.recarregarDetalheDe(id);
+    return cupom;
+  }
+
+  /** Cupom já emitido da venda (409 CUPOM_JA_EMITIDO); não mexe no detalhe aberto. */
+  async cupomExistente(id: string): Promise<{ numero: string; emitidoEm: string } | null> {
+    const venda = await firstValueFrom(this.api.obter(id));
+    return venda.cupomNumero && venda.cupomEmitidoEm
+      ? { numero: venda.cupomNumero, emitidoEm: venda.cupomEmitidoEm }
+      : null;
+  }
+
+  // Só recarrega quando o detalhe aberto é dessa venda (no PDV não há detalhe aberto).
+  private recarregarDetalheDe(id: string): void {
+    if (this.detalheInterno()?.id === id) this.obter(id);
   }
 }

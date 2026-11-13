@@ -75,6 +75,8 @@ export interface VendaDetalheResponse {
   statusPagamento: StatusPagamento;
   observacao: string | null;
   cupomEmitido: boolean;
+  cupomNumero: string | null;
+  cupomEmitidoEm: string | null;
   itens: ItemVendaResponse[];
   pagamentos: PagamentoResponse[];
   cascosDevolvidos: number;

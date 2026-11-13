@@ -13,7 +13,7 @@ export interface PagamentoEdicao {
   readonly valor: number | null;
 }
 
-const FORMAS: SelectOpcao[] = [
+export const FORMAS: SelectOpcao[] = [
   { value: 'PIX', label: 'PIX' },
   { value: 'CARTAO_CREDITO', label: 'Cartão de crédito' },
   { value: 'CARTAO_DEBITO', label: 'Cartão de débito' },

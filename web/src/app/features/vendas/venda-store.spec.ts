@@ -9,6 +9,7 @@ import {
   VendaDetalheResponse,
 } from '../../core/api/models/vendas';
 import { ConfigStore } from '../../core/config/app-config';
+import { ApiError } from '../../core/http/api-error';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { VendaStore } from './venda-store';
 
@@ -110,6 +111,8 @@ function venda(id: string, clienteId: string): VendaDetalheResponse {
     statusPagamento: 'PAGA',
     observacao: null,
     cupomEmitido: false,
+    cupomNumero: null,
+    cupomEmitidoEm: null,
     itens: [],
     pagamentos: [],
     cascosDevolvidos: 0,
@@ -326,5 +329,101 @@ describe('VendaStore cache de produtos', () => {
     store.obter('v-1');
     http.expectOne(`${URL_VENDAS}/v-1`).flush(vendaComItens('v-1', ['p-1']));
     http.expectOne(`${URL_PRODUTOS}/p-1`).flush({ id: 'p-1', nome: 'Água 20L' });
+  });
+});
+
+describe('VendaStore detalhe aberto: pagamento e cupom', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  function abrir(store: VendaStore, http: HttpTestingController, id = 'v-1') {
+    store.obter(id);
+    http.expectOne(`${URL_VENDAS}/${id}`).flush(venda(id, 'c-1'));
+    http.expectOne(`${URL_CLIENTES}/c-1`).flush(cliente('c-1', 'Maria'));
+  }
+
+  it('adicionarPagamento: POST com o corpo, recarrega a lista e o detalhe aberto', async () => {
+    const { store, http } = criarStoreComInterceptor();
+    abrir(store, http);
+
+    const promessa = store.adicionarPagamento('v-1', { forma: 'PIX', valor: 4 });
+    const post = http.expectOne(`${URL_VENDAS}/v-1/pagamentos`);
+    expect(post.request.method).toBe('POST');
+    expect(post.request.body).toEqual({ forma: 'PIX', valor: 4 });
+    post.flush({ id: 'v-1' });
+    await promessa;
+
+    http.expectOne((r) => r.method === 'GET' && r.url === URL_VENDAS).flush([]);
+    http
+      .expectOne(`${URL_VENDAS}/v-1`)
+      .flush({ ...venda('v-1', 'c-1'), statusPagamento: 'PARCIAL' });
+    expect(store.detalhe()?.statusPagamento).toBe('PARCIAL');
+  });
+
+  it('adicionarPagamento: 422 rejeita com ApiError e não recarrega nada', async () => {
+    const { store, http } = criarStoreComInterceptor();
+    abrir(store, http);
+
+    const promessa = store.adicionarPagamento('v-1', { forma: 'PIX', valor: 99 });
+    http
+      .expectOne(`${URL_VENDAS}/v-1/pagamentos`)
+      .flush(
+        { code: 'PAGAMENTO_EXCEDE_SALDO', message: 'x', traceId: 't' },
+        { status: 422, statusText: 'Unprocessable Entity' },
+      );
+    await expect(promessa).rejects.toMatchObject({ status: 422, code: 'PAGAMENTO_EXCEDE_SALDO' });
+    await expect(promessa).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('adicionarPagamento: venda diferente da aberta não recarrega o detalhe', async () => {
+    const { store, http } = criarStoreComInterceptor();
+    abrir(store, http);
+
+    const promessa = store.adicionarPagamento('v-2', { forma: 'PIX', valor: 1 });
+    http.expectOne(`${URL_VENDAS}/v-2/pagamentos`).flush({ id: 'v-2' });
+    await promessa;
+    http.expectOne((r) => r.method === 'GET' && r.url === URL_VENDAS).flush([]);
+    http.expectNone(`${URL_VENDAS}/v-2`);
+    expect(store.detalhe()?.id).toBe('v-1');
+  });
+
+  it('emitirCupom: recarrega o detalhe aberto da mesma venda e não a lista', async () => {
+    const { store, http } = criarStoreComInterceptor();
+    abrir(store, http);
+
+    const promessa = store.emitirCupom('v-1');
+    http
+      .expectOne(`${URL_VENDAS}/v-1/cupom-fiscal`)
+      .flush({ cupomId: 'c1', numero: 'CF-1', emitidoEm: '2026-01-02T10:00:00Z' });
+    await promessa;
+
+    http
+      .expectOne(`${URL_VENDAS}/v-1`)
+      .flush({ ...venda('v-1', 'c-1'), cupomEmitido: true, cupomNumero: 'CF-1' });
+    http.expectNone((r) => r.method === 'GET' && r.url === URL_VENDAS);
+    expect(store.detalhe()?.cupomNumero).toBe('CF-1');
+  });
+
+  it('cupomExistente: devolve número e data sem alterar o detalhe', async () => {
+    const { store, http } = criarStoreComInterceptor();
+    abrir(store, http);
+    const antes = store.detalhe();
+
+    const promessa = store.cupomExistente('v-1');
+    http.expectOne(`${URL_VENDAS}/v-1`).flush({
+      ...venda('v-1', 'c-1'),
+      cupomEmitido: true,
+      cupomNumero: 'CF-9',
+      cupomEmitidoEm: '2026-01-02T10:00:00Z',
+    });
+    expect(await promessa).toEqual({ numero: 'CF-9', emitidoEm: '2026-01-02T10:00:00Z' });
+    expect(store.detalhe()).toBe(antes);
+  });
+
+  it('cupomExistente: null quando não há cupom', async () => {
+    const { store, http } = criarStoreComInterceptor();
+    const promessa = store.cupomExistente('v-1');
+    http.expectOne(`${URL_VENDAS}/v-1`).flush(venda('v-1', 'c-1'));
+    expect(await promessa).toBeNull();
+    expect(store.detalhe()).toBeNull();
   });
 });

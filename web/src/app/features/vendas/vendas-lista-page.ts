@@ -48,7 +48,11 @@ const ERRO_PADRAO = 'Verifique a conexão e tente novamente.';
           <ce-button variante="ghost" (click)="limparCliente()">Limpar</ce-button>
         </div>
       } @else {
-        <ce-search-box placeholder="Filtrar por cliente…" (buscar)="buscarClientes($event)" />
+        <ce-search-box
+          rotulo="Filtrar por cliente"
+          placeholder="Filtrar por cliente…"
+          (buscar)="buscarClientes($event)"
+        />
         @if (erroClientes(); as mensagem) {
           <p class="erro" role="alert">{{ mensagem }}</p>
         }
@@ -100,6 +104,8 @@ const ERRO_PADRAO = 'Verifique a conexão e tente novamente.';
     </div>
   `,
   styles: `
+    @use 'mixins';
+
     .filtros {
       display: flex;
       flex-direction: column;
@@ -125,6 +131,8 @@ const ERRO_PADRAO = 'Verifique a conexão e tente novamente.';
     }
 
     .opcao {
+      @include mixins.touch-target;
+
       text-align: left;
       padding: var(--ce-space-3);
       border: 1px solid var(--ce-border);

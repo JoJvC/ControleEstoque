@@ -74,3 +74,24 @@ describe('QuantityStepper', () => {
     expect(campo.value).toBe('5');
   });
 });
+
+describe('QuantityStepper (nome acessível)', () => {
+  it('com rotulo, o input expõe o aria-label', async () => {
+    await TestBed.configureTestingModule({ imports: [QuantityStepper] }).compileComponents();
+    const fixture = TestBed.createComponent(QuantityStepper);
+    fixture.componentRef.setInput('rotulo', 'Campo X');
+    await fixture.whenStable();
+
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.getAttribute('aria-label')).toBe('Campo X');
+  });
+
+  it('sem rotulo expõe o padrão "Quantidade"', async () => {
+    await TestBed.configureTestingModule({ imports: [QuantityStepper] }).compileComponents();
+    const fixture = TestBed.createComponent(QuantityStepper);
+    await fixture.whenStable();
+
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.getAttribute('aria-label')).toBe('Quantidade');
+  });
+});

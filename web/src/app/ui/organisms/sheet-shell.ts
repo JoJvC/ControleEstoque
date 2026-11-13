@@ -1,6 +1,16 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  InjectionToken,
+  inject,
+  input,
+  output,
+} from '@angular/core';
 
 import { Icon } from '../atoms/icon';
+
+/** Id do título, gerado por abertura no SheetService: o diálogo o usa em aria-labelledby. */
+export const SHEET_TITULO_ID = new InjectionToken<string>('SHEET_TITULO_ID');
 
 /**
  * Casca visual de um sheet/dialog (título + fechar + conteúdo).
@@ -13,7 +23,7 @@ import { Icon } from '../atoms/icon';
   template: `
     <section class="sheet">
       <header class="sheet__cabecalho">
-        <h2 class="sheet__titulo">{{ titulo() }}</h2>
+        <h2 class="sheet__titulo" [attr.id]="tituloId">{{ titulo() }}</h2>
         <button type="button" class="sheet__fechar" aria-label="Fechar" (click)="fechar.emit()">
           <ce-icon nome="fechar" />
         </button>
@@ -71,4 +81,6 @@ import { Icon } from '../atoms/icon';
 export class SheetShell {
   readonly titulo = input.required<string>();
   readonly fechar = output<void>();
+
+  protected readonly tituloId = inject(SHEET_TITULO_ID, { optional: true });
 }

@@ -45,8 +45,13 @@ const TIPO_LABEL: Record<TipoProduto, string> = {
     </ce-app-header>
 
     <div class="filtros">
-      <ce-search-box placeholder="Buscar produto…" (buscar)="busca.set($event)" />
+      <ce-search-box
+        rotulo="Buscar produto"
+        placeholder="Buscar produto…"
+        (buscar)="busca.set($event)"
+      />
       <ce-select
+        rotulo="Filtrar por tipo"
         [opcoes]="tiposOpcoes"
         placeholder="Todos os tipos"
         [ngModel]="tipoFiltro()"

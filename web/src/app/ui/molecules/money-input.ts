@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, forwardRef, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, forwardRef, input, signal } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 const FORMATADOR = new Intl.NumberFormat('pt-BR', {
@@ -25,6 +25,7 @@ const FORMATADOR = new Intl.NumberFormat('pt-BR', {
         type="text"
         inputmode="numeric"
         autocomplete="off"
+        [attr.aria-label]="rotulo()"
         [placeholder]="placeholder()"
         [disabled]="desabilitado()"
         [value]="exibicao()"
@@ -80,6 +81,8 @@ const FORMATADOR = new Intl.NumberFormat('pt-BR', {
   `,
 })
 export class MoneyInput implements ControlValueAccessor {
+  readonly rotulo = input<string | null>(null);
+
   protected readonly exibicao = signal('');
   protected readonly desabilitado = signal(false);
   protected readonly placeholder = signal('0,00');

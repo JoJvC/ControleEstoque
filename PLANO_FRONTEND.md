@@ -308,8 +308,8 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 - [x] `@angular/pwa` (manifest, ícones, service worker com estratégia network-first para `/api`)
 - [ ] Gateway servindo o build do front em `/` (compose completo: `docker compose up` → sistema inteiro em uma porta)
 - [ ] Playwright: smoke e2e do fluxo crítico (operador → PDV → venda parcial → caixa) rodando contra o compose, viewport mobile
-- [ ] Auditoria da Seção 10 (checklist Capacitor) — corrigir violações (uso direto de `window`/`localStorage` fora de `core/platform`, etc.)
-- [ ] Performance: budgets no `angular.json` (initial ≤ 500kb), `@defer` em relatórios/gráficos, a11y pass (labels, foco, contraste dos tokens)
+- [x] Auditoria da Seção 10 (checklist Capacitor) — corrigir violações (uso direto de `window`/`localStorage` fora de `core/platform`, etc.)
+- [x] Performance: budgets no `angular.json` (initial ≤ 500kb), `@defer` em relatórios/gráficos, a11y pass (labels, foco, contraste dos tokens) — @defer não aplicável: sem gráfico nem componente pesado; rotas lazy
 - [ ] `web/README.md`: setup em ≤ 5 comandos
 - **Critério de aceite:** `docker compose up` do zero + smoke Playwright verde; Lighthouse mobile ≥ 90 em performance e a11y na home e no PDV.
 
@@ -350,16 +350,16 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 
 Auditar na Sprint F10 (e respeitar desde a F1):
 
-- [ ] **SPA estático puro** — sem SSR/prerender; `ng build` gera `browser/` servível de filesystem
-- [ ] **`config.json` em runtime** — trocar a base da API sem rebuild (app aponta para URL absoluta)
-- [ ] **CORS no gateway** para `capacitor://localhost` (iOS) e `https://localhost` (Android)
-- [ ] **`StorageService`** é o único ponto que toca `localStorage` → futura impl. `@capacitor/preferences`
-- [ ] **`MediaService`** é o único ponto de seleção de imagem (web: `<input type="file">`) → futura impl. `@capacitor/camera`
-- [ ] **`PrintService`** é o único ponto de impressão (cupom) → futura impl. via plugin/share
-- [ ] **Zero `window`/`document`/`navigator` diretos** fora de `core/platform` (usar `inject(DOCUMENT)` lá dentro)
-- [ ] **Safe areas** aplicadas no shell (`viewport-fit=cover` no index.html + `env(safe-area-inset-*)`)
-- [ ] **Touch targets ≥ 44px** em todo elemento interativo (token + lint visual no `/dev/ui`)
-- [ ] **Sem hover como única affordance** — todo estado hover tem equivalente de foco/ativo
+- [x] **SPA estático puro** — sem SSR/prerender; `ng build` gera `browser/` servível de filesystem
+- [x] **`config.json` em runtime** — trocar a base da API sem rebuild (app aponta para URL absoluta)
+- [x] **CORS no gateway** para `capacitor://localhost` (iOS) e `https://localhost` (Android)
+- [x] **`StorageService`** é o único ponto que toca `localStorage` → futura impl. `@capacitor/preferences`
+- [x] **`MediaService`** é o único ponto de seleção de imagem (web: `<input type="file">`) → futura impl. `@capacitor/camera`
+- [x] **`PrintService`** é o único ponto de impressão (cupom) → futura impl. via plugin/share
+- [x] **Zero `window`/`document`/`navigator` diretos** fora de `core/platform` (usar `inject(DOCUMENT)` lá dentro)
+- [x] **Safe areas** aplicadas no shell (`viewport-fit=cover` no index.html + `env(safe-area-inset-*)`)
+- [x] **Touch targets ≥ 44px** em todo elemento interativo (token + lint visual no `/dev/ui`)
+- [x] **Sem hover como única affordance** — todo estado hover tem equivalente de foco/ativo
 - [ ] Passo futuro documentado no `web/README.md`: `npm i @capacitor/core @capacitor/cli && npx cap init && npx cap add android` apontando `webDir` para o build
 
 ---

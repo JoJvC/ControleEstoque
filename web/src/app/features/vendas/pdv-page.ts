@@ -177,6 +177,7 @@ const semAcento = (texto: string): string =>
                         }
                       } @else {
                         <ce-search-box
+                          rotulo="Buscar cliente"
                           placeholder="Buscar cliente por nome…"
                           (buscar)="buscarClientes($event)"
                           (keydown.enter)="enterCliente($event)"
@@ -216,6 +217,7 @@ const semAcento = (texto: string): string =>
                       }
                       <h3>Produtos</h3>
                       <ce-search-box
+                        rotulo="Buscar produto"
                         placeholder="Buscar produto por nome…"
                         (buscar)="termoProduto.set($event)"
                         (keydown.enter)="enterProduto($event)"

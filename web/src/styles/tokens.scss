@@ -4,14 +4,14 @@
 
 :root {
   // Cor — marca e feedback
-  --ce-primary: #0284c7; // ação primária (água ⇒ azul)
-  --ce-primary-strong: #0369a1; // hover/pressed
+  --ce-primary: #0369a1; // ação primária (água ⇒ azul)
+  --ce-primary-strong: #075985; // hover/pressed
   --ce-primary-soft: #e0f2fe; // fundos de destaque suaves
-  --ce-success: #16a34a; // pago / saldo positivo
+  --ce-success: #15803d; // pago / saldo positivo
   --ce-success-soft: #dcfce7;
-  --ce-warning: #d97706; // parcial / alerta de estoque / "vai para fiado"
+  --ce-warning: #b45309; // parcial / alerta de estoque / "vai para fiado"
   --ce-warning-soft: #fef3c7;
-  --ce-danger: #dc2626; // pendente / débito / destrutivo
+  --ce-danger: #b91c1c; // pendente / débito / destrutivo
   --ce-danger-soft: #fee2e2;
 
   // Cor — superfície e texto
@@ -19,10 +19,10 @@
   --ce-surface: #ffffff; // cards, sheets, headers
   --ce-surface-muted: #f8fafc; // linhas alternadas, campos desabilitados
   --ce-text: #0f172a;
-  --ce-text-muted: #64748b;
+  --ce-text-muted: #475569;
   --ce-text-on-primary: #ffffff;
   --ce-border: #e2e8f0;
-  --ce-focus-ring: #38bdf8;
+  --ce-focus-ring: #0369a1;
 
   // Espaçamento — escala de 4px
   --ce-space-1: 4px;

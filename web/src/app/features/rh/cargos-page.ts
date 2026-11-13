@@ -96,6 +96,8 @@ import { CargosStore } from './cargos-store';
     }
 
     .linha {
+      @include mixins.touch-target;
+
       display: flex;
       align-items: center;
       justify-content: space-between;

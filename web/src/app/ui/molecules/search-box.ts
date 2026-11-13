@@ -23,6 +23,7 @@ const DEBOUNCE_MS = 300;
       <input
         class="busca__campo"
         type="text"
+        [attr.aria-label]="rotulo()"
         [placeholder]="placeholder()"
         [value]="texto()"
         (input)="aoDigitar($event)"
@@ -80,6 +81,7 @@ const DEBOUNCE_MS = 300;
 })
 export class SearchBox {
   readonly placeholder = input('Buscar…');
+  readonly rotulo = input<string | null>(null);
   readonly buscar = output<string>();
 
   protected readonly texto = signal('');

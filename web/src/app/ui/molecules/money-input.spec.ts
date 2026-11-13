@@ -81,3 +81,24 @@ describe('MoneyInput', () => {
     expect(input.value).toBe('50,00');
   });
 });
+
+describe('MoneyInput (nome acessível)', () => {
+  it('com rotulo, o input expõe o aria-label', async () => {
+    await TestBed.configureTestingModule({ imports: [MoneyInput] }).compileComponents();
+    const fixture = TestBed.createComponent(MoneyInput);
+    fixture.componentRef.setInput('rotulo', 'Campo X');
+    await fixture.whenStable();
+
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.getAttribute('aria-label')).toBe('Campo X');
+  });
+
+  it('sem rotulo não renderiza aria-label', async () => {
+    await TestBed.configureTestingModule({ imports: [MoneyInput] }).compileComponents();
+    const fixture = TestBed.createComponent(MoneyInput);
+    await fixture.whenStable();
+
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.hasAttribute('aria-label')).toBe(false);
+  });
+});

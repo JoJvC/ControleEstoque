@@ -24,7 +24,11 @@ import { ClientesStore } from './clientes-store';
     </ce-app-header>
 
     <div class="filtros">
-      <ce-search-box placeholder="Buscar por nome…" (buscar)="store.buscar($event)" />
+      <ce-search-box
+        rotulo="Buscar cliente"
+        placeholder="Buscar por nome…"
+        (buscar)="store.buscar($event)"
+      />
     </div>
 
     <div class="conteudo">

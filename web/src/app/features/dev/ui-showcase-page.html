@@ -82,7 +82,11 @@
 
   <section class="secao">
     <h2>Busca (debounce 300ms)</h2>
-    <ce-search-box placeholder="Buscar produto…" (buscar)="aoBuscar($event)" />
+    <ce-search-box
+      rotulo="Buscar produto"
+      placeholder="Buscar produto…"
+      (buscar)="aoBuscar($event)"
+    />
   </section>
 
   <section class="secao">

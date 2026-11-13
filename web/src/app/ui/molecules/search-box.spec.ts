@@ -66,3 +66,24 @@ describe('SearchBox', () => {
     expect(emissoes).toEqual(['galao', '']);
   });
 });
+
+describe('SearchBox (nome acessível)', () => {
+  it('com rotulo, o input expõe o aria-label', async () => {
+    await TestBed.configureTestingModule({ imports: [SearchBox] }).compileComponents();
+    const fixture = TestBed.createComponent(SearchBox);
+    fixture.componentRef.setInput('rotulo', 'Campo X');
+    await fixture.whenStable();
+
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.getAttribute('aria-label')).toBe('Campo X');
+  });
+
+  it('sem rotulo não renderiza aria-label', async () => {
+    await TestBed.configureTestingModule({ imports: [SearchBox] }).compileComponents();
+    const fixture = TestBed.createComponent(SearchBox);
+    await fixture.whenStable();
+
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.hasAttribute('aria-label')).toBe(false);
+  });
+});

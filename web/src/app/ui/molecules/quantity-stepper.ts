@@ -26,6 +26,7 @@ import { Icon } from '../atoms/icon';
         class="stepper__campo"
         type="text"
         inputmode="numeric"
+        [attr.aria-label]="rotulo()"
         [disabled]="desabilitado()"
         [value]="valor()"
         (input)="aoDigitar($event)"
@@ -56,6 +57,11 @@ import { Icon } from '../atoms/icon';
       border-radius: var(--ce-radius-md);
       background: var(--ce-surface);
       overflow: hidden;
+
+      &:focus-within {
+        outline: 2px solid var(--ce-focus-ring);
+        outline-offset: 1px;
+      }
     }
 
     .stepper--desabilitado {
@@ -95,6 +101,7 @@ import { Icon } from '../atoms/icon';
   `,
 })
 export class QuantityStepper implements ControlValueAccessor {
+  readonly rotulo = input('Quantidade');
   readonly min = input(0);
   readonly max = input<number | null>(null);
 

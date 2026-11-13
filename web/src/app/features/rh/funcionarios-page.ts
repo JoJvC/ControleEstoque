@@ -66,6 +66,8 @@ import { FuncionariosStore } from './funcionarios-store';
     }
 
     .linha {
+      @include mixins.touch-target;
+
       display: flex;
       align-items: center;
       justify-content: space-between;

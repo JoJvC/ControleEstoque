@@ -11,8 +11,8 @@ import { CePermissao } from '../../core/permissions/ce-permissao';
     <div class="pagina">
       <h1>Funcionários e cargos</h1>
       <nav>
-        <a *cePermissao="'rh.gerir'" routerLink="/rh/funcionarios">Funcionários</a>
-        <a *cePermissao="'rh.gerir'" routerLink="/rh/cargos">Cargos</a>
+        <a *cePermissao="'rh.gerir'" class="link" routerLink="/rh/funcionarios">Funcionários</a>
+        <a *cePermissao="'rh.gerir'" class="link" routerLink="/rh/cargos">Cargos</a>
       </nav>
     </div>
   `,
@@ -27,6 +27,19 @@ import { CePermissao } from '../../core/permissions/ce-permissao';
         margin-inline: auto;
         width: 100%;
       }
+    }
+
+    nav {
+      display: flex;
+      flex-direction: column;
+      gap: var(--ce-space-2);
+    }
+
+    .link {
+      @include mixins.touch-target;
+
+      display: inline-flex;
+      align-items: center;
     }
   `,
 })

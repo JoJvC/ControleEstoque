@@ -42,6 +42,7 @@ export const FORMAS: SelectOpcao[] = [
           />
           <ce-money-input
             class="pagamentos__valor"
+            rotulo="Valor do pagamento"
             [ngModel]="pagamento.valor"
             (ngModelChange)="mudarValor(indice, $event)"
           />

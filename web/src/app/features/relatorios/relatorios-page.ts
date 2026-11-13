@@ -43,6 +43,8 @@ interface CardRelatorio {
     }
 
     .card {
+      @include mixins.touch-target;
+
       display: flex;
       flex-direction: column;
       gap: var(--ce-space-1);

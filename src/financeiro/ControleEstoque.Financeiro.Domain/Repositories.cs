@@ -8,6 +8,10 @@ public interface ICaixaRepository
     Task<Caixa?> GetAsync(Guid id, CancellationToken cancellationToken);
     Task<Caixa?> GetByDataAsync(DateOnly data, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Lança a despesa na mesma transação que trava o caixa (FOR SHARE); caixa FECHADO lança
+    /// ConflictException CAIXA_FECHADO e nada é gravado.
+    /// </summary>
     Task AddDespesaAsync(
         Guid caixaId, Guid tipoDespesaId, decimal valor, string? descricao,
         CancellationToken cancellationToken);
@@ -18,21 +22,13 @@ public interface ICaixaRepository
     Task<IReadOnlyList<Despesa>> ListDespesasAsync(Guid caixaId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Fecha o caixa em uma transação: lança DIARIA na conta corrente de cada
-    /// funcionário (regra crítica 7 — diária NÃO é saída de caixa) e grava os
-    /// consolidados.
+    /// Fecha o caixa em uma transação: trava o caixa (FOR UPDATE), lê diárias, entradas e despesas dentro
+    /// dela, lança DIARIA na conta corrente de cada funcionário (regra crítica 7 — diária NÃO é saída
+    /// de caixa) e grava os consolidados. Lança EntityNotFoundException (caixa ou funcionário) e
+    /// ConflictException CAIXA_JA_FECHADO (inclusive sob corrida).
     /// </summary>
-    Task FecharAsync(
-        Guid caixaId,
-        IReadOnlyList<(Guid FuncionarioId, decimal Valor)> diarias,
-        decimal totalEntradas,
-        decimal totalSaidas,
-        decimal saldoFinal,
-        CancellationToken cancellationToken);
-
-    /// <summary>Valor de diária cadastrado por funcionário; ausência indica funcionário inexistente.</summary>
-    Task<IReadOnlyDictionary<Guid, decimal>> GetValoresDiariaAsync(
-        IReadOnlyCollection<Guid> funcionarioIds, CancellationToken cancellationToken);
+    Task<ResultadoFechamento> FecharAsync(
+        Guid caixaId, IReadOnlyList<Guid> funcionarioIds, CancellationToken cancellationToken);
 }
 
 public interface ITipoDespesaRepository
@@ -47,7 +43,11 @@ public interface IFiadoRepository
     Task<bool> ClienteExisteAsync(Guid clienteId, CancellationToken cancellationToken);
     Task<decimal> GetSaldoAsync(Guid clienteId, CancellationToken cancellationToken);
 
-    /// <summary>Lança PAGAMENTO no fiado e retorna o novo saldo devedor.</summary>
+    /// <summary>
+    /// Lança PAGAMENTO no fiado e retorna o novo saldo devedor. Na mesma transação trava o caixa de hoje
+    /// (FOR SHARE; FECHADO lança ConflictException CAIXA_FECHADO) e o cliente (FOR UPDATE), relê o saldo
+    /// e recusa com PAGAMENTO_EXCEDE_SALDO se o valor o excede.
+    /// </summary>
     Task<decimal> PagarAsync(
         Guid clienteId, decimal valor, string? observacao, CancellationToken cancellationToken);
 

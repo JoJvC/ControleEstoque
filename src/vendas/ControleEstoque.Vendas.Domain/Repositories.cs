@@ -18,6 +18,7 @@ public interface IVendaRepository
 {
     /// <summary>
     /// Persiste a venda e todos os efeitos em uma transação; retorna o novo saldo de casco do cliente.
+    /// Com pagamento, trava o caixa de hoje (FOR SHARE) e lança ConflictException CAIXA_FECHADO se fechado.
     /// Trava os produtos vendidos e checa o saldo dentro da transação; sem saldo, faz rollback e devolve a falta.
     /// </summary>
     Task<ResultadoGravacao> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken);
@@ -26,7 +27,8 @@ public interface IVendaRepository
     /// Edição por replay: soft-deleta itens, pagamentos, movimentos de estoque,
     /// movimentos de casco, entregas de sucata e lançamentos de fiado vinculados
     /// à venda, e reinsere conforme a gravação — tudo em uma transação. A checagem de saldo roda
-    /// depois do soft-delete, então as saídas antigas da própria venda não contam.
+    /// depois do soft-delete, então as saídas antigas da própria venda não contam. Lança CAIXA_FECHADO se
+    /// um pagamento atual da venda cair em caixa FECHADO, ou se reinserir pagamento com o caixa de hoje FECHADO.
     /// </summary>
     Task<ResultadoGravacao> EditarAsync(VendaGravacao gravacao, CancellationToken cancellationToken);
 
@@ -37,9 +39,14 @@ public interface IVendaRepository
         CancellationToken cancellationToken);
 
     Task<InfoPagamentoVenda?> GetInfoPagamentoAsync(Guid vendaId, CancellationToken cancellationToken);
-    Task AddPagamentoAsync(
-        Guid vendaId, FormaPagamento forma, decimal valor, decimal abatimentoFiado,
-        StatusPagamento novoStatus, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Em uma transação: trava o caixa de hoje (FOR SHARE; FECHADO lança ConflictException CAIXA_FECHADO) e a
+    /// venda (FOR UPDATE), relê os totais, recusa com PAGAMENTO_EXCEDE_SALDO se o valor os excede, grava o
+    /// pagamento, o novo status e o abatimento do fiado. Retorna os totais lidos sob a trava (antes do pagamento).
+    /// </summary>
+    Task<InfoPagamentoVenda> AddPagamentoAsync(
+        Guid vendaId, FormaPagamento forma, decimal valor, CancellationToken cancellationToken);
 
     Task<long> GetSaldoCascoClienteAsync(Guid clienteId, CancellationToken cancellationToken);
 }

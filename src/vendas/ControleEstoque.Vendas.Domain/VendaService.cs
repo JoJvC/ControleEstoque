@@ -83,17 +83,15 @@ public sealed class VendaService : IVendaService
                 $"Pagamento de {valor:F2} excede o saldo restante de {info.TotalLiquido - info.TotalPago:F2}.");
         }
 
-        var novoStatus = VendaCalculos.CalcularStatus(info.TotalLiquido, info.TotalPago + valor);
-
-        // O pagamento abate o débito de fiado gerado por esta venda, limitado ao restante.
-        var abatimentoFiado = Math.Min(valor, info.DebitoFiadoRestante);
-        await vendas.AddPagamentoAsync(vendaId, forma, valor, abatimentoFiado, novoStatus, cancellationToken);
+        // A garantia é do repositório (trava da venda); os totais do resultado são os lidos sob a trava.
+        var travado = await vendas.AddPagamentoAsync(vendaId, forma, valor, cancellationToken);
+        var novoStatus = VendaCalculos.CalcularStatus(travado.TotalLiquido, travado.TotalPago + valor);
 
         var venda = await ObterAsync(vendaId, cancellationToken);
         var saldoCasco = await vendas.GetSaldoCascoClienteAsync(venda.ClienteId, cancellationToken);
         return new ResultadoVenda(
             venda.Id, venda.TotalBruto, venda.TotalDesconto, venda.TotalLiquido,
-            info.TotalPago + valor, info.TotalLiquido - info.TotalPago - valor, novoStatus, saldoCasco);
+            travado.TotalPago + valor, travado.TotalLiquido - travado.TotalPago - valor, novoStatus, saldoCasco);
     }
 
     public async Task<CupomFiscal> EmitirCupomAsync(Guid vendaId, CancellationToken cancellationToken)

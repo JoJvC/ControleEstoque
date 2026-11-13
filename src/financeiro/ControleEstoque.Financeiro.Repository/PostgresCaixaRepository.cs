@@ -60,21 +60,46 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.AddDespesa, connection);
-        command.Parameters.AddWithValue("caixaId", caixaId);
-        command.Parameters.AddWithValue("tipoDespesaId", tipoDespesaId);
-        command.Parameters.AddWithValue("valor", valor);
-        command.Parameters.Add(new NpgsqlParameter("descricao", NpgsqlDbType.Text)
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // FOR SHARE conflita com o FOR UPDATE do fechamento: quem chega depois dele vê FECHADO.
+        await using (var command = new NpgsqlCommand(Sql.TravaCaixaPorId, connection, transaction))
         {
-            Value = (object?)descricao ?? DBNull.Value
-        });
-        await command.ExecuteNonQueryAsync(cancellationToken);
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            var status = (string?)await command.ExecuteScalarAsync(cancellationToken)
+                ?? throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", $"Caixa {caixaId} não encontrado.");
+            if (status == nameof(StatusCaixa.FECHADO))
+            {
+                throw new ConflictException("CAIXA_FECHADO", "Não é possível lançar despesa em caixa fechado.");
+            }
+        }
+
+        await using (var command = new NpgsqlCommand(Sql.AddDespesa, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            command.Parameters.AddWithValue("tipoDespesaId", tipoDespesaId);
+            command.Parameters.AddWithValue("valor", valor);
+            command.Parameters.Add(new NpgsqlParameter("descricao", NpgsqlDbType.Text)
+            {
+                Value = (object?)descricao ?? DBNull.Value
+            });
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<decimal> GetEntradasAsync(DateOnly data, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.GetEntradas, connection);
+        return await GetEntradasAsync(connection, null, data, cancellationToken);
+    }
+
+    private static async Task<decimal> GetEntradasAsync(
+        NpgsqlConnection connection, NpgsqlTransaction? transaction, DateOnly data,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(Sql.GetEntradas, connection, transaction);
         command.Parameters.Add(new NpgsqlParameter("data", NpgsqlDbType.Date) { Value = data });
         return (decimal?)await command.ExecuteScalarAsync(cancellationToken) ?? 0m;
     }
@@ -97,58 +122,95 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         return results;
     }
 
-    public async Task FecharAsync(
-        Guid caixaId,
-        IReadOnlyList<(Guid FuncionarioId, decimal Valor)> diarias,
-        decimal totalEntradas,
-        decimal totalSaidas,
-        decimal saldoFinal,
-        CancellationToken cancellationToken)
+    public async Task<ResultadoFechamento> FecharAsync(
+        Guid caixaId, IReadOnlyList<Guid> funcionarioIds, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        DateOnly data;
+        decimal saldoInicial;
+        await using (var command = new NpgsqlCommand(Sql.TravaCaixaParaFechar, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", $"Caixa {caixaId} não encontrado.");
+            }
+
+            if (reader.GetString(0) == nameof(StatusCaixa.FECHADO))
+            {
+                throw new ConflictException("CAIXA_JA_FECHADO", "Caixa já foi fechado.");
+            }
+
+            data = reader.GetFieldValue<DateOnly>(1);
+            saldoInicial = reader.GetDecimal(2);
+        }
+
+        // Falta = funcionário simplesmente não listado; diária usa o valor do cadastro.
+        var valores = new Dictionary<Guid, decimal>();
+        if (funcionarioIds.Count > 0)
+        {
+            await using var command = new NpgsqlCommand(Sql.GetValoresDiaria, connection, transaction);
+            command.Parameters.AddWithValue("ids", funcionarioIds.ToArray());
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                valores[reader.GetGuid(0)] = reader.GetDecimal(1);
+            }
+        }
+
+        foreach (var funcionarioId in funcionarioIds)
+        {
+            if (!valores.ContainsKey(funcionarioId))
+            {
+                throw new EntityNotFoundException(
+                    "FUNCIONARIO_NAO_ENCONTRADO", $"Funcionário {funcionarioId} não encontrado.");
+            }
+        }
+
+        var entradas = await GetEntradasAsync(connection, transaction, data, cancellationToken);
+        decimal totalSaidas; // diária NÃO sai do caixa (regra crítica 7)
+        await using (var command = new NpgsqlCommand(Sql.TotalDespesas, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            totalSaidas = (decimal?)await command.ExecuteScalarAsync(cancellationToken) ?? 0m;
+        }
+
+        var saldoFinal = saldoInicial + entradas - totalSaidas;
+
         // Diária credita a conta corrente do funcionário — não é saída de caixa.
-        foreach (var (funcionarioId, valor) in diarias)
+        foreach (var funcionarioId in funcionarioIds)
         {
             await using var command = new NpgsqlCommand(Sql.InsertDiaria, connection, transaction);
             command.Parameters.AddWithValue("funcionarioId", funcionarioId);
             command.Parameters.AddWithValue("caixaId", caixaId);
-            command.Parameters.AddWithValue("valor", valor);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            command.Parameters.AddWithValue("valor", valores[funcionarioId]);
+            try
+            {
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+            catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                throw new ConflictException("CAIXA_JA_FECHADO", "Caixa já foi fechado.");
+            }
         }
 
         await using (var command = new NpgsqlCommand(Sql.Fechar, connection, transaction))
         {
             command.Parameters.AddWithValue("caixaId", caixaId);
-            command.Parameters.AddWithValue("totalEntradas", totalEntradas);
+            command.Parameters.AddWithValue("totalEntradas", entradas);
             command.Parameters.AddWithValue("totalSaidas", totalSaidas);
             command.Parameters.AddWithValue("saldoFinal", saldoFinal);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            {
+                throw new ConflictException("CAIXA_JA_FECHADO", "Caixa já foi fechado.");
+            }
         }
 
         await transaction.CommitAsync(cancellationToken);
-    }
-
-    public async Task<IReadOnlyDictionary<Guid, decimal>> GetValoresDiariaAsync(
-        IReadOnlyCollection<Guid> funcionarioIds, CancellationToken cancellationToken)
-    {
-        if (funcionarioIds.Count == 0)
-        {
-            return new Dictionary<Guid, decimal>();
-        }
-
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.GetValoresDiaria, connection);
-        command.Parameters.AddWithValue("ids", funcionarioIds.ToArray());
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var results = new Dictionary<Guid, decimal>();
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            results[reader.GetGuid(0)] = reader.GetDecimal(1);
-        }
-
-        return results;
+        return new ResultadoFechamento(caixaId, data, entradas, totalSaidas, saldoFinal, funcionarioIds.Count);
     }
 
     private static Caixa MapCaixa(NpgsqlDataReader reader) => new(
@@ -214,8 +276,20 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             UPDATE caixas
             SET status = 'FECHADO', total_entradas = @totalEntradas, total_saidas = @totalSaidas,
                 saldo_final = @saldoFinal, fechado_em = now(), updated_at = now()
-            WHERE id = @caixaId AND deleted_at IS NULL
+            WHERE id = @caixaId AND status = 'ABERTO' AND deleted_at IS NULL
             """;
+
+        public const string TravaCaixaPorId =
+            "SELECT status::text FROM caixas WHERE id = @caixaId AND deleted_at IS NULL FOR SHARE";
+
+        public const string TravaCaixaParaFechar = """
+            SELECT status::text, data, saldo_inicial FROM caixas
+            WHERE id = @caixaId AND deleted_at IS NULL
+            FOR UPDATE
+            """;
+
+        public const string TotalDespesas =
+            "SELECT COALESCE(SUM(valor), 0) FROM caixa_despesas WHERE caixa_id = @caixaId AND deleted_at IS NULL";
 
         public const string GetValoresDiaria = """
             SELECT id, valor_diaria FROM funcionarios

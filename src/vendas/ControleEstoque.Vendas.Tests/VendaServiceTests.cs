@@ -167,7 +167,98 @@ public sealed class VendaServiceTests
             criada.Id, FormaPagamento.DINHEIRO, 50m, CancellationToken.None);
 
         Assert.Equal(StatusPagamento.PAGA, resultado.StatusPagamento);
-        Assert.Equal(50m, vendas.UltimoPagamento!.Value.Abatimento);
+        Assert.Equal((FormaPagamento.DINHEIRO, 50m), vendas.UltimoPagamento);
+    }
+
+    [Fact]
+    public async Task AdicionarPagamentoAsync_QuandoRepositorioRecusaPorExcesso_LancaPagamentoExcedeSaldo()
+    {
+        // A pré-checagem passa (restam 50), mas outro pagamento esgota o saldo antes da trava da venda.
+        var criada = await sut.CriarAsync(
+            NovaVendaDe(agua.Id, 5, 50m, pagamentos: [new PagamentoVenda(FormaPagamento.PIX, 200m)]),
+            CancellationToken.None);
+        vendas.InfoPagamento = new InfoPagamentoVenda(250m, 200m, 50m, StatusPagamento.PARCIAL);
+        vendas.RecusarPagamentoPorExcesso = true;
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => sut.AdicionarPagamentoAsync(
+                criada.Id, FormaPagamento.DINHEIRO, 50m, CancellationToken.None));
+
+        Assert.Equal("PAGAMENTO_EXCEDE_SALDO", e.Code);
+        Assert.Null(vendas.UltimoPagamento);
+    }
+
+    [Fact]
+    public async Task AdicionarPagamentoAsync_QuandoCaixaFechado_LancaCaixaFechadoENaoGrava()
+    {
+        var criada = await sut.CriarAsync(
+            NovaVendaDe(agua.Id, 5, 50m, pagamentos: [new PagamentoVenda(FormaPagamento.PIX, 200m)]),
+            CancellationToken.None);
+        vendas.InfoPagamento = new InfoPagamentoVenda(250m, 200m, 50m, StatusPagamento.PARCIAL);
+        vendas.CaixaHojeFechado = true;
+
+        var e = await Assert.ThrowsAsync<ConflictException>(
+            () => sut.AdicionarPagamentoAsync(
+                criada.Id, FormaPagamento.DINHEIRO, 50m, CancellationToken.None));
+
+        Assert.Equal("CAIXA_FECHADO", e.Code);
+        Assert.Null(vendas.UltimoPagamento);
+    }
+
+    [Fact]
+    public async Task CriarAsync_ComPagamentoEmCaixaFechado_LancaCaixaFechadoENaoGrava()
+    {
+        vendas.CaixaHojeFechado = true;
+
+        var e = await Assert.ThrowsAsync<ConflictException>(
+            () => sut.CriarAsync(
+                NovaVendaDe(agua.Id, 5, 50m, pagamentos: [new PagamentoVenda(FormaPagamento.PIX, 250m)]),
+                CancellationToken.None));
+
+        Assert.Equal("CAIXA_FECHADO", e.Code);
+        Assert.Null(vendas.UltimaGravacao);
+    }
+
+    [Fact]
+    public async Task CriarAsync_SemPagamentoEmCaixaFechado_Grava()
+    {
+        vendas.CaixaHojeFechado = true;
+
+        var resultado = await sut.CriarAsync(NovaVendaDe(agua.Id, 5, 50m), CancellationToken.None);
+
+        Assert.NotNull(vendas.UltimaGravacao);
+        Assert.Equal(StatusPagamento.PENDENTE, resultado.StatusPagamento);
+    }
+
+    [Fact]
+    public async Task EditarAsync_ComPagamentoAtualEmCaixaFechado_LancaCaixaFechadoENaoGrava()
+    {
+        var criada = await sut.CriarAsync(
+            NovaVendaDe(agua.Id, 5, 50m, pagamentos: [new PagamentoVenda(FormaPagamento.PIX, 250m)]),
+            CancellationToken.None);
+        vendas.VendaTemPagamentoEmCaixaFechado = true;
+
+        var e = await Assert.ThrowsAsync<ConflictException>(
+            () => sut.EditarAsync(criada.Id, NovaVendaDe(agua.Id, 4, 50m), CancellationToken.None));
+
+        Assert.Equal("CAIXA_FECHADO", e.Code);
+        Assert.Null(vendas.UltimaEdicao);
+    }
+
+    [Fact]
+    public async Task EditarAsync_ReinserindoPagamentoComCaixaDeHojeFechado_LancaCaixaFechado()
+    {
+        var criada = await sut.CriarAsync(NovaVendaDe(agua.Id, 5, 50m), CancellationToken.None);
+        vendas.CaixaHojeFechado = true;
+
+        var e = await Assert.ThrowsAsync<ConflictException>(
+            () => sut.EditarAsync(
+                criada.Id,
+                NovaVendaDe(agua.Id, 5, 50m, pagamentos: [new PagamentoVenda(FormaPagamento.PIX, 250m)]),
+                CancellationToken.None));
+
+        Assert.Equal("CAIXA_FECHADO", e.Code);
+        Assert.Null(vendas.UltimaEdicao);
     }
 
     [Fact]

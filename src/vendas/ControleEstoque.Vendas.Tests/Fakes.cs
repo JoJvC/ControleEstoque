@@ -65,11 +65,27 @@ internal sealed class FakeVendaRepository : IVendaRepository
     public HashSet<Guid> VendasExistentes { get; } = new();
     public long SaldoCascoRetorno { get; set; }
     public InfoPagamentoVenda? InfoPagamento { get; set; }
-    public (FormaPagamento Forma, decimal Valor, decimal Abatimento, StatusPagamento Status)? UltimoPagamento
-    { get; private set; }
+    public (FormaPagamento Forma, decimal Valor)? UltimoPagamento { get; private set; }
+
+    /// <summary>Simula o caixa de hoje FECHADO sob a trava FOR SHARE do repositório (CAIXA_FECHADO).</summary>
+    public bool CaixaHojeFechado { get; set; }
+
+    /// <summary>Simula pagamento atual da venda em dia de caixa FECHADO (só a edição consulta).</summary>
+    public bool VendaTemPagamentoEmCaixaFechado { get; set; }
+
+    /// <summary>Simula o pagamento concorrente que esgotou o saldo entre a pré-checagem e a trava da venda.</summary>
+    public bool RecusarPagamentoPorExcesso { get; set; }
+
+    private static ConflictException CaixaFechado() =>
+        new("CAIXA_FECHADO", "Não é possível lançar pagamento em caixa fechado.");
 
     public async Task<ResultadoGravacao> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken)
     {
+        if (CaixaHojeFechado && gravacao.Pagamentos.Count > 0)
+        {
+            throw CaixaFechado();
+        }
+
         var falta = await BaixarSaldoAsync(gravacao);
         if (falta is not null)
         {
@@ -83,6 +99,11 @@ internal sealed class FakeVendaRepository : IVendaRepository
 
     public async Task<ResultadoGravacao> EditarAsync(VendaGravacao gravacao, CancellationToken cancellationToken)
     {
+        if (VendaTemPagamentoEmCaixaFechado || (CaixaHojeFechado && gravacao.Pagamentos.Count > 0))
+        {
+            throw CaixaFechado();
+        }
+
         var falta = await BaixarSaldoAsync(gravacao);
         if (falta is not null)
         {
@@ -151,12 +172,21 @@ internal sealed class FakeVendaRepository : IVendaRepository
     public Task<InfoPagamentoVenda?> GetInfoPagamentoAsync(Guid vendaId, CancellationToken cancellationToken) =>
         Task.FromResult(VendasExistentes.Contains(vendaId) ? InfoPagamento : null);
 
-    public Task AddPagamentoAsync(
-        Guid vendaId, FormaPagamento forma, decimal valor, decimal abatimentoFiado,
-        StatusPagamento novoStatus, CancellationToken cancellationToken)
+    public Task<InfoPagamentoVenda> AddPagamentoAsync(
+        Guid vendaId, FormaPagamento forma, decimal valor, CancellationToken cancellationToken)
     {
-        UltimoPagamento = (forma, valor, abatimentoFiado, novoStatus);
-        return Task.CompletedTask;
+        if (CaixaHojeFechado)
+        {
+            throw CaixaFechado();
+        }
+
+        if (RecusarPagamentoPorExcesso)
+        {
+            throw new BusinessRuleException("PAGAMENTO_EXCEDE_SALDO", "Pagamento excede o saldo restante.");
+        }
+
+        UltimoPagamento = (forma, valor);
+        return Task.FromResult(InfoPagamento!);
     }
 
     public Task<long> GetSaldoCascoClienteAsync(Guid clienteId, CancellationToken cancellationToken) =>

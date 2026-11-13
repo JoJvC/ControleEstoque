@@ -16,10 +16,70 @@ public sealed class CaixaServiceTests
     {
         var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 100m, StatusCaixa.FECHADO);
 
-        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+        var e = await Assert.ThrowsAsync<ConflictException>(
             () => sut.FecharAsync(caixa.Id, [], CancellationToken.None));
 
         Assert.Equal("CAIXA_JA_FECHADO", e.Code);
+    }
+
+    [Fact]
+    public async Task FecharAsync_QuandoUpdateAfetaZeroLinhas_LancaCaixaJaFechado()
+    {
+        // Corrida: outro fechamento ganhou entre a leitura e o UPDATE condicional (status = 'ABERTO').
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 100m);
+        caixas.LinhasAfetadasNoFechamento = 0;
+
+        var e = await Assert.ThrowsAsync<ConflictException>(
+            () => sut.FecharAsync(caixa.Id, [], CancellationToken.None));
+
+        Assert.Equal("CAIXA_JA_FECHADO", e.Code);
+        Assert.Null(caixas.Fechamento);
+    }
+
+    [Fact]
+    public async Task FecharAsync_QuandoBancoInformaDiariaDuplicada_LancaCaixaJaFechado()
+    {
+        // UniqueViolation de lancamentos_funcionario (caixa_id, funcionario_id, DIARIA) vira CAIXA_JA_FECHADO.
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 100m);
+        var funcionario = Guid.NewGuid();
+        caixas.ValoresDiaria[funcionario] = 80m;
+        caixas.DiariaDuplicadaNoBanco = true;
+
+        var e = await Assert.ThrowsAsync<ConflictException>(
+            () => sut.FecharAsync(caixa.Id, [funcionario], CancellationToken.None));
+
+        Assert.Equal("CAIXA_JA_FECHADO", e.Code);
+        Assert.Empty(caixas.DiariasLancadas);
+    }
+
+    [Fact]
+    public async Task FecharAsync_QuandoFuncionarioRepetido_LancaValidacaoENaoFecha()
+    {
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 100m);
+        var funcionario = Guid.NewGuid();
+        caixas.ValoresDiaria[funcionario] = 80m;
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.FecharAsync(caixa.Id, [funcionario, funcionario], CancellationToken.None));
+
+        Assert.Equal("FUNCIONARIO_DUPLICADO", e.Code);
+        Assert.Empty(caixas.DiariasLancadas);
+        Assert.Null(caixas.Fechamento);
+    }
+
+    [Fact]
+    public async Task FecharAsync_TotaisVemDoRepositorio_ServicoNaoLeEntradasNemDespesas()
+    {
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 100m);
+        caixas.Entradas = 500m;
+        caixas.AddDespesa(caixa.Id, 120m);
+
+        var resultado = await sut.FecharAsync(caixa.Id, [], CancellationToken.None);
+
+        Assert.Equal(0, caixas.LeiturasAvulsas);
+        Assert.Equal(500m, resultado.TotalEntradas);
+        Assert.Equal(120m, resultado.TotalSaidas);
+        Assert.Equal(caixas.Fechamento, (resultado.TotalEntradas, resultado.TotalSaidas, resultado.SaldoFinal));
     }
 
     [Fact]
@@ -55,7 +115,7 @@ public sealed class CaixaServiceTests
         var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 0m, StatusCaixa.FECHADO);
         var tipo = tipos.Add("Manutenção");
 
-        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+        var e = await Assert.ThrowsAsync<ConflictException>(
             () => sut.AdicionarDespesaAsync(caixa.Id, tipo.Id, 50m, null, CancellationToken.None));
 
         Assert.Equal("CAIXA_FECHADO", e.Code);

@@ -1,4 +1,5 @@
 using ControleEstoque.Financeiro.Domain;
+using ControleEstoque.Shared.Results;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -29,6 +30,32 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // Ordem das travas: caixa (FOR SHARE) e depois cliente (FOR UPDATE).
+        await using (var command = new NpgsqlCommand(Sql.TravaCaixaHoje, connection, transaction))
+        {
+            if ((string?)await command.ExecuteScalarAsync(cancellationToken) == nameof(StatusCaixa.FECHADO))
+            {
+                throw new ConflictException("CAIXA_FECHADO", "Não é possível lançar pagamento em caixa fechado.");
+            }
+        }
+
+        await using (var command = new NpgsqlCommand(Sql.TravaCliente, connection, transaction))
+        {
+            command.Parameters.AddWithValue("clienteId", clienteId);
+            if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            {
+                throw new EntityNotFoundException("CLIENTE_NAO_ENCONTRADO", $"Cliente {clienteId} não encontrado.");
+            }
+        }
+
+        var saldoAtual = await GetSaldoAsync(connection, transaction, clienteId, cancellationToken);
+        if (valor > saldoAtual)
+        {
+            throw new BusinessRuleException(
+                "PAGAMENTO_EXCEDE_SALDO",
+                $"Pagamento de {valor:F2} excede o saldo devedor de {saldoAtual:F2}.");
+        }
 
         await using (var command = new NpgsqlCommand(Sql.InsertPagamento, connection, transaction))
         {
@@ -75,6 +102,12 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
     {
         public const string ClienteExiste =
             "SELECT EXISTS (SELECT 1 FROM clientes WHERE id = @clienteId AND deleted_at IS NULL)";
+
+        public const string TravaCaixaHoje =
+            "SELECT status::text FROM caixas WHERE data = CURRENT_DATE AND deleted_at IS NULL FOR SHARE";
+
+        public const string TravaCliente =
+            "SELECT id FROM clientes WHERE id = @clienteId AND deleted_at IS NULL FOR UPDATE";
 
         public const string GetSaldo =
             "SELECT saldo_devedor FROM vw_saldo_fiado_cliente WHERE cliente_id = @clienteId";

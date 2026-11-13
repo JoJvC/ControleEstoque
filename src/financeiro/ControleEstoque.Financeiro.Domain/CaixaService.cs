@@ -57,11 +57,8 @@ public sealed class CaixaService : ICaixaService
             throw new RequestValidationException("VALOR_INVALIDO", "Valor da despesa deve ser positivo.");
         }
 
-        var caixa = await ObterCaixaAsync(caixaId, cancellationToken);
-        if (caixa.Status == StatusCaixa.FECHADO)
-        {
-            throw new BusinessRuleException("CAIXA_FECHADO", "Não é possível lançar despesa em caixa fechado.");
-        }
+        // A checagem de caixa fechado é do repositório (atômica com o INSERT).
+        await ObterCaixaAsync(caixaId, cancellationToken);
 
         // Toda despesa deve ter um tipo associado (regra de negócio do caixa).
         if (!await tiposDespesa.ExistsAsync(tipoDespesaId, cancellationToken))
@@ -76,34 +73,15 @@ public sealed class CaixaService : ICaixaService
     public async Task<ResultadoFechamento> FecharAsync(
         Guid caixaId, IReadOnlyList<Guid> funcionariosPresentes, CancellationToken cancellationToken)
     {
-        var caixa = await ObterCaixaAsync(caixaId, cancellationToken);
-        if (caixa.Status == StatusCaixa.FECHADO)
-        {
-            throw new BusinessRuleException("CAIXA_JA_FECHADO", "Caixa já foi fechado.");
-        }
-
         // Falta = funcionário simplesmente não listado; diária usa o valor do cadastro.
-        var presentes = funcionariosPresentes.Distinct().ToList();
-        var valores = await caixas.GetValoresDiariaAsync(presentes, cancellationToken);
-        var diarias = new List<(Guid FuncionarioId, decimal Valor)>();
-        foreach (var funcionarioId in presentes)
+        if (funcionariosPresentes.Distinct().Count() != funcionariosPresentes.Count)
         {
-            if (!valores.TryGetValue(funcionarioId, out var valor))
-            {
-                throw new EntityNotFoundException(
-                    "FUNCIONARIO_NAO_ENCONTRADO", $"Funcionário {funcionarioId} não encontrado.");
-            }
-
-            diarias.Add((funcionarioId, valor));
+            throw new RequestValidationException(
+                "FUNCIONARIO_DUPLICADO", "Funcionário repetido na lista de presentes.");
         }
 
-        var entradas = await caixas.GetEntradasAsync(caixa.Data, cancellationToken);
-        var despesas = await caixas.ListDespesasAsync(caixaId, cancellationToken);
-        var totalSaidas = despesas.Sum(d => d.Valor); // diária NÃO sai do caixa (regra crítica 7)
-        var saldoFinal = caixa.SaldoInicial + entradas - totalSaidas;
-
-        await caixas.FecharAsync(caixaId, diarias, entradas, totalSaidas, saldoFinal, cancellationToken);
-        return new ResultadoFechamento(caixaId, caixa.Data, entradas, totalSaidas, saldoFinal, diarias.Count);
+        // Estado, diárias, entradas e despesas são lidos pelo repositório, na transação do fechamento.
+        return await caixas.FecharAsync(caixaId, funcionariosPresentes, cancellationToken);
     }
 
     private async Task<Caixa> ObterCaixaAsync(Guid caixaId, CancellationToken cancellationToken)

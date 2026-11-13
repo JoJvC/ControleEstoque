@@ -24,6 +24,37 @@ public sealed class FiadoServiceTests
     }
 
     [Fact]
+    public async Task PagarAsync_QuandoRepositorioRecusaPorExcesso_LancaPagamentoExcedeSaldo()
+    {
+        // A pré-checagem passa (saldo 50), mas outro pagamento esgota o saldo antes da trava do cliente.
+        var cliente = Guid.NewGuid();
+        fiado.Clientes.Add(cliente);
+        fiado.Saldos[cliente] = 50m;
+        fiado.RecusarPorExcesso = true;
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => sut.PagarAsync(cliente, 50m, "PIX", CancellationToken.None));
+
+        Assert.Equal("PAGAMENTO_EXCEDE_SALDO", e.Code);
+        Assert.Equal(50m, fiado.Saldos[cliente]);
+    }
+
+    [Fact]
+    public async Task PagarAsync_QuandoCaixaFechado_LancaCaixaFechadoENaoBaixaSaldo()
+    {
+        var cliente = Guid.NewGuid();
+        fiado.Clientes.Add(cliente);
+        fiado.Saldos[cliente] = 50m;
+        fiado.CaixaHojeFechado = true;
+
+        var e = await Assert.ThrowsAsync<ConflictException>(
+            () => sut.PagarAsync(cliente, 50m, "PIX", CancellationToken.None));
+
+        Assert.Equal("CAIXA_FECHADO", e.Code);
+        Assert.Equal(50m, fiado.Saldos[cliente]);
+    }
+
+    [Fact]
     public async Task PagarAsync_QuandoDentroDoSaldo_BaixaSaldo()
     {
         var cliente = Guid.NewGuid();

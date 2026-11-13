@@ -446,6 +446,10 @@ CREATE TABLE lancamentos_funcionario (
 CREATE INDEX idx_lanc_func_funcionario ON lancamentos_funcionario(funcionario_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_lanc_func_caixa       ON lancamentos_funcionario(caixa_id)       WHERE caixa_id IS NOT NULL;
 
+-- Uma diária por funcionário em cada caixa: o reenvio do fechamento não duplica. VALE e PAGAMENTO podem repetir.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_lanc_func_diaria_caixa
+    ON lancamentos_funcionario(caixa_id, funcionario_id) WHERE tipo = 'DIARIA' AND deleted_at IS NULL;
+
 -- ----------------------------------------------------------------------------
 -- VIEWS DE SALDO (fonte de verdade = ledgers acima)
 -- ----------------------------------------------------------------------------

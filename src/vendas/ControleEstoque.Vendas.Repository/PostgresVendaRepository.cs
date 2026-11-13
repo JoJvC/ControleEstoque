@@ -16,6 +16,12 @@ public sealed class PostgresVendaRepository : IVendaRepository
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        // Ordem das travas: caixa, venda/cliente, produtos. Venda sem pagamento (só fiado) não toca o caixa.
+        if (gravacao.Pagamentos.Count > 0)
+        {
+            await GarantirCaixaHojeAbertoAsync(connection, transaction, cancellationToken);
+        }
+
         if (await ChecarSaldoAsync(connection, transaction, gravacao, cancellationToken) is { } falta)
         {
             return new ResultadoGravacao(0, falta); // sem Commit: o Dispose da transação faz rollback.
@@ -38,6 +44,8 @@ public sealed class PostgresVendaRepository : IVendaRepository
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await GarantirCaixasDaEdicaoAbertosAsync(connection, transaction, gravacao, cancellationToken);
 
         await using (var command = new NpgsqlCommand(Sql.UpdateVenda, connection, transaction))
         {
@@ -150,27 +158,41 @@ public sealed class PostgresVendaRepository : IVendaRepository
         Guid vendaId, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.GetInfoPagamento, connection);
-        command.Parameters.AddWithValue("vendaId", vendaId);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
-        {
-            return null;
-        }
-
-        return new InfoPagamentoVenda(
-            reader.GetDecimal(0),
-            reader.GetDecimal(1),
-            reader.GetDecimal(2),
-            Enum.Parse<StatusPagamento>(reader.GetString(3)));
+        return await GetInfoPagamentoAsync(connection, null, vendaId, cancellationToken);
     }
 
-    public async Task AddPagamentoAsync(
-        Guid vendaId, FormaPagamento forma, decimal valor, decimal abatimentoFiado,
-        StatusPagamento novoStatus, CancellationToken cancellationToken)
+    public async Task<InfoPagamentoVenda> AddPagamentoAsync(
+        Guid vendaId, FormaPagamento forma, decimal valor, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // Ordem das travas: caixa (FOR SHARE) e depois a venda (FOR UPDATE).
+        await GarantirCaixaHojeAbertoAsync(connection, transaction, cancellationToken);
+
+        await using (var command = new NpgsqlCommand(Sql.TravaVenda, connection, transaction))
+        {
+            command.Parameters.AddWithValue("vendaId", vendaId);
+            if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            {
+                throw new EntityNotFoundException("VENDA_NAO_ENCONTRADA", $"Venda {vendaId} não encontrada.");
+            }
+        }
+
+        // Totais relidos sob a trava da venda: pagamentos concorrentes se serializam aqui.
+        var info = await GetInfoPagamentoAsync(connection, transaction, vendaId, cancellationToken)
+            ?? throw new EntityNotFoundException("VENDA_NAO_ENCONTRADA", $"Venda {vendaId} não encontrada.");
+        if (info.TotalPago + valor > info.TotalLiquido)
+        {
+            throw new BusinessRuleException(
+                "PAGAMENTO_EXCEDE_SALDO",
+                $"Pagamento de {valor:F2} excede o saldo restante de {info.TotalLiquido - info.TotalPago:F2}.");
+        }
+
+        var novoStatus = VendaCalculos.CalcularStatus(info.TotalLiquido, info.TotalPago + valor);
+
+        // O pagamento abate o débito de fiado gerado por esta venda, limitado ao restante.
+        var abatimentoFiado = Math.Min(valor, info.DebitoFiadoRestante);
 
         await using (var command = new NpgsqlCommand(Sql.InsertPagamento, connection, transaction))
         {
@@ -196,6 +218,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
         }
 
         await transaction.CommitAsync(cancellationToken);
+        return info;
     }
 
     public async Task<long> GetSaldoCascoClienteAsync(Guid clienteId, CancellationToken cancellationToken)
@@ -251,6 +274,62 @@ public sealed class PostgresVendaRepository : IVendaRepository
     }
 
     // ---- privados -----------------------------------------------------------
+
+    private static async Task<InfoPagamentoVenda?> GetInfoPagamentoAsync(
+        NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid vendaId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(Sql.GetInfoPagamento, connection, transaction);
+        command.Parameters.AddWithValue("vendaId", vendaId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new InfoPagamentoVenda(
+            reader.GetDecimal(0),
+            reader.GetDecimal(1),
+            reader.GetDecimal(2),
+            Enum.Parse<StatusPagamento>(reader.GetString(3)));
+    }
+
+    /// <summary>
+    /// Trava o caixa de hoje (mesma base do DEFAULT now() de venda_pagamentos.data) com FOR SHARE, que
+    /// conflita com o FOR UPDATE do fechamento. Sem caixa na data, segue; FECHADO lança CAIXA_FECHADO.
+    /// </summary>
+    private static async Task GarantirCaixaHojeAbertoAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(Sql.TravaCaixaHoje, connection, transaction);
+        if ((string?)await command.ExecuteScalarAsync(cancellationToken) == "FECHADO")
+        {
+            throw new ConflictException("CAIXA_FECHADO", "Não é possível lançar pagamento em caixa fechado.");
+        }
+    }
+
+    /// <summary>
+    /// Edição apaga e reinsere os pagamentos: recusa se algum pagamento atual da venda caiu num dia de caixa
+    /// FECHADO, ou se a edição reinsere pagamento (data = hoje) e o caixa de hoje está FECHADO. Travas em
+    /// ordem de data, antes da trava da venda e dos produtos.
+    /// </summary>
+    private static async Task GarantirCaixasDaEdicaoAbertosAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, VendaGravacao gravacao,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(Sql.TravaCaixasDaEdicao, connection, transaction);
+        command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
+        command.Parameters.AddWithValue("reinsere", gravacao.Pagamentos.Count > 0);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (reader.GetString(0) == "FECHADO")
+            {
+                throw new ConflictException(
+                    "CAIXA_FECHADO", "Não é possível editar venda com pagamento em caixa fechado.");
+            }
+        }
+    }
 
     private static async Task InserirEfeitosAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, VendaGravacao gravacao,
@@ -551,6 +630,23 @@ public sealed class PostgresVendaRepository : IVendaRepository
             WHERE venda_id = @vendaId AND deleted_at IS NULL
             ORDER BY data
             """;
+
+        public const string TravaCaixaHoje =
+            "SELECT status::text FROM caixas WHERE data = CURRENT_DATE AND deleted_at IS NULL FOR SHARE";
+
+        public const string TravaCaixasDaEdicao = """
+            SELECT c.status::text
+            FROM caixas c
+            WHERE c.deleted_at IS NULL
+              AND (c.data IN (SELECT p.data::date FROM venda_pagamentos p
+                              WHERE p.venda_id = @vendaId AND p.deleted_at IS NULL)
+                   OR (@reinsere AND c.data = CURRENT_DATE))
+            ORDER BY c.data
+            FOR SHARE OF c
+            """;
+
+        public const string TravaVenda =
+            "SELECT id FROM vendas WHERE id = @vendaId AND deleted_at IS NULL FOR UPDATE";
 
         public const string GetInfoPagamento = """
             SELECT v.total_liquido,

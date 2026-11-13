@@ -25,4 +25,8 @@ export class RhApi {
   criarCargo(request: CreateCargoRequest): Observable<CargoResponse> {
     return this.http.post<CargoResponse>(`${this.base}/cargos`, request);
   }
+
+  atualizarCargo(id: string, request: CreateCargoRequest): Observable<CargoResponse> {
+    return this.http.put<CargoResponse>(`${this.base}/cargos/${id}`, request);
+  }
 }

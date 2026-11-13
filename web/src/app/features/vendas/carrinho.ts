@@ -1,5 +1,11 @@
 import { ProdutoResponse } from '../../core/api/models/estoque';
-import { ItemVendaRequest, TipoDesconto } from '../../core/api/models/vendas';
+import {
+  CreateVendaRequest,
+  FormaPagamento,
+  ItemVendaRequest,
+  TipoDesconto,
+} from '../../core/api/models/vendas';
+import { PagamentoEdicao } from '../../ui/organisms/pagamento-lista';
 
 export interface DescontoCarrinho {
   readonly tipo: TipoDesconto;
@@ -46,5 +52,69 @@ export function paraItemRequest(item: ItemCarrinho): ItemVendaRequest {
       item.desconto === null
         ? null
         : { tipo: item.desconto.tipo, valor: item.desconto.valor, motivo: item.desconto.motivo },
+  };
+}
+
+export interface TotaisCarrinho {
+  readonly bruto: number;
+  readonly desconto: number;
+  readonly liquido: number;
+}
+
+export interface RascunhoVenda {
+  readonly clienteId: string;
+  readonly funcionarioId: string;
+  readonly enderecoEntregaId: string | null;
+  readonly itens: readonly ItemCarrinho[];
+  readonly pagamentos: readonly PagamentoEdicao[];
+  readonly cascosDevolvidos: number;
+  readonly cascosDevolvidosNaHora: boolean;
+  readonly sucataEntregue: number;
+}
+
+// Dinheiro em reais com 2 casas: arredonda para não acumular erro de ponto flutuante.
+const centavos = (valor: number): number => Math.round(valor * 100) / 100;
+
+export function totaisDe(itens: readonly ItemCarrinho[]): TotaisCarrinho {
+  const bruto = centavos(itens.reduce((soma, i) => soma + brutoDe(i), 0));
+  const desconto = centavos(itens.reduce((soma, i) => soma + valorDescontoDe(i), 0));
+  return { bruto, desconto, liquido: centavos(bruto - desconto) };
+}
+
+export function totalPagoDe(pagamentos: readonly PagamentoEdicao[]): number {
+  return centavos(pagamentos.reduce((soma, p) => soma + (p.valor ?? 0), 0));
+}
+
+export function fiadoDe(liquido: number, pagamentos: readonly PagamentoEdicao[]): number {
+  return Math.max(0, centavos(liquido - totalPagoDe(pagamentos)));
+}
+
+export function pagamentoExcede(liquido: number, pagamentos: readonly PagamentoEdicao[]): boolean {
+  return totalPagoDe(pagamentos) > liquido;
+}
+
+export function temAgua(itens: readonly ItemCarrinho[]): boolean {
+  return itens.some((i) => i.produto.tipo === 'AGUA');
+}
+
+export function quantidadeAgua(itens: readonly ItemCarrinho[]): number {
+  return itens.filter((i) => i.produto.tipo === 'AGUA').reduce((s, i) => s + i.quantidade, 0);
+}
+
+// Sem ÁGUA no carrinho o passo Cascos não existe: casco e sucata vão zerados.
+export function paraCreateVendaRequest(rascunho: RascunhoVenda): CreateVendaRequest {
+  const comCascos = temAgua(rascunho.itens);
+  return {
+    clienteId: rascunho.clienteId,
+    funcionarioId: rascunho.funcionarioId,
+    enderecoEntregaId: rascunho.enderecoEntregaId,
+    itens: rascunho.itens.map(paraItemRequest),
+    pagamentos: rascunho.pagamentos
+      .filter((p) => p.valor !== null && p.valor > 0)
+      .map((p) => ({ forma: p.forma as FormaPagamento, valor: p.valor as number })),
+    cascosDevolvidos: comCascos ? rascunho.cascosDevolvidos : 0,
+    cascosDevolvidosNaHora: comCascos && rascunho.cascosDevolvidosNaHora,
+    sucataEntregue: comCascos ? rascunho.sucataEntregue : 0,
+    observacao: null,
   };
 }

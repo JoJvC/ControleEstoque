@@ -162,7 +162,7 @@ POST /v1/vendas
 │     Itens[]: { ProdutoId, Quantidade, PrecoUnitario, Desconto?: { Tipo: "VALOR"|"PERCENTUAL", Valor, Motivo } },
 │     Pagamentos[]: { Forma: "PIX"|"CARTAO_CREDITO"|"CARTAO_DEBITO"|"DINHEIRO"|"OUTRO", Valor },
 │     CascosDevolvidos: int (>=0),           ← devolução de casco NORMAL no ato
-│     CascosDevolvidosNaHora: bool,          ← atalho: devolvidos = qtd de água vendida
+│     CascosDevolvidosNaHora: bool,          ← só informativo (atalho de UI); vale o número em CascosDevolvidos
 │     SucataEntregue: int (>=0),             ← registro à parte; NÃO abate casco
 │     Observacao? }
 ├── Response 201: VendaResponse { Id, Data, TotalBruto, TotalDesconto, TotalLiquido,
@@ -370,7 +370,7 @@ Cada sprint termina com `dotnet build` + `dotnet test` verdes e smoke test passa
 - [ ] `VendaService.CriarAsync` implementando os 8 efeitos da Seção 4.1 em **uma** `NpgsqlTransaction`
 - [ ] `VendaService.EditarAsync` com estratégia de replay (soft delete + reinserção dos registros vinculados)
 - [ ] Pagamento pós-venda, cupom fiscal (número sequencial + JSONB), consultas paginadas
-- [ ] Testes de cenário (mínimo): venda paga integral; parcial gera fiado; múltiplas formas; desconto por item recalcula total; água gera EMPRESTIMO e galão completo NÃO; `cascosDevolvidosNaHora=true` iguala devolvidos a vendidos; devolução > vendida gera crédito; sucata junto não abate casco; edição substitui efeitos sem duplicar saldo; estoque insuficiente → 422; edição pós-cupom → 422
+- [ ] Testes de cenário (mínimo): venda paga integral; parcial gera fiado; múltiplas formas; desconto por item recalcula total; água gera EMPRESTIMO e galão completo NÃO; `cascosDevolvidosNaHora=true` é só informativo: vale o `cascosDevolvidos` informado; devolução > vendida gera crédito; sucata junto não abate casco; edição substitui efeitos sem duplicar saldo; estoque insuficiente → 422; edição pós-cupom → 422
 - **Critério de aceite:** walkthrough da Seção 7 reproduzível de ponta a ponta via HTTP.
 
 ### Sprint 5 — Financeiro

@@ -49,13 +49,15 @@ public sealed class VendaServiceTests
     }
 
     [Fact]
-    public async Task CriarAsync_QuandoCascosDevolvidosNaHora_IgualaDevolvidosAoVendido()
+    public async Task CriarAsync_QuandoDevolvidosNaHoraComNumeroEditado_UsaOInformado()
     {
         await sut.CriarAsync(
-            NovaVendaDe(agua.Id, 7, 50m, cascosDevolvidos: 0, devolvidosNaHora: true),
+            NovaVendaDe(agua.Id, 5, 50m, cascosDevolvidos: 3, devolvidosNaHora: true),
             CancellationToken.None);
 
-        Assert.Equal(7, vendas.UltimaGravacao!.CascosDevolvidos);
+        Assert.Equal(5, vendas.UltimaGravacao!.CascosEmprestados);
+        Assert.Equal(3, vendas.UltimaGravacao.CascosDevolvidos);
+        Assert.Equal(2, vendas.UltimaGravacao.CascosEmprestados - vendas.UltimaGravacao.CascosDevolvidos);
     }
 
     [Fact]

@@ -36,6 +36,7 @@ const FORMAS: SelectOpcao[] = [
           <ce-select
             class="pagamentos__forma"
             [opcoes]="formas"
+            rotulo="Forma de pagamento"
             [ngModel]="pagamento.forma"
             (ngModelChange)="mudarForma(indice, $event)"
           />

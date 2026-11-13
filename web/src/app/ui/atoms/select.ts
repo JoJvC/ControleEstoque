@@ -13,7 +13,8 @@ export interface SelectOpcao {
   template: `
     <select
       class="campo"
-      [id]="id() ?? null"
+      [attr.id]="id()"
+      [attr.aria-label]="rotulo()"
       [disabled]="desabilitado()"
       [value]="valor() ?? ''"
       (change)="aoSelecionar($event)"
@@ -54,6 +55,8 @@ export class Select implements ControlValueAccessor {
   readonly opcoes = input.required<readonly SelectOpcao[]>();
   readonly placeholder = input('');
   readonly id = input<string | null>(null);
+  /** Nome acessível quando não há <label> associado (ex.: linhas de uma lista). */
+  readonly rotulo = input<string | null>(null);
 
   protected readonly valor = signal<string | null>(null);
   protected readonly desabilitado = signal(false);

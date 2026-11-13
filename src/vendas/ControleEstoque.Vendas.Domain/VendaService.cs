@@ -168,7 +168,8 @@ public sealed class VendaService : IVendaService
             .Where(i => produtos[i.ProdutoId].Tipo == TipoProduto.AGUA)
             .Sum(i => i.Quantidade);
 
-        var cascosDevolvidos = venda.CascosDevolvidosNaHora ? aguaVendida : venda.CascosDevolvidos;
+        // O toggle "na hora" é atalho de UI e só informativo: o número informado é o que vale.
+        var cascosDevolvidos = venda.CascosDevolvidos;
 
         Guid? cascoProdutoId = null;
         if (cascosDevolvidos > 0)

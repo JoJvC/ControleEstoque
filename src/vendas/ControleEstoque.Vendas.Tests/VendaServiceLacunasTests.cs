@@ -98,7 +98,7 @@ public sealed class VendaServiceLacunasTests
         var venda = new NovaVenda(
             clienteId, funcionarioId, null, itens,
             [new PagamentoVenda(FormaPagamento.DINHEIRO, 30m)],
-            0, true, 0, null);
+            3, true, 0, null);
 
         var resultado = await sut.CriarAsync(venda, CancellationToken.None);
 
@@ -108,7 +108,7 @@ public sealed class VendaServiceLacunasTests
         Assert.Equal(72m, g.TotalLiquido);
         Assert.Equal(StatusPagamento.PARCIAL, g.Status);
         Assert.Equal(3, g.CascosEmprestados); // só a água empresta casco
-        Assert.Equal(3, g.CascosDevolvidos);  // devolvidos na hora = água vendida
+        Assert.Equal(3, g.CascosDevolvidos);  // devolvidos informados (3)
         Assert.Equal(42m, g.DebitoFiado);     // 72 - 30 pago
 
         Assert.Equal(72m, resultado.TotalLiquido);

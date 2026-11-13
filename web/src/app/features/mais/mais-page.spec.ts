@@ -33,10 +33,22 @@ describe('MaisPage', () => {
     await fixture.whenStable();
     expect(rotulos(el).some((t) => t.includes('Relatórios'))).toBe(false);
     expect(rotulos(el).some((t) => t.includes('Estoque'))).toBe(true);
-    expect(rotulos(el).some((t) => t.includes('Funcionários e cargos'))).toBe(true);
 
     store.select(operadorValido(['relatorios.ver']));
     await fixture.whenStable();
     expect(rotulos(el).some((t) => t.includes('Relatórios'))).toBe(true);
+  });
+
+  it('link Funcionários e cargos só aparece com rh.gerir', async () => {
+    const store = TestBed.inject(OperatorStore);
+    store.select(operadorValido([]));
+    const fixture = TestBed.createComponent(MaisPage);
+    const el = fixture.nativeElement as HTMLElement;
+    await fixture.whenStable();
+    expect(rotulos(el).some((t) => t.includes('Funcionários e cargos'))).toBe(false);
+
+    store.select(operadorValido(['rh.gerir']));
+    await fixture.whenStable();
+    expect(rotulos(el).some((t) => t.includes('Funcionários e cargos'))).toBe(true);
   });
 });

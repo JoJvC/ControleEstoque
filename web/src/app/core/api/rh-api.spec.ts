@@ -58,4 +58,60 @@ describe('RhApi', () => {
     expect(req.request.body).toEqual(body);
     req.flush({});
   });
+
+  const FUNC = {
+    nome: 'Ana',
+    telefone: null,
+    cargoId: 'c1',
+    valorDiaria: 0,
+    ativo: true,
+  };
+
+  it('obterFuncionario: GET /funcionarios/<id>', () => {
+    api.obterFuncionario('f1').subscribe();
+    const req = http.expectOne(`${BASE}/funcionarios/f1`);
+    expect(req.request.method).toBe('GET');
+    req.flush({});
+  });
+
+  it('criarFuncionario: POST /funcionarios com o corpo', () => {
+    api.criarFuncionario(FUNC).subscribe();
+    const req = http.expectOne(`${BASE}/funcionarios`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(FUNC);
+    req.flush({});
+  });
+
+  it('atualizarFuncionario: PUT /funcionarios/<id> com o corpo', () => {
+    api.atualizarFuncionario('f1', { ...FUNC, ativo: false }).subscribe();
+    const req = http.expectOne(`${BASE}/funcionarios/f1`);
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ ...FUNC, ativo: false });
+    req.flush({});
+  });
+
+  it('obterContaCorrente: GET /funcionarios/<id>/conta-corrente', () => {
+    api.obterContaCorrente('f1').subscribe();
+    const req = http.expectOne(`${BASE}/funcionarios/f1/conta-corrente`);
+    expect(req.request.method).toBe('GET');
+    req.flush({});
+  });
+
+  it('lancarVale: POST /funcionarios/<id>/vales com o corpo', () => {
+    const body = { valor: 30, observacao: 'adiantamento' };
+    api.lancarVale('f1', body).subscribe();
+    const req = http.expectOne(`${BASE}/funcionarios/f1/vales`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(body);
+    req.flush({ saldoAPagar: 70 });
+  });
+
+  it('lancarPagamento: POST /funcionarios/<id>/pagamentos com o corpo', () => {
+    const body = { valor: 70, observacao: null };
+    api.lancarPagamento('f1', body).subscribe();
+    const req = http.expectOne(`${BASE}/funcionarios/f1/pagamentos`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(body);
+    req.flush({ saldoAPagar: 0 });
+  });
 });

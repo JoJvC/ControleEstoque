@@ -35,7 +35,7 @@ export class MaisPage {
     { path: '/estoque', label: 'Estoque', icon: '📦' },
     { path: '/produtos', label: 'Produtos', icon: '🫙' },
     { path: '/marcas', label: 'Marcas', icon: '🏷️' },
-    { path: '/rh', label: 'Funcionários e cargos', icon: '🪪' },
+    { path: '/rh', label: 'Funcionários e cargos', icon: '🪪', permissao: 'rh.gerir' },
     { path: '/relatorios', label: 'Relatórios', icon: '📊', permissao: 'relatorios.ver' },
   ];
 

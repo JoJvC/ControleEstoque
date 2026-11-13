@@ -196,9 +196,8 @@ describe('RhPage', () => {
     configurar(['rh.gerir']);
     let f = TestBed.createComponent(RhPage);
     f.detectChanges();
-    const a = (f.nativeElement as HTMLElement).querySelector('a')!;
+    const a = (f.nativeElement as HTMLElement).querySelector('a[href="/rh/cargos"]')!;
     expect(a.textContent).toContain('Cargos');
-    expect(a.getAttribute('href')).toBe('/rh/cargos');
     TestBed.inject(OperatorStore).select(operador([]));
     f = TestBed.createComponent(RhPage);
     f.detectChanges();

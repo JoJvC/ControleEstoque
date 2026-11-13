@@ -21,3 +21,36 @@ export interface CreateCargoRequest {
   nome: string;
   permissoes?: string[];
 }
+
+export interface CreateFuncionarioRequest {
+  nome: string;
+  telefone: string | null;
+  cargoId: string;
+  valorDiaria: number;
+  ativo: boolean;
+}
+
+export type TipoLancamentoFuncionario = 'DIARIA' | 'VALE' | 'PAGAMENTO';
+
+export interface LancamentoResponse {
+  id: string;
+  tipo: TipoLancamentoFuncionario;
+  valor: number;
+  data: string;
+  observacao: string | null;
+}
+
+export interface ExtratoResponse {
+  funcionarioId: string;
+  saldoAPagar: number;
+  lancamentos: LancamentoResponse[];
+}
+
+export interface LancamentoContaRequest {
+  valor: number;
+  observacao: string | null;
+}
+
+export interface SaldoContaResponse {
+  saldoAPagar: number;
+}

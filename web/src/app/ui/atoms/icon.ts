@@ -4,7 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
  * Sprite SVG próprio (24×24, stroke currentColor) — sem font-icons (plano §1).
  * Novos ícones: adicionar o(s) path(s) ao registro.
  */
-const ICONES = {
+export const ICONES = {
   home: ['M3 10.5 12 4l9 6.5', 'M5 9.5V20h14V9.5'],
   gota: ['M12 3c3.5 4.2 6 7.4 6 10.2A6 6 0 0 1 6 13.2C6 10.4 8.5 7.2 12 3z'],
   usuario: ['M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5'],
@@ -33,6 +33,31 @@ const ICONES = {
   sair: ['M9 4H5v16h4', 'M15 8l4 4-4 4', 'M19 12h-9'],
   carrinho: ['M3 4h2l2.5 11h10L21 8H7', 'M9 20h.01', 'M17 20h.01'],
   galao: ['M9 3h6v3l2 4v10a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V10l2-4V3z', 'M9 14h6'],
+  'galao-completo': [
+    'M9 3h6v3l2 4v10a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V10l2-4V3z',
+    'M9.5 14.5l2 2 3.5-4',
+  ],
+  casco: ['M9 3h6v3l2 4v10a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V10l2-4V3z'],
+  sucata: ['M9 3h6v3l2 4v10a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V10l2-4V3z', 'M13 10l-2 3 3 2-2 4'],
+  // tracejado simulado com segmentos de path (o ce-icon não aceita atributos por path)
+  'casco-na-rua': [
+    'M9 3h6v3',
+    'M15.6 7.2 17 10',
+    'M17 12.5v3',
+    'M17 18v2a1 1 0 0 1-1 1h-1.5',
+    'M12 21h-1.5',
+    'M8 21a1 1 0 0 1-1-1v-2',
+    'M7 15.5v-3',
+    'M7 10l1.4-2.8',
+    'M9 6V3',
+  ],
+  gelo: ['M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z', 'M4 7.5l8 4.5 8-4.5', 'M12 12v9'],
+  carvao: [
+    'M7 10h10l1 10H6l1-10z',
+    'M9 10V8h6v2',
+    'M12 18a2.5 2.5 0 0 0 2.5-2.5c0-1.5-1-2-1.5-3-.5 1-1 1.2-1.5 2-.6.8-.5 3.5.5 3.5z',
+  ],
+  copo: ['M6 4h12l-1.5 16h-9L6 4z', 'M6.5 9h11'],
 } as const;
 
 export type IconeNome = keyof typeof ICONES;
@@ -68,5 +93,9 @@ export class Icon {
   readonly nome = input.required<IconeNome>();
   readonly tamanho = input(24);
 
-  protected readonly paths = computed<readonly string[]>(() => ICONES[this.nome()]);
+  // o nome pode chegar fora do tipo em runtime (dado do back, cast): cai em 'caixa'
+  protected readonly paths = computed<readonly string[]>(() => {
+    const nome = this.nome();
+    return Object.hasOwn(ICONES, nome) ? ICONES[nome] : ICONES.caixa;
+  });
 }

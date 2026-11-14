@@ -1,6 +1,8 @@
-import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 
+import { TipoProduto } from '../../core/api/models/estoque';
 import { Icon } from '../atoms/icon';
+import { iconeDaCategoria, iconeDoProduto } from '../atoms/icone-do-produto';
 import { PrecoPipe } from '../pipes/preco-pipe';
 
 /** Card de produto (foto + nome + marca/tamanho + preço de referência). Presentational. */
@@ -14,7 +16,7 @@ import { PrecoPipe } from '../pipes/preco-pipe';
         @if (fotoSrc() && !fotoFalhou()) {
           <img [src]="fotoSrc()" [alt]="'Foto de ' + nome()" (error)="fotoFalhou.set(true)" />
         } @else {
-          <ce-icon nome="galao" [tamanho]="32" />
+          <ce-icon [nome]="icone()" [tamanho]="32" />
         }
       </span>
       <span class="card__info">
@@ -103,6 +105,15 @@ export class ProdutoCard {
   readonly detalhe = input('');
   readonly precoReferencia = input.required<number>();
   readonly fotoSrc = input<string | null>(null);
+  readonly tipo = input<TipoProduto | null>(null);
+  readonly categoria = input<string | null>(null);
+
+  protected readonly icone = computed(() => {
+    const tipo = this.tipo();
+    return tipo
+      ? iconeDoProduto({ tipo, categoria: this.categoria() })
+      : iconeDaCategoria(this.categoria());
+  });
 
   protected readonly fotoFalhou = signal(false);
 }

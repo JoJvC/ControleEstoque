@@ -476,7 +476,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_lanc_func_diaria_caixa
 -- ----------------------------------------------------------------------------
 
 -- Estoque atual por produto + flag de alerta de mínimo.
-CREATE VIEW vw_estoque_atual AS
+CREATE OR REPLACE VIEW vw_estoque_atual AS
 SELECT p.id AS produto_id,
        p.tipo,
        p.nome,
@@ -485,7 +485,7 @@ SELECT p.id AS produto_id,
        p.tamanho,
        COALESCE(SUM(m.quantidade), 0)                     AS quantidade,
        p.estoque_minimo,
-       COALESCE(SUM(m.quantidade), 0) <= p.estoque_minimo AS abaixo_minimo
+       (p.estoque_minimo > 0 AND COALESCE(SUM(m.quantidade), 0) < p.estoque_minimo) AS abaixo_minimo
 FROM produtos p
 LEFT JOIN marcas ma ON ma.id = p.marca_id
 LEFT JOIN movimentos_estoque m

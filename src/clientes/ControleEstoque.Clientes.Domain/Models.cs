@@ -32,4 +32,6 @@ public sealed record ResultadoEntregaSucata(long TotalSucataEntregue, decimal No
 
 public sealed record SaldoCascoRelatorio(Guid ClienteId, string Nome, long SaldoCascos);
 
+public sealed record TotalCascosRelatorio(long TotalCascos);
+
 public sealed record SucataEntregueRelatorio(Guid ClienteId, string Nome, long TotalEntregue);

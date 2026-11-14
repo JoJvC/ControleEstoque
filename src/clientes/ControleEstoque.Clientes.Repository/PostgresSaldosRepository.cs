@@ -42,6 +42,13 @@ public sealed class PostgresSaldosRepository : ISaldosRepository
         return results;
     }
 
+    public async Task<long> GetTotalCascosNaRuaAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.TotalCascosNaRua, connection);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
     public async Task<IReadOnlyList<SucataEntregueRelatorio>> ListSucataEntregueAsync(
         CancellationToken cancellationToken)
     {
@@ -72,6 +79,10 @@ public sealed class PostgresSaldosRepository : ISaldosRepository
             FROM vw_saldo_casco_cliente
             WHERE saldo_cascos <> 0
             ORDER BY saldo_cascos DESC
+            """;
+
+        public const string TotalCascosNaRua = """
+            SELECT COALESCE(SUM(saldo_cascos), 0) FROM vw_saldo_casco_cliente WHERE saldo_cascos > 0
             """;
 
         public const string ListSucataEntregue = """

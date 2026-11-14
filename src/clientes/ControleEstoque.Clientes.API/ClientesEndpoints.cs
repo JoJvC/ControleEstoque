@@ -93,6 +93,10 @@ public static class ClientesEndpoints
             ISaldosRepository saldos, CancellationToken cancellationToken) =>
             Results.Ok(await saldos.ListSaldosCascoAsync(cancellationToken)));
 
+        app.MapGet("/v1/relatorios/cascos/total", async (
+            ISaldosRepository saldos, CancellationToken cancellationToken) =>
+            Results.Ok(new TotalCascosRelatorio(await saldos.GetTotalCascosNaRuaAsync(cancellationToken))));
+
         app.MapGet("/v1/relatorios/sucata", async (
             ISaldosRepository saldos, CancellationToken cancellationToken) =>
             Results.Ok(await saldos.ListSucataEntregueAsync(cancellationToken)));

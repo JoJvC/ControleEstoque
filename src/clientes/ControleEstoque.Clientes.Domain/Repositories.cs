@@ -17,6 +17,9 @@ public interface ISaldosRepository
     /// <summary>Relatório: clientes com saldo de casco normal diferente de zero.</summary>
     Task<IReadOnlyList<SaldoCascoRelatorio>> ListSaldosCascoAsync(CancellationToken cancellationToken);
 
+    /// <summary>Relatório: total de cascos na rua (soma dos saldos positivos).</summary>
+    Task<long> GetTotalCascosNaRuaAsync(CancellationToken cancellationToken);
+
     /// <summary>Relatório: clientes que já entregaram sucata (independente do saldo de casco).</summary>
     Task<IReadOnlyList<SucataEntregueRelatorio>> ListSucataEntregueAsync(CancellationToken cancellationToken);
 }

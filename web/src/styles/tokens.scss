@@ -36,7 +36,8 @@
 
   // Tipografia
   --ce-font-family:
-    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    'Figtree', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --ce-font-family-titulo: 'Sora', var(--ce-font-family);
   --ce-font-sm: 0.8125rem; // 13px — legendas, metadados
   --ce-font-md: 1rem; // 16px — base (evita zoom do iOS em inputs)
   --ce-font-lg: 1.25rem; // 20px — títulos de seção

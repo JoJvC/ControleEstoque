@@ -1,0 +1,94 @@
+@use 'mixins';
+
+.aparencia {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-4);
+  padding: var(--ce-space-5) var(--ce-space-4);
+}
+
+.aparencia__titulo {
+  font-size: var(--ce-font-xl);
+}
+
+.aparencia__lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-2);
+}
+
+.aparencia__opcao {
+  @include mixins.touch-target;
+
+  display: flex;
+  align-items: center;
+  gap: var(--ce-space-4);
+  width: 100%;
+  padding: var(--ce-space-3) var(--ce-space-4);
+  background: var(--ce-surface);
+  border: 2px solid transparent;
+  border-radius: 20px;
+  text-align: left;
+}
+
+.aparencia__opcao--ativa {
+  border-color: var(--ce-primary);
+}
+
+.aparencia__texto {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-1);
+}
+
+.aparencia__nome {
+  font-size: var(--ce-font-md);
+  font-weight: 600;
+}
+
+.aparencia__descricao {
+  font-size: var(--ce-font-sm);
+  color: var(--ce-text-muted);
+}
+
+// Miniatura: o [data-tema] do elemento redefine as custom properties só dentro dela.
+.aparencia__previa {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 72px;
+  height: 56px;
+  overflow: hidden;
+  background: var(--ce-bg);
+  border: 1px solid var(--ce-border);
+  border-radius: var(--ce-radius-md);
+}
+
+.aparencia__previa-topo {
+  height: 12px;
+  background: var(--ce-topo);
+}
+
+.aparencia__previa-corpo {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--ce-space-1);
+  padding: var(--ce-space-1);
+}
+
+.aparencia__previa-cartao {
+  flex: 1;
+  background: var(--ce-surface);
+  border-radius: var(--ce-radius-sm);
+}
+
+.aparencia__previa-acao {
+  align-self: flex-end;
+  padding: 0 var(--ce-space-2);
+  background: var(--ce-primary);
+  border-radius: var(--ce-radius-sm);
+  font-size: 9px;
+  line-height: 12px;
+  color: var(--ce-text-on-primary);
+}

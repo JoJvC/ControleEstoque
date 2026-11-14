@@ -1,0 +1,36 @@
+<section class="aparencia">
+  <h1 class="aparencia__titulo">Aparência</h1>
+
+  <div class="aparencia__lista" role="radiogroup" aria-label="Tema">
+    @for (opcao of opcoes; track opcao.valor; let i = $index) {
+      <button
+        type="button"
+        role="radio"
+        class="aparencia__opcao"
+        [class.aparencia__opcao--ativa]="escolha() === opcao.valor"
+        [attr.aria-checked]="escolha() === opcao.valor"
+        [attr.tabindex]="escolha() === opcao.valor ? 0 : -1"
+        (click)="escolher(opcao.valor)"
+        (keydown)="teclado($event, i)"
+      >
+        <span
+          class="aparencia__previa"
+          aria-hidden="true"
+          [attr.data-tema]="previas()[opcao.valor]"
+        >
+          <span class="aparencia__previa-topo"></span>
+          <span class="aparencia__previa-corpo">
+            <span class="aparencia__previa-cartao"></span>
+            <span class="aparencia__previa-acao">Aa</span>
+          </span>
+        </span>
+        <span class="aparencia__texto">
+          <span class="aparencia__nome">{{ opcao.nome }}</span>
+          @if (opcao.descricao) {
+            <span class="aparencia__descricao">{{ opcao.descricao }}</span>
+          }
+        </span>
+      </button>
+    }
+  </div>
+</section>

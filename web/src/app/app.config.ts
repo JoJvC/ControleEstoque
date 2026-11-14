@@ -15,9 +15,11 @@ import { routes } from './app.routes';
 import { provideAppConfig } from './core/config/app-config';
 import { apiErrorInterceptor } from './core/http/api-error-interceptor';
 import { correlationIdInterceptor } from './core/http/correlation-id-interceptor';
+import { provideColorScheme } from './core/platform/color-scheme-service';
 import { provideStorage } from './core/platform/storage-service';
 import { provideMedia } from './core/platform/web-media-service';
 import { providePrint } from './core/platform/web-print-service';
+import { provideTheme } from './core/theme/theme-store';
 
 registerLocaleData(localePt);
 
@@ -30,6 +32,8 @@ export const appConfig: ApplicationConfig = {
     provideStorage(),
     provideMedia(),
     providePrint(),
+    provideColorScheme(),
+    provideTheme(),
     provideServiceWorker('ngsw-worker.js', {
       enabled: !isDevMode(),
       registrationStrategy: 'registerWhenStable:30000',

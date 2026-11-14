@@ -51,4 +51,15 @@ describe('MaisPage', () => {
     await fixture.whenStable();
     expect(rotulos(el).some((t) => t.includes('Funcionários e cargos'))).toBe(true);
   });
+
+  it('link Aparência aparece para operador sem permissões', async () => {
+    TestBed.inject(OperatorStore).select(operadorValido([]));
+    const fixture = TestBed.createComponent(MaisPage);
+    const el = fixture.nativeElement as HTMLElement;
+    await fixture.whenStable();
+    const link = Array.from(el.querySelectorAll<HTMLAnchorElement>('.mais__item')).find((a) =>
+      a.textContent?.includes('Aparência'),
+    );
+    expect(link?.getAttribute('href')).toBe('/mais/aparencia');
+  });
 });

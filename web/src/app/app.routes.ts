@@ -72,6 +72,10 @@ export const routes: Routes = [
         path: 'mais',
         loadComponent: () => import('./features/mais/mais-page').then((m) => m.MaisPage),
       },
+      {
+        path: 'mais/aparencia',
+        loadComponent: () => import('./features/mais/aparencia-page').then((m) => m.AparenciaPage),
+      },
     ],
   },
   { path: '**', redirectTo: '' },

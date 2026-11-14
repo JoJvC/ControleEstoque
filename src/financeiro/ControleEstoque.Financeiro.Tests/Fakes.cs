@@ -184,4 +184,7 @@ internal sealed class FakeFiadoRepository : IFiadoRepository
     public Task<IReadOnlyList<SaldoFiadoCliente>> ListSaldosDevedoresAsync(
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<SaldoFiadoCliente>>([]);
+
+    public Task<decimal> GetTotalAReceberAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(Saldos.Values.Where(saldo => saldo > 0).Sum());
 }

@@ -89,6 +89,13 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
         return results;
     }
 
+    public async Task<decimal> GetTotalAReceberAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.TotalAReceber, connection);
+        return (decimal)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
     private static async Task<decimal> GetSaldoAsync(
         NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid clienteId,
         CancellationToken cancellationToken)
@@ -122,6 +129,12 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
             FROM vw_saldo_fiado_cliente
             WHERE saldo_devedor <> 0
             ORDER BY saldo_devedor DESC
+            """;
+
+        public const string TotalAReceber = """
+            SELECT COALESCE(SUM(saldo_devedor), 0)
+            FROM vw_saldo_fiado_cliente
+            WHERE saldo_devedor > 0
             """;
     }
 }

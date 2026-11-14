@@ -37,6 +37,8 @@ public sealed record ResultadoFechamento(
 
 public sealed record SaldoFiadoCliente(Guid ClienteId, string Nome, decimal SaldoDevedor);
 
+public sealed record TotalFiadoResponse(decimal TotalAReceber);
+
 public sealed record DiaCaixa(
     DateOnly Data,
     StatusCaixa Status,

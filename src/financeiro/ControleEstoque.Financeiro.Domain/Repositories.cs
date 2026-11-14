@@ -52,6 +52,9 @@ public interface IFiadoRepository
         Guid clienteId, decimal valor, string? observacao, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SaldoFiadoCliente>> ListSaldosDevedoresAsync(CancellationToken cancellationToken);
+
+    /// <summary>Soma dos saldos devedores positivos (o que os clientes devem). Créditos não abatem.</summary>
+    Task<decimal> GetTotalAReceberAsync(CancellationToken cancellationToken);
 }
 
 public interface IRelatorioCaixaRepository

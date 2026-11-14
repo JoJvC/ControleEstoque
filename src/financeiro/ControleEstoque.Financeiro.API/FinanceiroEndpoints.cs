@@ -81,6 +81,10 @@ public static class FinanceiroEndpoints
             IFiadoRepository fiado, CancellationToken cancellationToken) =>
             Results.Ok(await fiado.ListSaldosDevedoresAsync(cancellationToken)));
 
+        app.MapGet("/v1/relatorios/fiado/total", async (
+            IFiadoRepository fiado, CancellationToken cancellationToken) =>
+            Results.Ok(new TotalFiadoResponse(await fiado.GetTotalAReceberAsync(cancellationToken))));
+
         return app;
     }
 }

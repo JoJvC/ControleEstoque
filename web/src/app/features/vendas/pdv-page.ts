@@ -402,7 +402,7 @@ const semAcento = (texto: string): string =>
     .passo--ativo .passo__numero {
       background: var(--ce-primary);
       border-color: var(--ce-primary);
-      color: #fff;
+      color: var(--ce-text-on-primary);
     }
 
     .passo__corpo {

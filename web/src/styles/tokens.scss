@@ -1,28 +1,42 @@
 // Design tokens do ControleEstoque.
-// Cores são semânticas (uso, não matiz) — estrutura pronta para dark mode futuro:
-// basta redefinir as custom properties sob prefers-color-scheme/data-theme.
+// Cores são semânticas (uso, não matiz). 4 temas (web/DESIGN.md §3): Oceano (padrão, :root),
+// Uva, Carvão e Noite via [data-tema="…"] no <html>. Valor desconhecido cai no Oceano.
 
-:root {
-  // Cor — marca e feedback
-  --ce-primary: #0369a1; // ação primária (água ⇒ azul)
-  --ce-primary-strong: #075985; // hover/pressed
-  --ce-primary-soft: #e0f2fe; // fundos de destaque suaves
-  --ce-success: #15803d; // pago / saldo positivo
+:root,
+[data-tema='oceano'] {
+  --ce-primary: #08769c;
+  --ce-primary-strong: #062a3f;
+  --ce-primary-soft: #e3f3f8;
+  --ce-success: #15803d;
   --ce-success-soft: #dcfce7;
-  --ce-warning: #b45309; // parcial / alerta de estoque / "vai para fiado"
+  --ce-warning: #b45309;
   --ce-warning-soft: #fef3c7;
-  --ce-danger: #b91c1c; // pendente / débito / destrutivo
+  --ce-danger: #b91c1c;
   --ce-danger-soft: #fee2e2;
-
-  // Cor — superfície e texto
-  --ce-bg: #f1f5f9; // fundo da aplicação
-  --ce-surface: #ffffff; // cards, sheets, headers
-  --ce-surface-muted: #f8fafc; // linhas alternadas, campos desabilitados
-  --ce-text: #0f172a;
-  --ce-text-muted: #475569;
+  --ce-bg: #f2f8fa;
+  --ce-surface: #ffffff;
+  --ce-surface-muted: #f2f8fa;
+  --ce-text: #0b2533;
+  --ce-text-muted: #4b6170;
   --ce-text-on-primary: #ffffff;
-  --ce-border: #e2e8f0;
-  --ce-focus-ring: #0369a1;
+  --ce-border: #e1ecf0;
+  --ce-focus-ring: #08769c;
+  --ce-topo: #062a3f;
+  --ce-topo-cartao: #0e3a55;
+  --ce-destaque: #4cc9e8;
+  --ce-acao-texto: #08769c;
+  --ce-borda-campo: #c6dce4;
+  --ce-casco: #0b6e63;
+  --ce-casco-soft: #ddf2ee;
+  --ce-sucata: #5b6472;
+  --ce-sucata-soft: #eceef1;
+  --ce-fiado: #c2410c;
+  --ce-fiado-soft: #ffede3;
+  --ce-pago: #15803d;
+  --ce-pago-soft: #e3f5ea;
+  --ce-agua: #08769c;
+  --ce-agua-soft: #e3f3f8;
+  --ce-agua-nivel: #4cc9e8;
 
   // Espaçamento — escala de 4px
   --ce-space-1: 4px;
@@ -62,4 +76,112 @@
   --ce-z-nav: 20;
   --ce-z-sheet: 30;
   --ce-z-toast: 40;
+}
+
+[data-tema='uva'] {
+  --ce-primary: #6d28d9;
+  --ce-primary-strong: #2e1065;
+  --ce-primary-soft: #ede9fe;
+  --ce-success: #15803d;
+  --ce-success-soft: #dcfce7;
+  --ce-warning: #b45309;
+  --ce-warning-soft: #fef3c7;
+  --ce-danger: #b91c1c;
+  --ce-danger-soft: #fee2e2;
+  --ce-bg: #f6f5fb;
+  --ce-surface: #ffffff;
+  --ce-surface-muted: #f6f5fb;
+  --ce-text: #1e1537;
+  --ce-text-muted: #5b5570;
+  --ce-text-on-primary: #ffffff;
+  --ce-border: #e7e4f0;
+  --ce-focus-ring: #6d28d9;
+  --ce-topo: #2e1065;
+  --ce-topo-cartao: #43198f;
+  --ce-destaque: #c4b5fd;
+  --ce-acao-texto: #6d28d9;
+  --ce-borda-campo: #cfc9e0;
+  --ce-casco: #0b6e63;
+  --ce-casco-soft: #ddf2ee;
+  --ce-sucata: #5b6472;
+  --ce-sucata-soft: #eceef1;
+  --ce-fiado: #c2410c;
+  --ce-fiado-soft: #ffede3;
+  --ce-pago: #15803d;
+  --ce-pago-soft: #e3f5ea;
+  --ce-agua: #08769c;
+  --ce-agua-soft: #e3f3f8;
+  --ce-agua-nivel: #4cc9e8;
+}
+
+[data-tema='carvao'] {
+  --ce-primary: #2f3338;
+  --ce-primary-strong: #1f2226;
+  --ce-primary-soft: #ecedef;
+  --ce-success: #15803d;
+  --ce-success-soft: #dcfce7;
+  --ce-warning: #b45309;
+  --ce-warning-soft: #fef3c7;
+  --ce-danger: #b91c1c;
+  --ce-danger-soft: #fee2e2;
+  --ce-bg: #f4f4f2;
+  --ce-surface: #ffffff;
+  --ce-surface-muted: #f4f4f2;
+  --ce-text: #1a1c1f;
+  --ce-text-muted: #575c63;
+  --ce-text-on-primary: #ffffff;
+  --ce-border: #e4e4e1;
+  --ce-focus-ring: #2f3338;
+  --ce-topo: #1f2226;
+  --ce-topo-cartao: #33373d;
+  --ce-destaque: #f5b942;
+  --ce-acao-texto: #2f3338;
+  --ce-borda-campo: #cacbc7;
+  --ce-casco: #0b6e63;
+  --ce-casco-soft: #ddf2ee;
+  --ce-sucata: #5b6472;
+  --ce-sucata-soft: #eceef1;
+  --ce-fiado: #c2410c;
+  --ce-fiado-soft: #ffede3;
+  --ce-pago: #15803d;
+  --ce-pago-soft: #e3f5ea;
+  --ce-agua: #08769c;
+  --ce-agua-soft: #e3f3f8;
+  --ce-agua-nivel: #4cc9e8;
+}
+
+[data-tema='noite'] {
+  --ce-primary: #4cc9e8;
+  --ce-primary-strong: #7dd8ee;
+  --ce-primary-soft: #0e2a3b;
+  --ce-success: #4ade80;
+  --ce-success-soft: #0f2e1c;
+  --ce-warning: #fb923c;
+  --ce-warning-soft: #3a1f10;
+  --ce-danger: #f87171;
+  --ce-danger-soft: #3b1518;
+  --ce-bg: #07141c;
+  --ce-surface: #0e2230;
+  --ce-surface-muted: #07141c;
+  --ce-text: #e6f2f6;
+  --ce-text-muted: #9db5c2;
+  --ce-text-on-primary: #03202c;
+  --ce-border: #1d3a4c;
+  --ce-focus-ring: #4cc9e8;
+  --ce-topo: #050e15;
+  --ce-topo-cartao: #0e2a3b;
+  --ce-destaque: #4cc9e8;
+  --ce-acao-texto: #7dd8ee;
+  --ce-borda-campo: #2d4d61;
+  --ce-casco: #4fd1be;
+  --ce-casco-soft: #0d3a35;
+  --ce-sucata: #aab3bf;
+  --ce-sucata-soft: #232c36;
+  --ce-fiado: #fb923c;
+  --ce-fiado-soft: #3a1f10;
+  --ce-pago: #4ade80;
+  --ce-pago-soft: #0f2e1c;
+  --ce-agua: #4cc9e8;
+  --ce-agua-soft: #0e2a3b;
+  --ce-agua-nivel: #4cc9e8;
 }

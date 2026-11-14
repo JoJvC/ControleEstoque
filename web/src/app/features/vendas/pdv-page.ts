@@ -21,6 +21,7 @@ import { ApiError } from '../../core/http/api-error';
 import { mensagemDoErro } from '../../core/http/error-messages';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { SheetService } from '../../core/overlay/sheet-service';
+import { semAcento } from '../../core/util/sem-acento';
 import { Badge } from '../../ui/atoms/badge';
 import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
@@ -58,9 +59,6 @@ const ROTULOS: Record<Passo, string> = {
   pagamento: 'Pagamento',
   revisao: 'Revisão',
 };
-
-const semAcento = (texto: string): string =>
-  texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 @Component({
   selector: 'ce-pdv-page',
@@ -234,6 +232,8 @@ const semAcento = (texto: string): string =>
                             [detalhe]="detalheDe(produto)"
                             [precoReferencia]="produto.precoReferencia"
                             [fotoSrc]="produto.fotoUrl"
+                            [tipo]="produto.tipo"
+                            [categoria]="produto.categoria"
                             (click)="adicionarProduto(produto)"
                           />
                         </ng-template>

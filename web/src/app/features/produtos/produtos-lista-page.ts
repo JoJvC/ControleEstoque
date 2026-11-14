@@ -73,6 +73,8 @@ const TIPO_LABEL: Record<TipoProduto, string> = {
             [detalhe]="detalheDe(produto)"
             [precoReferencia]="produto.precoReferencia"
             [fotoSrc]="produto.fotoUrl ? api.urlFoto(produto.id) : null"
+            [tipo]="produto.tipo"
+            [categoria]="produto.categoria"
             (click)="editar(produto)"
           />
         </ng-template>

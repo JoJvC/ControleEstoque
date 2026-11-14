@@ -79,7 +79,7 @@ const ROTULOS: Record<Passo, string> = {
     SearchBox,
   ],
   template: `
-    <ce-app-header [titulo]="id() ? 'Editar venda' : 'Nova venda'" />
+    <ce-app-header [titulo]="id() ? 'Editar venda' : 'Nova venda'" [onda]="true" />
 
     <div class="conteudo">
       @if (venda(); as v) {

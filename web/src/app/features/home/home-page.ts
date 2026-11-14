@@ -9,6 +9,7 @@ import { OperatorStore } from '../../core/operator/operator-store';
 import { CePermissao } from '../../core/permissions/ce-permissao';
 import { hojeLocal } from '../../core/util/data-local';
 import { Button } from '../../ui/atoms/button';
+import { AppHeader } from '../../ui/organisms/app-header';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { DataList, DataListStatus } from '../../ui/organisms/data-list';
 import { CaixaStore } from '../financeiro/caixa-store';
@@ -16,11 +17,10 @@ import { CaixaStore } from '../financeiro/caixa-store';
 @Component({
   selector: 'ce-home-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Button, CePermissao, DataList, PrecoPipe],
+  imports: [AppHeader, Button, CePermissao, DataList, PrecoPipe],
   template: `
+    <ce-app-header [titulo]="'Olá, ' + primeiroNome() + '!'" [onda]="true" />
     <section class="home">
-      <h1 class="home__titulo">Olá, {{ primeiroNome() }}!</h1>
-
       <section class="home__bloco" aria-label="Caixa de hoje">
         <h2>Caixa de hoje</h2>
         @switch (caixa.status()) {
@@ -94,10 +94,6 @@ import { CaixaStore } from '../financeiro/caixa-store';
       flex-direction: column;
       gap: var(--ce-space-2);
       padding: var(--ce-space-5) var(--ce-space-4);
-    }
-
-    .home__titulo {
-      font-size: var(--ce-font-xl);
     }
 
     .home__bloco {

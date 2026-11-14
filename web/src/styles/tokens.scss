@@ -23,9 +23,10 @@
   --ce-focus-ring: #08769c;
   --ce-topo: #062a3f;
   --ce-topo-cartao: #0e3a55;
+  --ce-texto-sobre-topo: #ffffff;
   --ce-destaque: #4cc9e8;
   --ce-acao-texto: #08769c;
-  --ce-borda-campo: #c6dce4;
+  --ce-borda-campo: #7a909d;
   --ce-casco: #0b6e63;
   --ce-casco-soft: #ddf2ee;
   --ce-sucata: #5b6472;
@@ -62,6 +63,7 @@
   --ce-radius-sm: 6px;
   --ce-radius-md: 10px;
   --ce-radius-lg: 16px;
+  --ce-radius-controle: 12px; // botões, campos e contador (DESIGN.md §3: 12–14 px)
   --ce-shadow-1: 0 1px 2px rgb(15 23 42 / 8%);
   --ce-shadow-2: 0 4px 12px rgb(15 23 42 / 12%);
 
@@ -70,6 +72,7 @@
 
   // Layout do shell — páginas usam para posicionar barras fixas acima da bottom-nav
   --ce-nav-height: 64px;
+  --ce-barra-acao-height: 56px;
 
   // Camadas
   --ce-z-header: 10;
@@ -98,9 +101,10 @@
   --ce-focus-ring: #6d28d9;
   --ce-topo: #2e1065;
   --ce-topo-cartao: #43198f;
+  --ce-texto-sobre-topo: #ffffff;
   --ce-destaque: #c4b5fd;
   --ce-acao-texto: #6d28d9;
-  --ce-borda-campo: #cfc9e0;
+  --ce-borda-campo: #8a80a3;
   --ce-casco: #0b6e63;
   --ce-casco-soft: #ddf2ee;
   --ce-sucata: #5b6472;
@@ -134,9 +138,10 @@
   --ce-focus-ring: #2f3338;
   --ce-topo: #1f2226;
   --ce-topo-cartao: #33373d;
+  --ce-texto-sobre-topo: #ffffff;
   --ce-destaque: #f5b942;
   --ce-acao-texto: #2f3338;
-  --ce-borda-campo: #cacbc7;
+  --ce-borda-campo: #868782;
   --ce-casco: #0b6e63;
   --ce-casco-soft: #ddf2ee;
   --ce-sucata: #5b6472;
@@ -170,9 +175,10 @@
   --ce-focus-ring: #4cc9e8;
   --ce-topo: #050e15;
   --ce-topo-cartao: #0e2a3b;
+  --ce-texto-sobre-topo: #e6f2f6;
   --ce-destaque: #4cc9e8;
   --ce-acao-texto: #7dd8ee;
-  --ce-borda-campo: #2d4d61;
+  --ce-borda-campo: #5a7b90;
   --ce-casco: #4fd1be;
   --ce-casco-soft: #0d3a35;
   --ce-sucata: #aab3bf;

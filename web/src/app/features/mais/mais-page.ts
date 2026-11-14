@@ -6,6 +6,7 @@ import { ApiError } from '../../core/http/api-error';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { PermissionService } from '../../core/permissions/permission-service';
 import { ToastService } from '../../core/toast/toast-service';
+import { AppHeader } from '../../ui/organisms/app-header';
 
 interface MaisLink {
   readonly path: string;
@@ -17,7 +18,7 @@ interface MaisLink {
 @Component({
   selector: 'ce-mais-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink],
+  imports: [RouterLink, AppHeader],
   templateUrl: './mais-page.html',
   styleUrl: './mais-page.scss',
 })
@@ -33,6 +34,7 @@ export class MaisPage {
   private readonly todosLinks: readonly MaisLink[] = [
     { path: '/vendas', label: 'Histórico de vendas', icon: '🧾' },
     { path: '/estoque', label: 'Estoque', icon: '📦' },
+    { path: '/financeiro/caixa', label: 'Caixa do dia', icon: '💵' },
     { path: '/produtos', label: 'Produtos', icon: '🫙' },
     { path: '/marcas', label: 'Marcas', icon: '🏷️' },
     { path: '/mais/aparencia', label: 'Aparência', icon: '🎨' },

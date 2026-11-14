@@ -1,6 +1,6 @@
-<section class="mais">
-  <h1 class="mais__titulo">Mais</h1>
+<ce-app-header titulo="Mais" [onda]="true" />
 
+<section class="mais">
   <nav class="mais__lista" aria-label="Outras áreas">
     @for (link of links(); track link.path) {
       <a class="mais__item" [routerLink]="link.path">

@@ -30,7 +30,12 @@ const TIPO_LABEL: Record<string, string> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CePermissao, AppHeader, Badge, Button, Icon, ListItem, DataList],
   template: `
-    <ce-app-header titulo="Estoque" [mostrarVoltar]="true" (voltar)="voltarParaMais()" />
+    <ce-app-header
+      titulo="Estoque"
+      [onda]="true"
+      [mostrarVoltar]="true"
+      (voltar)="voltarParaMais()"
+    />
 
     <div class="conteudo">
       <ce-data-list

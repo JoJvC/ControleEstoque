@@ -17,7 +17,7 @@ import { ClientesStore } from './clientes-store';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CePermissao, AppHeader, Avatar, Button, Icon, ListItem, SearchBox, DataList],
   template: `
-    <ce-app-header titulo="Clientes">
+    <ce-app-header titulo="Clientes" [onda]="true">
       <ce-button *cePermissao="'clientes.cadastrar'" variante="ghost" (click)="novo()">
         <ce-icon nome="mais" [tamanho]="18" /> Novo
       </ce-button>

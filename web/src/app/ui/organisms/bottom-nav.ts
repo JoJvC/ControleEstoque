@@ -28,6 +28,7 @@ export interface BottomNavItem {
           [class.nav__item--destaque]="item.destaque"
           [routerLink]="item.path"
           routerLinkActive="is-active"
+          ariaCurrentWhenActive="page"
         >
           <span class="nav__icone"><ce-icon [nome]="item.icone" [tamanho]="22" /></span>
           <span class="nav__rotulo">{{ item.label }}</span>
@@ -81,9 +82,11 @@ export interface BottomNavItem {
     }
 
     @include mixins.from-desktop {
+      // menu lateral sobre o fundo topo do tema (DESIGN.md §5 Shell)
       .nav {
         flex-direction: column;
         padding-top: var(--ce-space-4);
+        color: var(--ce-texto-sobre-topo);
       }
 
       .nav__item {
@@ -94,18 +97,20 @@ export interface BottomNavItem {
         width: 100%;
         height: var(--ce-touch-target);
         padding-inline: var(--ce-space-5);
+        color: var(--ce-texto-sobre-topo);
 
         &.is-active {
-          background: var(--ce-primary-soft);
+          background: var(--ce-topo-cartao);
+          color: var(--ce-texto-sobre-topo);
         }
       }
 
       .nav__item--destaque .nav__icone {
-        width: auto;
-        height: auto;
+        width: 32px;
+        height: 32px;
         margin-top: 0;
-        background: none;
-        color: inherit;
+        background: var(--ce-destaque);
+        color: var(--ce-topo);
         box-shadow: none;
       }
 

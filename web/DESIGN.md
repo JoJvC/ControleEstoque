@@ -35,7 +35,7 @@ O tema troca só topo, ação e superfícies. Implementar como `[data-tema]` no 
 | texto | #0B2533 | #1E1537 | #1A1C1F | #E6F2F6 |
 | texto-mudo | #4B6170 | #5B5570 | #575C63 | #9DB5C2 |
 | linha | #E1ECF0 | #E7E4F0 | #E4E4E1 | #1D3A4C |
-| borda (campos) | #C6DCE4 | #CFC9E0 | #CACBC7 | #2D4D61 |
+| borda (campos) | #7A909D | #8A80A3 | #868782 | #5A7B90 |
 
 Cores com função (iguais nos temas claros; versão clara no Noite):
 

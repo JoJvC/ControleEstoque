@@ -62,4 +62,15 @@ describe('MaisPage', () => {
     );
     expect(link?.getAttribute('href')).toBe('/mais/aparencia');
   });
+
+  it('link Caixa do dia leva a /financeiro/caixa (rota sem permissão)', async () => {
+    TestBed.inject(OperatorStore).select(operadorValido([]));
+    const fixture = TestBed.createComponent(MaisPage);
+    const el = fixture.nativeElement as HTMLElement;
+    await fixture.whenStable();
+    const link = Array.from(el.querySelectorAll<HTMLAnchorElement>('.mais__item')).find((a) =>
+      a.textContent?.includes('Caixa'),
+    );
+    expect(link?.getAttribute('href')).toBe('/financeiro/caixa');
+  });
 });

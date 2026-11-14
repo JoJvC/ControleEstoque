@@ -37,7 +37,7 @@ export type BotaoVariante = 'primary' | 'ghost' | 'danger';
       justify-content: center;
       gap: var(--ce-space-2);
       padding-inline: var(--ce-space-5);
-      border-radius: var(--ce-radius-md);
+      border-radius: var(--ce-radius-controle);
       font-weight: 600;
       font-size: var(--ce-font-md);
       transition: filter 0.15s ease;

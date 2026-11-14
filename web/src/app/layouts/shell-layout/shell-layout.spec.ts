@@ -43,4 +43,38 @@ describe('ShellLayout — bottom-nav', () => {
     expect(rotulos(el).some((t) => t.includes('Vender'))).toBe(false);
     TestBed.inject(HttpTestingController).match(() => true);
   });
+
+  const itens = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll<HTMLAnchorElement>('.nav__item')).map((a) => ({
+      rotulo: a.textContent?.trim(),
+      href: a.getAttribute('href'),
+      destaque: a.classList.contains('nav__item--destaque'),
+    }));
+
+  it('ordem Hoje, Clientes, Vender (centro, destaque), Estoque, Mais', async () => {
+    TestBed.inject(OperatorStore).select(operadorValido(['vendas.registrar']));
+    const fixture = TestBed.createComponent(ShellLayout);
+    await fixture.whenStable();
+    expect(itens(fixture.nativeElement)).toEqual([
+      { rotulo: 'Hoje', href: '/home', destaque: false },
+      { rotulo: 'Clientes', href: '/clientes', destaque: false },
+      { rotulo: 'Vender', href: '/vendas/nova', destaque: true },
+      { rotulo: 'Estoque', href: '/estoque', destaque: false },
+      { rotulo: 'Mais', href: '/mais', destaque: false },
+    ]);
+    TestBed.inject(HttpTestingController).match(() => true);
+  });
+
+  it('sem vendas.registrar são 4 itens', async () => {
+    TestBed.inject(OperatorStore).select(operadorValido([]));
+    const fixture = TestBed.createComponent(ShellLayout);
+    await fixture.whenStable();
+    expect(itens(fixture.nativeElement).map((i) => i.rotulo)).toEqual([
+      'Hoje',
+      'Clientes',
+      'Estoque',
+      'Mais',
+    ]);
+    TestBed.inject(HttpTestingController).match(() => true);
+  });
 });

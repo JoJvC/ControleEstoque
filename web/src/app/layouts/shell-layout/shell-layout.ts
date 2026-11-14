@@ -24,7 +24,8 @@ export class ShellLayout {
   private readonly permissions = inject(PermissionService);
 
   private readonly todosItens: readonly BottomNavItem[] = [
-    { path: '/home', label: 'Início', icone: 'home' },
+    { path: '/home', label: 'Hoje', icone: 'home' },
+    { path: '/clientes', label: 'Clientes', icone: 'usuario' },
     {
       path: '/vendas/nova',
       label: 'Vender',
@@ -32,8 +33,7 @@ export class ShellLayout {
       destaque: true,
       permissao: 'vendas.registrar',
     },
-    { path: '/clientes', label: 'Clientes', icone: 'usuario' },
-    { path: '/financeiro/caixa', label: 'Caixa', icone: 'dinheiro' },
+    { path: '/estoque', label: 'Estoque', icone: 'caixa' },
     { path: '/mais', label: 'Mais', icone: 'menu' },
   ];
 

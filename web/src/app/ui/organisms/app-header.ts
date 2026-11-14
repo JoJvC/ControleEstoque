@@ -8,21 +8,53 @@ import { Icon } from '../atoms/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
   template: `
-    <header class="cabecalho">
-      @if (mostrarVoltar()) {
-        <button type="button" class="cabecalho__voltar" aria-label="Voltar" (click)="voltar.emit()">
-          <ce-icon nome="seta-esquerda" />
-        </button>
+    <div class="topo" [class.topo--onda]="onda()">
+      <header class="cabecalho">
+        @if (mostrarVoltar()) {
+          <button
+            type="button"
+            class="cabecalho__voltar"
+            aria-label="Voltar"
+            (click)="voltar.emit()"
+          >
+            <ce-icon nome="seta-esquerda" />
+          </button>
+        }
+        <h1 class="cabecalho__titulo">{{ titulo() }}</h1>
+        <span class="cabecalho__acoes"><ng-content /></span>
+      </header>
+      @if (onda()) {
+        <svg class="topo__onda" viewBox="0 0 360 24" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 24V10C60 24 120 0 180 10S300 24 360 8V24Z" />
+        </svg>
       }
-      <h1 class="cabecalho__titulo">{{ titulo() }}</h1>
-      <span class="cabecalho__acoes"><ng-content /></span>
-    </header>
+    </div>
   `,
   styles: `
     @use 'mixins';
 
     :host {
       display: block;
+    }
+
+    // topo das telas principais: fundo topo do tema e onda para o chao (DESIGN.md §5)
+    .topo--onda {
+      background: var(--ce-topo);
+      color: var(--ce-texto-sobre-topo);
+    }
+
+    // botões slotados leem as cores do topo, não as da superfície
+    .topo--onda .cabecalho__acoes {
+      --ce-primary: var(--ce-texto-sobre-topo);
+      --ce-text-on-primary: var(--ce-topo);
+      --ce-border: var(--ce-texto-sobre-topo);
+    }
+
+    .topo__onda {
+      display: block;
+      width: 100%;
+      height: 24px;
+      fill: var(--ce-bg);
     }
 
     .cabecalho {
@@ -39,7 +71,7 @@ import { Icon } from '../atoms/icon';
       align-items: center;
       justify-content: center;
       margin-left: calc(-1 * var(--ce-space-2));
-      color: var(--ce-text);
+      color: inherit;
     }
 
     .cabecalho__titulo {
@@ -61,5 +93,6 @@ import { Icon } from '../atoms/icon';
 export class AppHeader {
   readonly titulo = input.required<string>();
   readonly mostrarVoltar = input(false);
+  readonly onda = input(false);
   readonly voltar = output<void>();
 }

@@ -53,8 +53,8 @@ import { Icon } from '../atoms/icon';
     .stepper {
       display: inline-flex;
       align-items: stretch;
-      border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border: 1px solid var(--ce-borda-campo);
+      border-radius: var(--ce-radius-controle);
       background: var(--ce-surface);
       overflow: hidden;
 

@@ -14,6 +14,7 @@ const FATURAMENTO = {
   totalLiquido: 90,
   porProduto: [{ produtoId: 'p1', nome: 'Água 20L', quantidade: 3, totalLiquido: 90 }],
   porDia: [{ dia: '2026-11-02', totalLiquido: 90 }],
+  porCategoria: [],
 };
 
 describe('RelatoriosStore', () => {

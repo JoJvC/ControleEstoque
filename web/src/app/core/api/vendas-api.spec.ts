@@ -127,6 +127,7 @@ describe('VendasApi', () => {
         totalLiquido: 9,
         porProduto: [],
         porDia: [],
+        porCategoria: [],
       };
       req.flush(corpo);
       expect(resp).toEqual(corpo);

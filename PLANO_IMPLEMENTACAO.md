@@ -304,7 +304,7 @@ POST /v1/funcionarios/{id}/pagamentos → { Valor > 0 } → 201 | 422 (PAGAMENTO
 
 ```
 GET /v1/relatorios/faturamento?inicio&fim&produtoId?     (Vendas)
-└── 200 { TotalBruto, TotalDesconto, TotalLiquido, PorProduto[], PorDia[] }
+└── 200 { TotalBruto, TotalDesconto, TotalLiquido, PorProduto[], PorDia[], PorCategoria[] }
 GET /v1/relatorios/vendas-por-funcionario?inicio&fim     (Vendas)
 GET /v1/relatorios/estoque                               (Estoque — vw_estoque_atual + alertas)
 GET /v1/relatorios/caixa?inicio&fim                      (Financeiro — inclui despesas por tipo e diárias)

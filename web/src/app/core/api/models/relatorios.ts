@@ -16,12 +16,19 @@ export interface FaturamentoPorDia {
   totalLiquido: number;
 }
 
+export interface FaturamentoPorCategoria {
+  categoria: string;
+  quantidade: number;
+  totalLiquido: number;
+}
+
 export interface RelatorioFaturamento {
   totalBruto: number;
   totalDesconto: number;
   totalLiquido: number;
   porProduto: FaturamentoPorProduto[];
   porDia: FaturamentoPorDia[];
+  porCategoria: FaturamentoPorCategoria[];
 }
 
 export interface VendasPorFuncionario {

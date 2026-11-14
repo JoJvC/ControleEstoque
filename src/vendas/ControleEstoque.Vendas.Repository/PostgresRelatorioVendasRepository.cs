@@ -50,7 +50,24 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
             }
         }
 
-        return new RelatorioFaturamento(totalBruto, totalDesconto, totalLiquido, porProduto, porDia);
+        var linhasCategoria = new List<(TipoProduto Tipo, string? Categoria, long Quantidade, decimal Total)>();
+        await using (var command = new NpgsqlCommand(Sql.PorCategoria, connection))
+        {
+            AddFiltros(command, inicio, fim, produtoId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                linhasCategoria.Add((
+                    Enum.Parse<TipoProduto>(reader.GetString(0)),
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.GetInt64(2),
+                    reader.GetDecimal(3)));
+            }
+        }
+
+        return new RelatorioFaturamento(
+            totalBruto, totalDesconto, totalLiquido, porProduto, porDia,
+            FaturamentoCategorias.Consolidar(linhasCategoria));
     }
 
     public async Task<IReadOnlyList<VendasPorFuncionario>> VendasPorFuncionarioAsync(
@@ -117,6 +134,18 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
               AND (@produtoId IS NULL OR i.produto_id = @produtoId)
             GROUP BY i.produto_id, p.nome
             ORDER BY SUM(i.total_item) DESC
+            """;
+
+        public const string PorCategoria = """
+            SELECT p.tipo::text, p.categoria, SUM(i.quantidade)::bigint, SUM(i.total_item)
+            FROM venda_itens i
+            JOIN vendas v ON v.id = i.venda_id
+            JOIN produtos p ON p.id = i.produto_id
+            WHERE i.deleted_at IS NULL AND v.deleted_at IS NULL
+              AND (@inicio IS NULL OR v.data::date >= @inicio)
+              AND (@fim IS NULL OR v.data::date <= @fim)
+              AND (@produtoId IS NULL OR i.produto_id = @produtoId)
+            GROUP BY p.tipo, p.categoria
             """;
 
         public const string PorDia = """

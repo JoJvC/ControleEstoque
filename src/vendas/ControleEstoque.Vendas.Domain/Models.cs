@@ -106,11 +106,14 @@ public sealed record FaturamentoPorProduto(Guid ProdutoId, string Nome, long Qua
 
 public sealed record FaturamentoPorDia(DateOnly Dia, decimal TotalLiquido);
 
+public sealed record FaturamentoPorCategoria(string Categoria, long Quantidade, decimal TotalLiquido);
+
 public sealed record RelatorioFaturamento(
     decimal TotalBruto,
     decimal TotalDesconto,
     decimal TotalLiquido,
     IReadOnlyList<FaturamentoPorProduto> PorProduto,
-    IReadOnlyList<FaturamentoPorDia> PorDia);
+    IReadOnlyList<FaturamentoPorDia> PorDia,
+    IReadOnlyList<FaturamentoPorCategoria> PorCategoria);
 
 public sealed record VendasPorFuncionario(Guid FuncionarioId, string Nome, long QuantidadeVendas, decimal TotalLiquido);

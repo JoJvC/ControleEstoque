@@ -21,6 +21,7 @@ const RELATORIO = {
     { produtoId: 'p2', nome: 'Galão cheio', quantidade: 2, totalLiquido: 99.9 },
   ],
   porDia: [{ dia: '2026-11-02', totalLiquido: 321.1 }],
+  porCategoria: [],
 };
 
 async function assentar(fixture: ComponentFixture<unknown>): Promise<void> {

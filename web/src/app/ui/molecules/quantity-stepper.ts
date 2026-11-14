@@ -16,7 +16,7 @@ import { Icon } from '../atoms/icon';
       <button
         type="button"
         class="stepper__botao"
-        aria-label="Diminuir"
+        [attr.aria-label]="nomeAcao('Diminuir')"
         [disabled]="desabilitado() || valor() <= min()"
         (click)="incrementar(-1)"
       >
@@ -35,7 +35,7 @@ import { Icon } from '../atoms/icon';
       <button
         type="button"
         class="stepper__botao"
-        aria-label="Aumentar"
+        [attr.aria-label]="nomeAcao('Aumentar')"
         [disabled]="desabilitado() || (max() !== null && valor() >= max()!)"
         (click)="incrementar(1)"
       >
@@ -102,6 +102,8 @@ import { Icon } from '../atoms/icon';
 })
 export class QuantityStepper implements ControlValueAccessor {
   readonly rotulo = input('Quantidade');
+  /** Nome do item, acrescentado aos botões ("Aumentar Água 20L") para diferenciá-los entre linhas. */
+  readonly item = input('');
   readonly min = input(0);
   readonly max = input<number | null>(null);
 
@@ -129,6 +131,10 @@ export class QuantityStepper implements ControlValueAccessor {
 
   protected incrementar(delta: number): void {
     this.definir(this.valor() + delta);
+  }
+
+  protected nomeAcao(acao: string): string {
+    return this.item() ? `${acao} ${this.item()}` : acao;
   }
 
   protected aoDigitar(evento: Event): void {

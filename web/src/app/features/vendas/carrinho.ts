@@ -1,4 +1,4 @@
-import { ProdutoResponse } from '../../core/api/models/estoque';
+import { EstoqueItemResponse, ProdutoResponse } from '../../core/api/models/estoque';
 import {
   CreateVendaRequest,
   FormaPagamento,
@@ -111,6 +111,69 @@ export function temAgua(itens: readonly ItemCarrinho[]): boolean {
 
 export function quantidadeAgua(itens: readonly ItemCarrinho[]): number {
   return itens.filter((i) => i.produto.tipo === 'AGUA').reduce((s, i) => s + i.quantidade, 0);
+}
+
+// Feedback local do passo Cascos (Regra 8.1): não é saldo guardado, o servidor continua dono dele.
+export function cascosNaRua(quantidadeDeAgua: number, devolvidos: number): number {
+  return Math.max(0, quantidadeDeAgua - devolvidos);
+}
+
+/**
+ * Valor do atalho de pagamento para a linha `indice` (ou uma linha nova, se fora da lista):
+ * restante = total − o que as outras linhas já pagam. "Tudo fiado" não tem valor: a página zera os pagamentos.
+ */
+export function valorDoAtalho(
+  atalho: 'tudo' | 'metade',
+  liquido: number,
+  pagamentos: readonly PagamentoEdicao[],
+  indice = pagamentos.length,
+): number {
+  const outras = pagamentos.filter((_, i) => i !== indice);
+  const restante = Math.max(0, Math.round(liquido * 100) - Math.round(totalPagoDe(outras) * 100));
+  return (atalho === 'tudo' ? restante : Math.floor(restante / 2)) / 100;
+}
+
+/** Pílula do produto: AGUA e GALAO_COMPLETO sempre em "Água"; DESCARTAVEL usa a categoria; CASCO e SUCATA só em "Todas". */
+export function categoriaDoProduto(produto: ProdutoResponse): string | null {
+  switch (produto.tipo) {
+    case 'AGUA':
+    case 'GALAO_COMPLETO':
+      return 'Água';
+    case 'DESCARTAVEL':
+      return produto.categoria || null;
+    default:
+      return null;
+  }
+}
+
+export function categoriasDe(produtos: readonly ProdutoResponse[]): string[] {
+  return [...new Set(produtos.map(categoriaDoProduto).filter((c): c is string => !!c))].sort(
+    (a, b) => a.localeCompare(b, 'pt-BR'),
+  );
+}
+
+/** `categoria` null = "Todas". */
+export function filtrarPorCategoria(
+  produtos: readonly ProdutoResponse[],
+  categoria: string | null,
+): readonly ProdutoResponse[] {
+  return categoria === null
+    ? produtos
+    : produtos.filter((p) => categoriaDoProduto(p) === categoria);
+}
+
+export interface ProdutoComEstoque {
+  readonly produto: ProdutoResponse;
+  /** null quando o estoque não trouxe o produto (ou ainda não carregou). */
+  readonly estoque: number | null;
+}
+
+export function produtosComEstoque(
+  produtos: readonly ProdutoResponse[],
+  estoque: readonly EstoqueItemResponse[],
+): ProdutoComEstoque[] {
+  const porProduto = new Map(estoque.map((e) => [e.produtoId, e.quantidade]));
+  return produtos.map((produto) => ({ produto, estoque: porProduto.get(produto.id) ?? null }));
 }
 
 // Sem ÁGUA no carrinho o passo Cascos não existe: casco e sucata vão zerados.

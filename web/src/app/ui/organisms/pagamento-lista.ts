@@ -1,9 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, model, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { Button } from '../atoms/button';
 import { Icon } from '../atoms/icon';
-import { Select, SelectOpcao } from '../atoms/select';
+import { SelectOpcao } from '../atoms/select';
 import { MoneyInput } from '../molecules/money-input';
 import { PrecoPipe } from '../pipes/preco-pipe';
 
@@ -28,46 +28,65 @@ export const FORMAS: SelectOpcao[] = [
 @Component({
   selector: 'ce-pagamento-lista',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, Button, Icon, Select, MoneyInput, PrecoPipe],
+  imports: [FormsModule, Button, Icon, MoneyInput, PrecoPipe],
   template: `
     <div class="pagamentos">
+      <p class="pagamentos__total">
+        <span>Total</span>
+        <strong>{{ total() | cePreco }}</strong>
+      </p>
+
       @for (pagamento of pagamentos(); track $index; let indice = $index) {
         <div class="pagamentos__linha">
-          <ce-select
-            class="pagamentos__forma"
-            [opcoes]="formas"
-            rotulo="Forma de pagamento"
-            [ngModel]="pagamento.forma"
-            (ngModelChange)="mudarForma(indice, $event)"
-          />
-          <ce-money-input
-            class="pagamentos__valor"
-            rotulo="Valor do pagamento"
-            [ngModel]="pagamento.valor"
-            (ngModelChange)="mudarValor(indice, $event)"
-          />
-          <button
-            type="button"
-            class="pagamentos__remover"
-            aria-label="Remover pagamento"
-            (click)="remover(indice)"
-          >
-            <ce-icon nome="lixeira" [tamanho]="20" />
-          </button>
+          <div class="formas" role="radiogroup" aria-label="Forma de pagamento">
+            @for (forma of formas; track forma.value) {
+              <button
+                type="button"
+                class="forma"
+                role="radio"
+                [class.forma--ativa]="pagamento.forma === forma.value"
+                [attr.aria-checked]="pagamento.forma === forma.value"
+                (click)="mudarForma(indice, forma.value)"
+              >
+                {{ forma.label }}
+              </button>
+            }
+          </div>
+          <div class="pagamentos__valor">
+            <ce-money-input
+              class="pagamentos__campo"
+              rotulo="Valor do pagamento"
+              [ngModel]="pagamento.valor"
+              (ngModelChange)="mudarValor(indice, $event)"
+            />
+            <button type="button" class="atalho" (click)="atalho.emit({ indice, qual: 'tudo' })">
+              Tudo
+            </button>
+            <button type="button" class="atalho" (click)="atalho.emit({ indice, qual: 'metade' })">
+              Metade
+            </button>
+            <button
+              type="button"
+              class="pagamentos__remover"
+              aria-label="Remover pagamento"
+              (click)="remover(indice)"
+            >
+              <ce-icon nome="lixeira" [tamanho]="20" />
+            </button>
+          </div>
         </div>
       } @empty {
-        <p class="pagamentos__vazio">Nenhum pagamento — o total inteiro vai para fiado.</p>
+        @if (total() > 0) {
+          <p class="pagamentos__vazio">Nenhum pagamento — o total inteiro vai para fiado.</p>
+        }
       }
 
       <ce-button variante="ghost" (click)="adicionar()">
         <ce-icon nome="mais" [tamanho]="18" /> Adicionar forma de pagamento
       </ce-button>
+      <ce-button variante="ghost" (click)="pagamentos.set([])">Tudo fiado</ce-button>
 
       <dl class="resumo">
-        <div class="resumo__linha">
-          <dt>Total</dt>
-          <dd>{{ total() | cePreco }}</dd>
-        </div>
         <div class="resumo__linha">
           <dt>Pago</dt>
           <dd>{{ totalPago() | cePreco }}</dd>
@@ -82,7 +101,7 @@ export const FORMAS: SelectOpcao[] = [
             <dt>Vai para fiado</dt>
             <dd>{{ faltante() | cePreco }}</dd>
           </div>
-        } @else {
+        } @else if (total() > 0) {
           <div class="resumo__linha resumo__linha--pago">
             <dt>Venda paga por completo</dt>
             <dd></dd>
@@ -100,18 +119,55 @@ export const FORMAS: SelectOpcao[] = [
       gap: var(--ce-space-3);
     }
 
+    .pagamentos__total {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--ce-space-2);
+
+      strong {
+        @include mixins.tabular-numbers;
+
+        font-size: var(--ce-font-xl);
+      }
+    }
+
     .pagamentos__linha {
+      display: flex;
+      flex-direction: column;
+      gap: var(--ce-space-2);
+    }
+
+    .formas {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--ce-space-2);
+    }
+
+    .forma,
+    .atalho {
+      @include mixins.touch-target;
+
+      padding-inline: var(--ce-space-3);
+      border: 1px solid var(--ce-borda-campo);
+      border-radius: var(--ce-radius-controle);
+      background: var(--ce-surface);
+      font-weight: 600;
+    }
+
+    .forma--ativa {
+      border-color: var(--ce-primary);
+      background: var(--ce-primary-soft);
+      color: var(--ce-primary-strong);
+    }
+
+    .pagamentos__valor {
       display: flex;
       align-items: center;
       gap: var(--ce-space-2);
     }
 
-    .pagamentos__forma {
-      flex: 1.2;
-      min-width: 0;
-    }
-
-    .pagamentos__valor {
+    .pagamentos__campo {
       flex: 1;
       min-width: 0;
     }
@@ -171,6 +227,8 @@ export const FORMAS: SelectOpcao[] = [
 export class PagamentoLista {
   readonly total = input.required<number>();
   readonly pagamentos = model<readonly PagamentoEdicao[]>([]);
+  /** Atalho de valor pedido para a linha `indice`; quem calcula o valor é a página. */
+  readonly atalho = output<{ indice: number; qual: 'tudo' | 'metade' }>();
 
   protected readonly formas = FORMAS;
 
@@ -190,10 +248,8 @@ export class PagamentoLista {
     this.pagamentos.update((atual) => atual.filter((_, i) => i !== indice));
   }
 
-  protected mudarForma(indice: number, forma: string | null): void {
-    this.pagamentos.update((atual) =>
-      atual.map((p, i) => (i === indice ? { ...p, forma: forma ?? 'PIX' } : p)),
-    );
+  protected mudarForma(indice: number, forma: string): void {
+    this.pagamentos.update((atual) => atual.map((p, i) => (i === indice ? { ...p, forma } : p)));
   }
 
   protected mudarValor(indice: number, valor: number | null): void {

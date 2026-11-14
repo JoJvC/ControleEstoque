@@ -1,7 +1,13 @@
-import { ProdutoResponse } from '../../core/api/models/estoque';
+import { EstoqueItemResponse, ProdutoResponse } from '../../core/api/models/estoque';
 import { VendaDetalheResponse } from '../../core/api/models/vendas';
 import {
   ItemCarrinho,
+  cascosNaRua,
+  categoriaDoProduto,
+  categoriasDe,
+  filtrarPorCategoria,
+  produtosComEstoque,
+  valorDoAtalho,
   fiadoDe,
   pagamentoExcede,
   saldoAPagar,
@@ -244,5 +250,93 @@ describe('rascunhoDeVenda', () => {
     expect(req.pagamentos).toEqual(venda.pagamentos);
     expect(req.cascosDevolvidos).toBe(2);
     expect(req.sucataEntregue).toBe(1);
+  });
+});
+
+describe('cascosNaRua', () => {
+  it('água menos devolvidos, nunca negativo', () => {
+    expect(cascosNaRua(5, 3)).toBe(2);
+    expect(cascosNaRua(5, 5)).toBe(0);
+    expect(cascosNaRua(2, 7)).toBe(0);
+    expect(cascosNaRua(0, 0)).toBe(0);
+  });
+});
+
+describe('valorDoAtalho', () => {
+  const pagos = (...valores: (number | null)[]) =>
+    valores.map((valor) => ({ forma: 'PIX', valor }));
+
+  it('total 250 com 100 já pagos: Tudo 150, Metade 75', () => {
+    expect(valorDoAtalho('tudo', 250, pagos(100))).toBe(150);
+    expect(valorDoAtalho('metade', 250, pagos(100))).toBe(75);
+  });
+
+  it('sem pagamentos: Tudo é o total', () => {
+    expect(valorDoAtalho('tudo', 250, [])).toBe(250);
+  });
+
+  it('Metade trunca no centavo', () => {
+    expect(valorDoAtalho('metade', 0.05, [])).toBe(0.02);
+    expect(valorDoAtalho('metade', 10.01, [])).toBe(5);
+  });
+
+  it('a própria linha não conta como já paga; restante nunca é negativo', () => {
+    expect(valorDoAtalho('tudo', 250, pagos(100, 50), 1)).toBe(150);
+    expect(valorDoAtalho('tudo', 100, pagos(150))).toBe(0);
+    expect(valorDoAtalho('tudo', 100, pagos(null))).toBe(100);
+  });
+});
+
+describe('categorias e filtro', () => {
+  const com = (id: string, categoria: string | null) => ({
+    ...produto('DESCARTAVEL', id),
+    categoria,
+  });
+  const lista = [com('a', 'Gelo'), com('b', 'Copos'), com('c', 'Gelo'), com('d', null)];
+
+  it('categoriaDoProduto: Água para AGUA e GALAO_COMPLETO; categoria só em DESCARTAVEL; resto sem pílula', () => {
+    const tipo = (t: ProdutoResponse['tipo'], categoria: string | null) => ({
+      ...produto(t),
+      categoria,
+    });
+    expect(categoriaDoProduto(tipo('AGUA', null))).toBe('Água');
+    expect(categoriaDoProduto(tipo('AGUA', 'Outra'))).toBe('Água');
+    expect(categoriaDoProduto(tipo('GALAO_COMPLETO', null))).toBe('Água');
+    expect(categoriaDoProduto(tipo('DESCARTAVEL', 'Gelo'))).toBe('Gelo');
+    expect(categoriaDoProduto(tipo('DESCARTAVEL', null))).toBeNull();
+    expect(categoriaDoProduto(tipo('CASCO', 'Gelo'))).toBeNull();
+    expect(categoriaDoProduto(tipo('SUCATA', 'Gelo'))).toBeNull();
+  });
+
+  it('água sem categoria ganha a pílula Água e é filtrada por ela', () => {
+    const mix = [
+      { ...produto('AGUA', 'x'), categoria: null },
+      { ...produto('GALAO_COMPLETO', 'y'), categoria: null },
+      { ...produto('CASCO', 'z'), categoria: 'Gelo' },
+      com('g', 'Gelo'),
+    ];
+    expect(categoriasDe(mix)).toEqual(['Água', 'Gelo']);
+    expect(filtrarPorCategoria(mix, 'Água').map((p) => p.id)).toEqual(['x', 'y']);
+    expect(filtrarPorCategoria(mix, 'Gelo').map((p) => p.id)).toEqual(['g']);
+    expect(filtrarPorCategoria(mix, null)).toHaveLength(4);
+  });
+
+  it('categoriasDe: distintas, sem vazio, em ordem', () => {
+    expect(categoriasDe(lista)).toEqual(['Copos', 'Gelo']);
+  });
+
+  it('filtrarPorCategoria: null é Todas', () => {
+    expect(filtrarPorCategoria(lista, null)).toHaveLength(4);
+    expect(filtrarPorCategoria(lista, 'Gelo').map((p) => p.id)).toEqual(['a', 'c']);
+    expect(filtrarPorCategoria(lista, 'Inexistente')).toEqual([]);
+  });
+});
+
+describe('produtosComEstoque', () => {
+  it('cruza pelo produtoId; ausente vira null', () => {
+    const estoque = [{ produtoId: 'p-1', quantidade: 12 }] as EstoqueItemResponse[];
+    const r = produtosComEstoque([produto('AGUA', 'p-1'), produto('AGUA', 'p-2')], estoque);
+    expect(r.map((x) => x.estoque)).toEqual([12, null]);
+    expect(produtosComEstoque([produto('AGUA', 'p-1')], [])[0].estoque).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import { Icon } from '../atoms/icon';
   selector: 'ce-app-header',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
+  host: { '[class.app-header--onda]': 'onda()' },
   template: `
     <div class="topo" [class.topo--onda]="onda()">
       <header class="cabecalho">
@@ -38,8 +39,10 @@ import { Icon } from '../atoms/icon';
     }
 
     // topo das telas principais: fundo topo do tema e onda para o chao (DESIGN.md §5)
+    // as 2 últimas linhas já são --ce-bg: a última linha do svg, com antialiasing, mistura com o
+    // fundo atrás dela e deixava uma costura cinza abaixo da onda
     .topo--onda {
-      background: var(--ce-topo);
+      background: linear-gradient(var(--ce-topo) calc(100% - 2px), var(--ce-bg) 0);
       color: var(--ce-texto-sobre-topo);
     }
 

@@ -21,7 +21,7 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 ## 3. Fluxos de Negócio
 ### 3.1 Cadastro de Clientes
 - Inserção de dados do cliente (nome, contato, histórico de compra).
-- Cliente pode ter mais de um endereço cadastrado, usado para entrega.
+- Cliente pode ter mais de um endereço cadastrado, usado para entrega, e tem exatamente um endereço **principal** enquanto houver endereço. O primeiro endereço ativo vira principal automaticamente; marcar outro como principal desmarca o anterior; remover o principal promove o mais antigo dos que sobram; o principal não é desmarcado direto, só marcando outro. Remover endereço é soft delete.
 
 ### 3.2 Cadastro de Produtos e Marcas
 - Cadastro de marcas (entidade própria), associadas aos produtos.
@@ -155,7 +155,7 @@ Controles envolvidos:
 - **Descartáveis**: controle de estoque simples (entrada/saída) por produto+marca, sem casco, sem retorno e sem débito de casco; tamanhos livres. Qualquer produto novo sem regra de casco (ex: carvão, gelo) é cadastrado e tratado como descartável, com categoria livre para agrupamento.
 - **Marca**: cadastro próprio. Cada produto tem N marcas (associação produto+marca); a marca é obrigatória e única dentro do produto. Não existe associação sem marca: produto sem marca própria usa uma marca cadastrada (ex: 'Genérica').
 - **Foto de produto**: cada associação produto+marca pode ter uma foto cadastrada, exibida nas telas de venda e catálogo.
-- **Endereço**: cliente pode ter múltiplos endereços cadastrados para entrega; não há controle de rota ou status de entrega no sistema.
+- **Endereço**: cliente pode ter múltiplos endereços cadastrados para entrega; exatamente um é o principal (regras 1 a 4 acima, aplicadas pelo `ClienteService`); não há controle de rota ou status de entrega no sistema.
 - **Tipo de casco**: cadastro próprio com nome, preço do vasilhame (≥ 0) e se aceita sucata. **Genérico** não tem marca; **específico** tem marca. O produto retornável aponta um casco genérico; a associação produto+marca pode apontar um casco específico, só em produto retornável e da mesma marca da associação. O casco do item é o específico da associação, se houver; senão, o genérico do produto — **o específico vence**. Descartável não tem casco e não gera retorno. Um tipo de casco em uso (apontado por produto ou associação) não troca de marca, e um tipo com saldo de sucata não deixa de aceitar sucata.
 - **Casco x sucata**: a venda de produto retornável **só** empresta e gera débito de casco — sucata nunca é emprestada nem gera débito pela venda. Sucata é somente entregue pelo cliente à loja (avulsa ou junto de uma venda) ou vem de casco quebrado, em estoque físico (por tipo de casco) e registro por cliente próprios, totalmente independentes do saldo de casco.
 - **Casco — sem limite**: não há limite de cascos emprestados por cliente.

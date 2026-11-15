@@ -15,6 +15,8 @@ export interface CreateEnderecoRequest {
   principal: boolean;
 }
 
+export type UpdateEnderecoRequest = CreateEnderecoRequest;
+
 export interface EnderecoResponse {
   id: string;
   logradouro: string;

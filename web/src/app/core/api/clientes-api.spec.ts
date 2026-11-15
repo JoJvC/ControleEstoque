@@ -81,6 +81,21 @@ describe('ClientesApi', () => {
     req.flush({});
   });
 
+  it('atualizarEndereco: PUT /clientes/{id}/enderecos/{enderecoId} com o corpo', () => {
+    api.atualizarEndereco(ID, 'e-1', body).subscribe();
+    const req = http.expectOne(`${BASE}/${ID}/enderecos/e-1`);
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual(body);
+    req.flush({});
+  });
+
+  it('removerEndereco: DELETE /clientes/{id}/enderecos/{enderecoId}', () => {
+    api.removerEndereco(ID, 'e-1').subscribe();
+    const req = http.expectOne(`${BASE}/${ID}/enderecos/e-1`);
+    expect(req.request.method).toBe('DELETE');
+    req.flush(null);
+  });
+
   it('obterSaldos: GET /clientes/{id}/saldos', () => {
     let resp: unknown;
     api.obterSaldos(ID).subscribe((r) => (resp = r));

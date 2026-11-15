@@ -62,7 +62,7 @@ describe('ClienteFormPage com a rota (withComponentInputBinding)', () => {
     const t = await navegar('/clientes/c7/editar');
     t.http
       .expectOne(`${URL}/c7`)
-      .flush({ id: 'c7', nome: 'João', telefone: null, observacoes: null });
+      .flush({ id: 'c7', nome: 'João', telefone: null, observacoes: null, enderecos: [] });
     await t.harness.fixture.whenStable();
     t.harness.detectChanges();
     expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Editar cliente');

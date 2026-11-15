@@ -12,6 +12,14 @@ public sealed record CreateEnderecoRequest(
     string? Referencia,
     bool Principal);
 
+public sealed record UpdateEnderecoRequest(
+    string Logradouro,
+    string? Numero,
+    string? Bairro,
+    string? Complemento,
+    string? Referencia,
+    bool Principal);
+
 public sealed record EnderecoResponse(
     Guid Id,
     string Logradouro,

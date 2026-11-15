@@ -51,6 +51,25 @@ public static class ClientesEndpoints
                 $"/v1/clientes/{id}/enderecos/{endereco.Id}", EnderecoResponse.From(endereco));
         });
 
+        app.MapPut("/v1/clientes/{id:guid}/enderecos/{enderecoId:guid}", async (
+            Guid id, Guid enderecoId, UpdateEnderecoRequest request, IClienteService clientes,
+            CancellationToken cancellationToken) =>
+        {
+            var endereco = await clientes.AtualizarEnderecoAsync(
+                new Endereco(
+                    enderecoId, id, request.Logradouro, request.Numero, request.Bairro,
+                    request.Complemento, request.Referencia, request.Principal),
+                cancellationToken);
+            return Results.Ok(EnderecoResponse.From(endereco));
+        });
+
+        app.MapDelete("/v1/clientes/{id:guid}/enderecos/{enderecoId:guid}", async (
+            Guid id, Guid enderecoId, IClienteService clientes, CancellationToken cancellationToken) =>
+        {
+            await clientes.RemoverEnderecoAsync(id, enderecoId, cancellationToken);
+            return Results.NoContent();
+        });
+
         // ---- Saldos (casco + sucata + fiado) --------------------------------
         app.MapGet("/v1/clientes/{id:guid}/saldos", async (
             Guid id, IClienteService clientes, CancellationToken cancellationToken) =>

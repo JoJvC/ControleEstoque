@@ -17,6 +17,12 @@ import {
 import { PagamentoFiadoResponse } from '../../core/api/models/financeiro';
 import { ApiError } from '../../core/http/api-error';
 import { FiltroClientes, montarLinhas } from './clientes-linhas';
+import { RascunhoEndereco } from './enderecos-regras';
+import {
+  ResultadoEnderecos,
+  enviarEnderecos,
+  salvarClienteComEnderecos,
+} from './salvar-cliente-com-enderecos';
 
 type Status = 'idle' | 'loading' | 'ok' | 'error';
 
@@ -36,6 +42,9 @@ export class ClientesStore {
   private readonly clientesInterno = signal<ClienteResponse[]>([]);
   private readonly statusInterno = signal<Status>('idle');
   private readonly temMaisInterno = signal(false);
+
+  /** Endereços que falharam no cadastro, por cliente (sobrevivem à navegação até a edição). */
+  private readonly falhosInterno = signal<Record<string, readonly RascunhoEndereco[]>>({});
 
   private readonly saldosInterno = signal<SaldosResponse | null>(null);
   private readonly statusSaldosInterno = signal<Status>('idle');
@@ -177,6 +186,37 @@ export class ClientesStore {
     this.nomeCarregado = null;
     this.buscar(this.termoInterno());
     return cliente;
+  }
+
+  falhosDe(clienteId: string): readonly RascunhoEndereco[] {
+    return this.falhosInterno()[clienteId] ?? [];
+  }
+
+  /** Cadastro novo: cria o cliente e depois os endereços; os que falharem ficam em falhosDe. */
+  async salvarComEnderecos(
+    request: CreateClienteRequest,
+    rascunhos: readonly RascunhoEndereco[],
+  ): Promise<ResultadoEnderecos & { cliente: ClienteResponse }> {
+    const resultado = await salvarClienteComEnderecos(this.api, request, rascunhos);
+    this.definirFalhos(resultado.cliente.id, resultado.falhos);
+    this.nomeCarregado = null;
+    this.buscar(this.termoInterno());
+    return resultado;
+  }
+
+  /** Reenvia só os falhos do cliente e atualiza as duas listas (salvos devolvidos, falhos na store). */
+  async tentarDeNovo(clienteId: string): Promise<ResultadoEnderecos> {
+    const resultado = await enviarEnderecos(this.api, clienteId, this.falhosDe(clienteId));
+    this.definirFalhos(clienteId, resultado.falhos);
+    return resultado;
+  }
+
+  private definirFalhos(clienteId: string, falhos: readonly RascunhoEndereco[]): void {
+    this.falhosInterno.update((atual) => {
+      const resto = { ...atual };
+      delete resto[clienteId];
+      return falhos.length > 0 ? { ...resto, [clienteId]: falhos } : resto;
+    });
   }
 
   /**

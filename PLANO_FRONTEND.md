@@ -201,7 +201,7 @@ web/
 ### 6.2 Telas por feature (todas lazy)
 
 - **Vendas**: `nova` (PDV), `lista` (filtros cliente/período, paginada), `detalhe/:id` (itens, pagamentos, saldos gerados, ações: editar, adicionar pagamento, emitir cupom), `editar/:id` (mesmo form do PDV pré-carregado; bloqueado com aviso se cupom já emitido — `VENDA_JA_FATURADA`).
-- **Clientes**: lista com busca; detalhe com **3 saldos independentes** (`GET /saldos`: cascos, sucata entregue, fiado) como `ce-saldo-chip`s distintos; endereços (N); ações: **Pagar Casco** (sheet com 2 modos: devolução física / conversão em valor), **Entregar Sucata** (com conversão em crédito opcional), **Receber Fiado** (pagamento de dívida via API Financeiro).
+- **Clientes**: lista com busca; detalhe com **3 saldos independentes** (`GET /saldos`: cascos, sucata entregue, fiado) como `ce-saldo-chip`s distintos; endereços (N, um principal; a gestão — adicionar, editar, remover, marcar principal — fica no formulário de cadastro/edição, e o detalhe continua só permitindo adicionar); ações: **Pagar Casco** (sheet com 2 modos: devolução física / conversão em valor), **Entregar Sucata** (com conversão em crédito opcional), **Receber Fiado** (pagamento de dívida via API Financeiro).
 - **Estoque**: visão atual (`vw_estoque_atual` — destaque `AbaixoMinimo` com `--ce-warning`), abastecimento (form com N itens, tipo de frete, custo), ajuste manual, **baixa de casco por quebra** (quantidade, motivo, ≥1 responsável obrigatório).
 - **Cadastros**: produtos (tipo, marca — obrigatória se AGUA/GALAO_COMPLETO —, categoria e tamanho livres, preço de referência, estoque mínimo, foto), marcas.
 - **Financeiro**: caixa do dia (abrir com saldo inicial; 409 = já aberto → carregar existente), lançar despesa (tipo obrigatório), **fechamento** (checklist de funcionários que trabalharam → diárias; resumo entradas/saídas/saldo), tipos de despesa.
@@ -260,7 +260,7 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 - [x] `estoque-api.ts` + `clientes-api.ts` + models espelhados dos Contracts
 - [x] Marcas: lista + criação (409 nome duplicado → erro inline)
 - [x] Produtos: lista com filtros (tipo/marca/categoria), form com validação espelhada (marca obrigatória p/ AGUA/GALAO_COMPLETO), upload de foto via `MediaService`, `ce-produto-card` com foto real
-- [x] Clientes: busca paginada, form, endereços (N por cliente)
+- [x] Clientes: busca paginada, form com gestão de endereços (N por cliente, um principal)
 - **Critério de aceite:** cadastrar marca → produto com foto → cliente com 2 endereços, tudo pelo celular, e visualizar o produto com foto no catálogo. *(Verificado via HTTP no gateway 8080 e no proxy 4200: marca criada + 409 `MARCA_DUPLICADA`; produto AGUA com marca; upload multipart de foto → `fotoUrl` preenchida e `GET /foto` 200 image/png; cliente com 2 endereços — `GET` retorna ambos com principal correto; busca paginada por nome OK. Saldos/ações do cliente ficam na F6, como planejado.)*
 
 ### Sprint F4 — Estoque ✅ (concluída em 2026-07-08)

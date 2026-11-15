@@ -86,10 +86,97 @@ public sealed class PostgresClienteRepository : IClienteRepository
         return results;
     }
 
-    public async Task AddEnderecoAsync(Endereco endereco, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Endereco>> ListEnderecosAsync(
+        Guid clienteId, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.InsertEndereco, connection);
+        await using var command = new NpgsqlCommand(Sql.ListEnderecosPorIdade, connection);
+        command.Parameters.AddWithValue("clienteId", clienteId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var enderecos = new List<Endereco>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            enderecos.Add(MapEndereco(reader));
+        }
+
+        return enderecos;
+    }
+
+    public async Task AddEnderecoAsync(Endereco endereco, bool desmarcarOutros, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+        if (desmarcarOutros)
+        {
+            await DesmarcarPrincipalAsync(connection, tx, endereco.ClienteId, endereco.Id, cancellationToken);
+        }
+
+        await using var command = new NpgsqlCommand(Sql.InsertEndereco, connection, tx);
+        AddEnderecoParameters(command, endereco);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        await tx.CommitAsync(cancellationToken);
+    }
+
+    public async Task<bool> UpdateEnderecoAsync(
+        Endereco endereco, bool desmarcarOutros, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.UpdateEndereco, connection, tx);
+        AddEnderecoParameters(command, endereco);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return false;
+        }
+
+        if (desmarcarOutros)
+        {
+            await DesmarcarPrincipalAsync(connection, tx, endereco.ClienteId, endereco.Id, cancellationToken);
+        }
+
+        await tx.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> RemoveEnderecoAsync(
+        Guid clienteId, Guid enderecoId, Guid? novoPrincipalId, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var command = new NpgsqlCommand(Sql.RemoveEndereco, connection, tx))
+        {
+            command.Parameters.AddWithValue("id", enderecoId);
+            command.Parameters.AddWithValue("clienteId", clienteId);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                return false;
+            }
+        }
+
+        if (novoPrincipalId is { } novo)
+        {
+            await using var command = new NpgsqlCommand(Sql.MarcarPrincipal, connection, tx);
+            command.Parameters.AddWithValue("id", novo);
+            command.Parameters.AddWithValue("clienteId", clienteId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await tx.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    private static async Task DesmarcarPrincipalAsync(
+        NpgsqlConnection connection, NpgsqlTransaction tx, Guid clienteId, Guid exceto,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(Sql.DesmarcarPrincipal, connection, tx);
+        command.Parameters.AddWithValue("clienteId", clienteId);
+        command.Parameters.AddWithValue("id", exceto);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static void AddEnderecoParameters(NpgsqlCommand command, Endereco endereco)
+    {
         command.Parameters.AddWithValue("id", endereco.Id);
         command.Parameters.AddWithValue("clienteId", endereco.ClienteId);
         command.Parameters.AddWithValue("logradouro", endereco.Logradouro);
@@ -110,7 +197,6 @@ public sealed class PostgresClienteRepository : IClienteRepository
             Value = (object?)endereco.Referencia ?? DBNull.Value
         });
         command.Parameters.AddWithValue("principal", endereco.Principal);
-        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static void AddWriteParameters(NpgsqlCommand command, Cliente cliente)
@@ -182,6 +268,38 @@ public sealed class PostgresClienteRepository : IClienteRepository
             INSERT INTO cliente_enderecos
                 (id, cliente_id, logradouro, numero, bairro, complemento, referencia, principal)
             VALUES (@id, @clienteId, @logradouro, @numero, @bairro, @complemento, @referencia, @principal)
+            """;
+
+        public const string ListEnderecosPorIdade = """
+            SELECT id, cliente_id, logradouro, numero, bairro, complemento, referencia, principal
+            FROM cliente_enderecos
+            WHERE cliente_id = @clienteId AND deleted_at IS NULL
+            ORDER BY created_at, id
+            """;
+
+        public const string UpdateEndereco = """
+            UPDATE cliente_enderecos
+            SET logradouro = @logradouro, numero = @numero, bairro = @bairro, complemento = @complemento,
+                referencia = @referencia, principal = @principal, updated_at = now()
+            WHERE id = @id AND cliente_id = @clienteId AND deleted_at IS NULL
+            """;
+
+        public const string RemoveEndereco = """
+            UPDATE cliente_enderecos
+            SET deleted_at = now(), principal = FALSE, updated_at = now()
+            WHERE id = @id AND cliente_id = @clienteId AND deleted_at IS NULL
+            """;
+
+        public const string DesmarcarPrincipal = """
+            UPDATE cliente_enderecos
+            SET principal = FALSE, updated_at = now()
+            WHERE cliente_id = @clienteId AND id <> @id AND principal AND deleted_at IS NULL
+            """;
+
+        public const string MarcarPrincipal = """
+            UPDATE cliente_enderecos
+            SET principal = TRUE, updated_at = now()
+            WHERE id = @id AND cliente_id = @clienteId AND deleted_at IS NULL
             """;
     }
 }

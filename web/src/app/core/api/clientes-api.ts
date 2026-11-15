@@ -15,6 +15,7 @@ import {
   EntregaSucataRequest,
   EntregaSucataResponse,
   SaldosResponse,
+  UpdateEnderecoRequest,
 } from './models/clientes';
 import {
   SaldoCascoRelatorio,
@@ -59,6 +60,21 @@ export class ClientesApi {
       `${this.base}/clientes/${clienteId}/enderecos`,
       request,
     );
+  }
+
+  atualizarEndereco(
+    clienteId: string,
+    enderecoId: string,
+    request: UpdateEnderecoRequest,
+  ): Observable<EnderecoResponse> {
+    return this.http.put<EnderecoResponse>(
+      `${this.base}/clientes/${clienteId}/enderecos/${enderecoId}`,
+      request,
+    );
+  }
+
+  removerEndereco(clienteId: string, enderecoId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/clientes/${clienteId}/enderecos/${enderecoId}`);
   }
 
   obterSaldos(clienteId: string): Observable<SaldosResponse> {

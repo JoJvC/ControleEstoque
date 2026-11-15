@@ -7,7 +7,19 @@ public interface IClienteRepository
     Task<Cliente?> GetAsync(Guid id, CancellationToken cancellationToken);
     Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<Cliente>> ListAsync(string? nome, int page, int pageSize, CancellationToken cancellationToken);
-    Task AddEnderecoAsync(Endereco endereco, CancellationToken cancellationToken);
+
+    /// <summary>Endereços ativos do cliente, do mais antigo para o mais novo (created_at).</summary>
+    Task<IReadOnlyList<Endereco>> ListEnderecosAsync(Guid clienteId, CancellationToken cancellationToken);
+
+    /// <summary>Insere o endereço; com <paramref name="desmarcarOutros"/>, tira o principal dos demais, na mesma transação.</summary>
+    Task AddEnderecoAsync(Endereco endereco, bool desmarcarOutros, CancellationToken cancellationToken);
+
+    /// <summary>Atualiza o endereço ativo; false se não existir. Com <paramref name="desmarcarOutros"/>, tira o principal dos demais, na mesma transação.</summary>
+    Task<bool> UpdateEnderecoAsync(Endereco endereco, bool desmarcarOutros, CancellationToken cancellationToken);
+
+    /// <summary>Soft delete; se <paramref name="novoPrincipalId"/> vier, marca esse endereço como principal na mesma transação.</summary>
+    Task<bool> RemoveEnderecoAsync(
+        Guid clienteId, Guid enderecoId, Guid? novoPrincipalId, CancellationToken cancellationToken);
 }
 
 public interface ISaldosRepository

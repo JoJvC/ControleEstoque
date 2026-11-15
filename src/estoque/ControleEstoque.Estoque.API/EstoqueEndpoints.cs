@@ -226,6 +226,16 @@ public static class EstoqueEndpoints
             });
         });
 
+        // Exige estoque.custos do funcionário informado, como as rotas de custo do abastecimento.
+        app.MapGet("/v1/relatorios/lucro", async (
+            DateOnly? inicio, DateOnly? fim, Guid funcionarioId, ILucroService lucro,
+            CancellationToken cancellationToken) =>
+        {
+            Validacao.Periodo(inicio, fim);
+            var relatorio = await lucro.ObterAsync(inicio, fim, funcionarioId, cancellationToken);
+            return Results.Ok(RelatorioLucroResponse.From(relatorio));
+        });
+
         return app;
     }
 

@@ -187,6 +187,7 @@ Controles envolvidos:
 - Relatório de Saldo de Casco Normal por Cliente (emprestados, débitos pendentes).
 - Relatório de Sucata Entregue por Cliente (quantidade recebida, histórico) — independente do saldo de casco normal.
 - Relatório de Conta Corrente de Funcionários (diárias, vales, pagamentos, saldo a pagar).
+- Relatório de Lucro por produto+marca no período (exige `estoque.custos`): receita líquida de desconto (`total_item`), com o vasilhame pago separado em `receitaVasilhame` (= `total_item` × (quantidade × preço do vasilhame) ÷ bruto do item) e a receita do produto = `total_item` − vasilhame, sem custo do vasilhame; custo dos produtos pela média ponderada do custo unitário das cargas com custo completo até a data da venda; frete rateado à parte (frete ÷ unidades da carga, cascos incluídos); lucro = receita do produto − custo − frete. Venda sem carga completa até a data fica com custo pendente (receita e quantidade contam; custo, frete e lucro ficam vazios e fora dos totais).
 
 ## 7. Permissionamento
 - Sistema de permissões 100% configurável, baseado em cargos (roles) customizáveis.

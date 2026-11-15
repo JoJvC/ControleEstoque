@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IProdutoRepository, PostgresProdutoRepository>();
         services.AddSingleton<IEstoqueRepository, PostgresEstoqueRepository>();
         services.AddSingleton<IAbastecimentoRepository, PostgresAbastecimentoRepository>();
+        services.AddSingleton<IRelatorioLucroRepository, PostgresRelatorioLucroRepository>();
         services.AddSingleton<IPermissaoFuncionarioLookup, PostgresPermissaoFuncionarioLookup>();
         services.AddSingleton<IBaixaCascoRepository, PostgresBaixaCascoRepository>();
         services.AddSingleton<IFotoStorage>(sp =>
@@ -36,6 +37,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IProdutoService, ProdutoService>();
         services.AddSingleton<IEstoqueService, EstoqueService>();
         services.AddSingleton<IAbastecimentoService, AbastecimentoService>();
+        services.AddSingleton<ILucroService, LucroService>();
         return services;
     }
 }

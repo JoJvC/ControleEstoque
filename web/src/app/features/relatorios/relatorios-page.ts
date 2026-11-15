@@ -49,15 +49,15 @@ interface CardRelatorio {
       flex-direction: column;
       gap: var(--ce-space-1);
       padding: var(--ce-space-4);
-      border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
       background: var(--ce-surface);
       color: inherit;
       text-decoration: none;
     }
 
     .card__titulo {
-      font-weight: 600;
+      font-family: var(--ce-font-family-titulo);
+      font-weight: 700;
     }
 
     .card__descricao {

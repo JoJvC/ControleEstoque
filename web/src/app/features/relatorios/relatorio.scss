@@ -24,9 +24,8 @@
 
 .total,
 .card {
-  padding: var(--ce-space-3);
-  border: 1px solid var(--ce-border);
-  border-radius: var(--ce-radius-md);
+  padding: var(--ce-space-3) var(--ce-space-4);
+  border-radius: 20px;
   background: var(--ce-surface);
 }
 
@@ -39,12 +38,18 @@
 .total dd,
 .card dd {
   margin: 0;
-  font-weight: 600;
+  font-family: var(--ce-font-family-titulo);
+  font-weight: 700;
   @include mixins.tabular-numbers;
+}
+
+.total dd {
+  font-size: var(--ce-font-xl);
 }
 
 h2 {
   margin: var(--ce-space-2) 0 0;
+  font-family: var(--ce-font-family-titulo);
   font-size: var(--ce-font-md);
 }
 
@@ -78,6 +83,8 @@ h2 {
 
   @include mixins.from-desktop {
     display: block;
+    border-radius: 20px;
+    background: var(--ce-surface);
     @include mixins.scroll-x;
   }
 
@@ -95,8 +102,15 @@ h2 {
     white-space: nowrap;
   }
 
+  th {
+    font-size: var(--ce-font-sm);
+    color: var(--ce-text-muted);
+  }
+
   .num {
     text-align: right;
+    font-family: var(--ce-font-family-titulo);
+    font-weight: 600;
   }
 }
 
@@ -107,6 +121,5 @@ h2 {
 }
 
 .abaixo-minimo {
-  border-left: 4px solid var(--ce-warning);
   background: var(--ce-warning-soft);
 }

@@ -16,6 +16,7 @@ import { FormField } from '../../ui/molecules/form-field';
 import { ListItem } from '../../ui/molecules/list-item';
 import { MoneyInput } from '../../ui/molecules/money-input';
 import { AppHeader } from '../../ui/organisms/app-header';
+import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { DataList } from '../../ui/organisms/data-list';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { CaixaStore } from './caixa-store';
@@ -29,6 +30,7 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
     CePermissao,
     ReactiveFormsModule,
     AppHeader,
+    BarraAcao,
     Badge,
     Button,
     DataList,
@@ -69,30 +71,43 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
             </div>
 
             @if (fechado()) {
-              <p class="aviso" role="status">O caixa do dia já está fechado.</p>
+              <div class="alerta" role="status">
+                <p class="alerta__titulo">Caixa fechado</p>
+                <p>O caixa do dia já está fechado.</p>
+              </div>
               <dl class="totais">
-                <dt>Entradas</dt>
-                <dd>{{ resumo.caixa.totalEntradas | cePreco }}</dd>
-                <dt>Saídas</dt>
-                <dd>{{ resumo.caixa.totalSaidas | cePreco }}</dd>
-                <dt>Saldo final</dt>
-                <dd>{{ resumo.caixa.saldoFinal | cePreco }}</dd>
+                <div class="total">
+                  <dt>Entradas</dt>
+                  <dd>{{ resumo.caixa.totalEntradas | cePreco }}</dd>
+                </div>
+                <div class="total">
+                  <dt>Saídas</dt>
+                  <dd>{{ resumo.caixa.totalSaidas | cePreco }}</dd>
+                </div>
+                <div class="total">
+                  <dt>Saldo final</dt>
+                  <dd>{{ resumo.caixa.saldoFinal | cePreco }}</dd>
+                </div>
               </dl>
             } @else {
               <dl class="totais">
-                <dt>Saldo inicial</dt>
-                <dd>{{ resumo.caixa.saldoInicial | cePreco }}</dd>
-                <dt>Entradas</dt>
-                <dd>{{ resumo.entradas | cePreco }}</dd>
-                <dt>Despesas</dt>
-                <dd>{{ resumo.totalDespesas | cePreco }}</dd>
-                <dt>Saldo parcial</dt>
-                <dd>{{ resumo.saldoParcial | cePreco }}</dd>
+                <div class="total">
+                  <dt>Saldo inicial</dt>
+                  <dd>{{ resumo.caixa.saldoInicial | cePreco }}</dd>
+                </div>
+                <div class="total">
+                  <dt>Entradas</dt>
+                  <dd>{{ resumo.entradas | cePreco }}</dd>
+                </div>
+                <div class="total">
+                  <dt>Despesas</dt>
+                  <dd>{{ resumo.totalDespesas | cePreco }}</dd>
+                </div>
+                <div class="total">
+                  <dt>Saldo parcial</dt>
+                  <dd>{{ resumo.saldoParcial | cePreco }}</dd>
+                </div>
               </dl>
-              <div class="acoes">
-                <ce-button variante="ghost" (click)="lancarDespesa()">Lançar despesa</ce-button>
-                <ce-button *cePermissao="'caixa.fechar'" (click)="fechar()">Fechar caixa</ce-button>
-              </div>
             }
 
             <h2 class="titulo">Despesas</h2>
@@ -104,6 +119,12 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
                 </ce-list-item>
               </ng-template>
             </ce-data-list>
+            @if (!fechado()) {
+              <ce-barra-acao rotulo="Ações do caixa">
+                <ce-button variante="ghost" (click)="lancarDespesa()">Lançar despesa</ce-button>
+                <ce-button *cePermissao="'caixa.fechar'" (click)="fechar()">Fechar caixa</ce-button>
+              </ce-barra-acao>
+            }
           }
         }
         @default {
@@ -117,6 +138,8 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
     </div>
   `,
   styles: `
+    @use 'mixins';
+
     .conteudo,
     .abrir,
     .carregando {
@@ -126,31 +149,61 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
     }
 
     .conteudo {
+      @include mixins.safe-area-bottom(var(--ce-space-6));
+
       padding: var(--ce-space-4);
+      padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
+
+      @include mixins.from-desktop {
+        padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
+      }
     }
 
-    .aviso {
-      padding: var(--ce-space-3);
-      border-radius: var(--ce-radius-md);
+    .alerta {
+      padding: var(--ce-space-3) var(--ce-space-4);
+      border-radius: 20px;
       background: var(--ce-warning-soft);
+      color: var(--ce-text);
+
+      p {
+        margin: 0;
+      }
+    }
+
+    .alerta__titulo {
+      font-family: var(--ce-font-family-titulo);
+      font-weight: 700;
       color: var(--ce-warning);
-      font-weight: 600;
     }
 
     .totais {
       display: grid;
-      grid-template-columns: 1fr auto;
-      gap: var(--ce-space-1) var(--ce-space-3);
+      grid-template-columns: 1fr 1fr;
+      gap: var(--ce-space-2);
+      margin: 0;
 
-      dd {
-        text-align: right;
-        font-weight: 600;
+      @include mixins.from-desktop {
+        grid-template-columns: repeat(4, 1fr);
       }
     }
 
-    .acoes {
-      display: flex;
-      gap: var(--ce-space-2);
+    .total {
+      padding: var(--ce-space-3) var(--ce-space-4);
+      border-radius: 20px;
+      background: var(--ce-surface);
+
+      dt {
+        font-size: var(--ce-font-sm);
+        color: var(--ce-text-muted);
+      }
+
+      dd {
+        margin: 0;
+        font-family: var(--ce-font-family-titulo);
+        font-size: var(--ce-font-xl);
+        font-weight: 700;
+        @include mixins.tabular-numbers;
+      }
     }
 
     .titulo {

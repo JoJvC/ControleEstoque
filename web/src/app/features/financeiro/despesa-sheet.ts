@@ -49,6 +49,13 @@ export type DespesaSheetResultado = boolean;
           <ce-input [formControl]="descricao" />
         </ce-form-field>
 
+        @if (caixaFechado(); as mensagem) {
+          <div class="alerta" role="alert">
+            <p class="alerta__titulo">Caixa fechado</p>
+            <p>{{ mensagem }}</p>
+            <ce-button variante="ghost" (click)="ref.close()">Voltar ao caixa</ce-button>
+          </div>
+        }
         @if (erro(); as mensagem) {
           <p class="erro" role="alert">{{ mensagem }}</p>
         }
@@ -74,6 +81,27 @@ export type DespesaSheetResultado = boolean;
       }
     }
 
+    .alerta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--ce-space-2);
+      padding: var(--ce-space-3);
+      border-radius: 20px;
+      background: var(--ce-warning-soft);
+      color: var(--ce-text);
+    }
+
+    .alerta p {
+      margin: 0;
+    }
+
+    .alerta__titulo {
+      font-family: var(--ce-font-family-titulo);
+      font-weight: 700;
+      color: var(--ce-warning);
+    }
+
     .erro {
       color: var(--ce-danger);
       font-size: var(--ce-font-sm);
@@ -95,6 +123,7 @@ export class DespesaSheet {
     this.tipos().map((t) => ({ value: t.id, label: t.nome })),
   );
   protected readonly erro = signal<string | null>(null);
+  protected readonly caixaFechado = signal<string | null>(null);
   protected readonly erroTipo = signal<string | null>(null);
   protected readonly enviando = signal(false);
   private readonly criandoTipo = signal(false);
@@ -153,6 +182,7 @@ export class DespesaSheet {
     }
     this.enviando.set(true);
     this.erro.set(null);
+    this.caixaFechado.set(null);
     try {
       await this.store.lancarDespesa(
         this.dados.caixaId,
@@ -162,7 +192,7 @@ export class DespesaSheet {
       );
       this.ref.close(true);
     } catch (e) {
-      // 409 CAIXA_FECHADO, 400 VALOR_INVALIDO, 422 TIPO_DESPESA_INEXISTENTE ficam inline.
+      // 409 CAIXA_FECHADO vira bloco de alerta; 400 VALOR_INVALIDO e 422 TIPO_DESPESA_INEXISTENTE ficam inline.
       this.tratar(e);
     } finally {
       this.enviando.set(false);
@@ -173,7 +203,9 @@ export class DespesaSheet {
     if (!(e instanceof ApiError)) {
       throw e;
     }
-    if (e.status >= 400 && e.status < 500) {
+    if (e.code === 'CAIXA_FECHADO') {
+      this.caixaFechado.set(e.userMessage);
+    } else if (e.status >= 400 && e.status < 500) {
       this.erro.set(e.userMessage);
     }
   }

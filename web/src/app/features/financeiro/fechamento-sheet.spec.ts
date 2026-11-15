@@ -118,7 +118,7 @@ describe('FechamentoSheet', () => {
     expect(close).toHaveBeenCalledWith(resposta);
   });
 
-  it('409 CAIXA_JA_FECHADO aparece inline e não fecha', async () => {
+  it('409 CAIXA_JA_FECHADO mostra o bloco de alerta e "Voltar ao caixa" fecha', async () => {
     const { fixture, el, http, close, confirmar } = await montar();
     confirmar().click();
     http
@@ -131,7 +131,14 @@ describe('FechamentoSheet', () => {
     expect(el.querySelector('[role="alert"]')?.textContent).toContain(
       'O caixa do dia já está fechado.',
     );
+    expect(el.querySelector('.alerta[role="alert"]')).toBeTruthy();
     expect(close).not.toHaveBeenCalled();
+    (
+      Array.from(el.querySelectorAll('button')).find((b) =>
+        b.textContent?.includes('Voltar ao caixa'),
+      ) as HTMLButtonElement
+    ).click();
+    expect(close).toHaveBeenCalledWith();
   });
 
   it('com a lista de funcionários pendente, Confirmar fechamento fica desabilitado e não envia', async () => {

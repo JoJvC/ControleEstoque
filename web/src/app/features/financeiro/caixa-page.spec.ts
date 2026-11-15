@@ -161,6 +161,27 @@ describe('CaixaPage', () => {
     expect(botao('Fechar caixa')).toBeTruthy();
   });
 
+  it('ABERTO: totais em cartões e ce-barra-acao com as ações principais', async () => {
+    const { el, botao } = await montar(RESUMO_ABERTO);
+    expect(el.querySelectorAll('dl.totais .total').length).toBe(4);
+    const barra = el.querySelector('ce-barra-acao');
+    expect(barra?.querySelector('[aria-label="Ações do caixa"]')).toBeTruthy();
+    expect(barra?.contains(botao('Lançar despesa')!)).toBe(true);
+    expect(barra?.contains(botao('Fechar caixa')!)).toBe(true);
+  });
+
+  it('clicar na barra de ação abre o sheet correspondente', async () => {
+    const { fixture, http, abrir, el } = await montar(RESUMO_ABERTO);
+    abrir.mockReturnValue({ closed: of(undefined) });
+    const btn = Array.from(el.querySelectorAll('ce-barra-acao button')).find((b) =>
+      b.textContent?.includes('Fechar caixa'),
+    ) as HTMLButtonElement;
+    btn.click();
+    await assentar(fixture);
+    expect(abrir).toHaveBeenCalledWith(FechamentoSheet, expect.anything());
+    http.expectOne(URL_RESUMO).flush(RESUMO_ABERTO);
+  });
+
   it('"Lançar despesa" abre DespesaSheet e, ao fechar, consulta de novo', async () => {
     const { fixture, http, abrir, botao, toasts } = await montar(RESUMO_ABERTO);
     abrir.mockReturnValue({ closed: of(true) });
@@ -203,6 +224,8 @@ describe('CaixaPage', () => {
     expect(el.querySelector('[role="status"]')?.textContent).toContain(
       'O caixa do dia já está fechado.',
     );
+    expect(el.querySelector('.alerta__titulo')?.textContent).toContain('Caixa fechado');
+    expect(el.querySelector('ce-barra-acao')).toBeNull();
     expect(el.textContent).toContain('Saldo final');
     expect(botao('Lançar despesa')).toBeUndefined();
     expect(botao('Fechar caixa')).toBeUndefined();

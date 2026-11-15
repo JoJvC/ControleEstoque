@@ -214,6 +214,31 @@ const PARES: [Chave, Chave, number, string][] = [
   ['primary', 'surface', NAO_TEXTUAL, 'Vender no celular: círculo sobre a barra'],
   ['topo', 'destaque', TEXTO, 'Vender no desktop: ícone sobre o círculo'],
   ['destaque', 'topo', NAO_TEXTUAL, 'Vender no desktop: círculo sobre o menu lateral'],
+  // Caixa e Relatórios no design Depósito
+  [
+    'text',
+    'surface',
+    TEXTO,
+    'valor do cartão de total (caixa-page.ts:.total dd, relatorio.scss:.total dd)',
+  ],
+  [
+    'textMuted',
+    'surface',
+    TEXTO,
+    'rótulo do cartão e cabeçalho da tabela (caixa-page.ts:.total dt, relatorio.scss:th)',
+  ],
+  [
+    'text',
+    'warningSoft',
+    TEXTO,
+    'texto do cartão Caixa fechado e do bloco de alerta 409 (caixa-page.ts:.alerta)',
+  ],
+  [
+    'warning',
+    'warningSoft',
+    TEXTO,
+    'título do alerta (caixa-page.ts:.alerta__titulo, despesa-sheet.ts:.alerta__titulo)',
+  ],
 ];
 
 const NOMES = Object.keys(TEMAS) as (keyof typeof TEMAS)[];

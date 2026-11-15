@@ -60,6 +60,13 @@ export type FechamentoSheetResultado = FechamentoResponse;
           <ce-button variante="ghost" (click)="carregarFuncionarios()">Tentar de novo</ce-button>
         }
 
+        @if (caixaFechado(); as mensagem) {
+          <div class="alerta" role="alert">
+            <p class="alerta__titulo">Caixa fechado</p>
+            <p>{{ mensagem }}</p>
+            <ce-button variante="ghost" (click)="ref.close()">Voltar ao caixa</ce-button>
+          </div>
+        }
         @if (erro(); as mensagem) {
           <p class="erro" role="alert">{{ mensagem }}</p>
         }
@@ -107,6 +114,27 @@ export type FechamentoSheetResultado = FechamentoResponse;
       color: var(--ce-text-muted);
     }
 
+    .alerta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--ce-space-2);
+      padding: var(--ce-space-3);
+      border-radius: 20px;
+      background: var(--ce-warning-soft);
+      color: var(--ce-text);
+    }
+
+    .alerta p {
+      margin: 0;
+    }
+
+    .alerta__titulo {
+      font-family: var(--ce-font-family-titulo);
+      font-weight: 700;
+      color: var(--ce-warning);
+    }
+
     .erro {
       color: var(--ce-danger);
       font-size: var(--ce-font-sm);
@@ -127,6 +155,7 @@ export class FechamentoSheet {
     this.funcionarios().filter((f) => !this.desmarcados().has(f.id)),
   );
   protected readonly erro = signal<string | null>(null);
+  protected readonly caixaFechado = signal<string | null>(null);
   protected readonly enviando = signal(false);
 
   constructor() {
@@ -164,6 +193,7 @@ export class FechamentoSheet {
     }
     this.enviando.set(true);
     this.erro.set(null);
+    this.caixaFechado.set(null);
     try {
       const resposta = await this.store.fechar(
         this.dados.caixaId,
@@ -171,11 +201,13 @@ export class FechamentoSheet {
       );
       this.ref.close(resposta);
     } catch (e) {
-      // 409 CAIXA_JA_FECHADO, 400 FUNCIONARIO_DUPLICADO ficam inline.
+      // 409 CAIXA_JA_FECHADO vira bloco de alerta; 400 FUNCIONARIO_DUPLICADO fica inline.
       if (!(e instanceof ApiError)) {
         throw e;
       }
-      if (e.status >= 400 && e.status < 500) {
+      if (e.code === 'CAIXA_JA_FECHADO') {
+        this.caixaFechado.set(e.userMessage);
+      } else if (e.status >= 400 && e.status < 500) {
         this.erro.set(e.userMessage);
       }
     } finally {

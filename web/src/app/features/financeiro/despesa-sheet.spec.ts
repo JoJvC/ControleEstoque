@@ -95,10 +95,9 @@ describe('DespesaSheet', () => {
   });
 
   it.each([
-    [409, 'CAIXA_FECHADO', 'O caixa do dia já está fechado.'],
     [400, 'VALOR_INVALIDO', 'Valor deve ser positivo.'],
     [422, 'TIPO_DESPESA_INEXISTENTE', 'Tipo de despesa não encontrado.'],
-  ])('%i %s aparece inline e não fecha', async (status, code, mensagem) => {
+  ])('%i %s aparece inline, sem bloco de alerta, e não fecha', async (status, code, mensagem) => {
     const { fixture, el, http, close, botao, digitar, escolherTipo } = await montar();
     await escolherTipo('t-1');
     await digitar('ce-money-input input', '2500');
@@ -108,7 +107,27 @@ describe('DespesaSheet', () => {
       .flush({ code, message: 'x', traceId: 't' }, { status, statusText: 'Erro' });
     await fixture.whenStable();
     expect(el.querySelector('[role="alert"]')?.textContent).toContain(mensagem);
+    expect(el.querySelector('.alerta')).toBeNull();
     expect(close).not.toHaveBeenCalled();
+  });
+
+  it('409 CAIXA_FECHADO mostra o bloco de alerta e "Voltar ao caixa" fecha o sheet', async () => {
+    const { fixture, el, http, close, botao, digitar, escolherTipo } = await montar();
+    await escolherTipo('t-1');
+    await digitar('ce-money-input input', '2500');
+    botao('Lançar despesa').click();
+    http
+      .expectOne(`${BASE}/caixas/cx-1/despesas`)
+      .flush(
+        { code: 'CAIXA_FECHADO', message: 'x', traceId: 't' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await fixture.whenStable();
+    const alerta = el.querySelector('.alerta[role="alert"]');
+    expect(alerta?.textContent).toContain('O caixa do dia já está fechado.');
+    expect(close).not.toHaveBeenCalled();
+    botao('Voltar ao caixa').click();
+    expect(close).toHaveBeenCalledWith();
   });
 
   it('Enter em "Novo tipo" cria o tipo e não lança a despesa', async () => {

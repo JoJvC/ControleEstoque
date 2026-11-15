@@ -127,8 +127,23 @@ describe('CargosPage', () => {
     const linhas = Array.from(t.el.querySelectorAll('li'));
     const adm = linhas.find((l) => l.textContent?.includes('ADM'))!;
     expect(adm.textContent).toContain('nativo');
-    expect(adm.querySelector('button')).toBeNull();
-    expect(t.el.querySelectorAll('li button').length).toBe(1);
+    expect(adm.querySelector('button')!.disabled).toBe(true);
+    expect(adm.textContent).not.toContain('Editar');
+    expect(t.el.querySelectorAll('li button:not([disabled])').length).toBe(1);
+  });
+
+  it('ce-app-header mostra o título Cargos', async () => {
+    const t = await montar(['rh.gerir']);
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Cargos');
+  });
+
+  it('ação da ce-barra-acao abre o formulário de criação', async () => {
+    const t = await montar(['rh.gerir']);
+    const botao = t.el.querySelector<HTMLButtonElement>('ce-barra-acao button')!;
+    expect(botao.textContent).toContain('Novo cargo');
+    botao.click();
+    await assentar(t.fixture);
+    expect(t.el.querySelector('form')).not.toBeNull();
   });
 
   it('erro da API aparece em role=alert e o formulário continua aberto', async () => {
@@ -164,6 +179,15 @@ describe('CargosPage', () => {
     const t = await montar([]);
     expect(t.botao('Novo cargo')).toBeUndefined();
     expect(t.botao('Editar')).toBeUndefined();
+  });
+
+  it('sem rh.gerir: clicar na linha não abre o formulário', async () => {
+    const t = await montar([]);
+    const linha = t.el.querySelectorAll<HTMLButtonElement>('li button')[1];
+    expect(linha.disabled).toBe(true);
+    linha.click();
+    await assentar(t.fixture);
+    expect(t.el.querySelector('form')).toBeNull();
   });
 });
 

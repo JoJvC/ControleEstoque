@@ -1,5 +1,6 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 
 import { acoes, assentar, configurar } from './testing';
 import { FuncionarioPage } from './funcionario-page';
@@ -59,11 +60,64 @@ async function montar(func: object = ANA, permissoes = ['rh.gerir']) {
 describe('FuncionarioPage', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
+  it('ce-app-header mostra o nome do funcionário como título', async () => {
+    const t = await montar();
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Ana');
+  });
+
+  it('voltar do ce-app-header navega para /rh/funcionarios', async () => {
+    const t = await montar();
+    const navegar = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    t.el.querySelector<HTMLButtonElement>('ce-app-header button[aria-label="Voltar"]')!.click();
+    expect(navegar).toHaveBeenCalledWith('/rh/funcionarios');
+  });
+
+  it('carregando a conta-corrente mostra skeleton e o texto acessível', async () => {
+    configurar(['rh.gerir']);
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(FuncionarioPage);
+    fixture.componentRef.setInput('id', 'f1');
+    fixture.detectChanges();
+    await assentar(fixture);
+    http.expectOne(URL).flush(ANA);
+    await assentar(fixture);
+    http.expectOne(CARGOS).flush([CAIXA]);
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('ce-skeleton')).not.toBeNull();
+    expect(el.textContent).toContain('Carregando conta-corrente…');
+    http.expectOne(`${URL}/conta-corrente`).flush(extrato(100));
+    await assentar(fixture);
+    expect(el.querySelector('ce-skeleton')).toBeNull();
+  });
+
+  it('o saldo exibido é o que o servidor devolveu, sem soma no front', async () => {
+    configurar(['rh.gerir']);
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(FuncionarioPage);
+    fixture.componentRef.setInput('id', 'f1');
+    fixture.detectChanges();
+    await assentar(fixture);
+    http.expectOne(URL).flush(ANA);
+    await assentar(fixture);
+    http.expectOne(CARGOS).flush([CAIXA]);
+    // saldo do servidor (37,50) difere da soma dos lançamentos (100,00)
+    http.expectOne(`${URL}/conta-corrente`).flush(extrato(37.5));
+    await assentar(fixture);
+    const chip = (fixture.nativeElement as HTMLElement).querySelector('ce-saldo-chip')!;
+    expect(chip.textContent).toMatch(/R\$\s*37,50/);
+  });
+
+  it('extrato é lista informativa: sem botão nem estado disabled', async () => {
+    const t = await montar();
+    expect(t.el.querySelector('.lancamentos li.lancamento')).not.toBeNull();
+    expect(t.el.querySelector('.lancamentos button, .lancamentos ce-list-item')).toBeNull();
+  });
+
   it('mostra saldo no chip e o extrato com tipo, data, valor', async () => {
     const t = await montar();
     expect(t.chip()).toContain('Saldo a pagar');
     expect(t.chip()).toMatch(/R\$\s*100,00/);
-    const li = t.el.querySelector('.extrato li')!.textContent!;
+    const li = t.el.querySelector('.lancamentos li')!.textContent!;
     expect(li).toContain('Diária');
     expect(li).toContain('13/11/2026');
     expect(li).toMatch(/R\$\s*100,00/);

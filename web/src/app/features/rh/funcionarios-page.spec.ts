@@ -70,9 +70,31 @@ describe('FuncionariosPage', () => {
     expect(linhas[0].textContent).toMatch(/R\$\s*100,00/);
     expect(linhas[0].textContent).toContain('Ativo');
     expect(linhas[0].textContent).not.toContain('Sem diária');
-    expect(linhas[0].querySelector('a')!.getAttribute('href')).toBe('/rh/funcionarios/f1');
     expect(linhas[1].textContent).toContain('Sem diária');
     expect(linhas[1].textContent).toContain('Inativo');
+  });
+
+  it('ce-app-header mostra o título Funcionários', async () => {
+    const t = await montar(['rh.gerir']);
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Funcionários');
+  });
+
+  it('clique na linha navega para /rh/funcionarios/:id', async () => {
+    const t = await montar(['rh.gerir']);
+    const navegar = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    t.el.querySelector<HTMLButtonElement>('li ce-list-item button')!.click();
+    expect(navegar).toHaveBeenCalledWith('/rh/funcionarios/f1');
+  });
+
+  it('ação da ce-barra-acao abre o formulário de criação', async () => {
+    const t = await montar(['rh.gerir']);
+    const botao = t.el.querySelector<HTMLButtonElement>('ce-barra-acao button')!;
+    expect(botao.textContent).toContain('Novo funcionário');
+    botao.click();
+    await assentar(t.fixture);
+    t.http.expectOne(CARGOS).flush([CARGO]);
+    await assentar(t.fixture);
+    expect(t.el.querySelector('form')).not.toBeNull();
   });
 
   it('criar: nome, cargo e diária geram o POST e o funcionário entra na lista', async () => {

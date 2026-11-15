@@ -1,11 +1,16 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 
 import { CreateFuncionarioRequest } from '../../core/api/models/rh';
 import { ApiError } from '../../core/http/api-error';
 import { CePermissao } from '../../core/permissions/ce-permissao';
+import { Avatar } from '../../ui/atoms/avatar';
 import { Badge } from '../../ui/atoms/badge';
 import { Button } from '../../ui/atoms/button';
+import { Icon } from '../../ui/atoms/icon';
+import { ListItem } from '../../ui/molecules/list-item';
+import { AppHeader } from '../../ui/organisms/app-header';
+import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { DataList } from '../../ui/organisms/data-list';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { FuncionarioForm } from './funcionario-form';
@@ -14,12 +19,23 @@ import { FuncionariosStore } from './funcionarios-store';
 @Component({
   selector: 'ce-funcionarios-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, CePermissao, Badge, Button, DataList, FuncionarioForm, PrecoPipe],
+  imports: [
+    CePermissao,
+    AppHeader,
+    Avatar,
+    Badge,
+    BarraAcao,
+    Button,
+    Icon,
+    ListItem,
+    DataList,
+    FuncionarioForm,
+    PrecoPipe,
+  ],
   template: `
+    <ce-app-header titulo="Funcionários" />
     <div class="pagina">
-      <h1>Funcionários</h1>
       @if (!formAberto()) {
-        <ce-button *cePermissao="'rh.gerir'" (click)="novo()">Novo funcionário</ce-button>
         <ce-data-list
           [itens]="store.funcionarios()"
           [status]="store.status()"
@@ -27,24 +43,27 @@ import { FuncionariosStore } from './funcionarios-store';
           (recarregar)="store.carregar()"
         >
           <ng-template let-item>
-            <a class="linha" [routerLink]="['/rh/funcionarios', item.id]">
-              <span class="linha__dados">
-                <span>{{ item.nome }}</span>
-                <span class="linha__meta">
-                  {{ item.cargo }} ·
-                  @if (item.valorDiaria > 0) {
-                    {{ item.valorDiaria | cePreco }}
-                  } @else {
-                    Sem diária
-                  }
-                </span>
+            <ce-list-item (click)="abrir(item.id)">
+              <ce-avatar ce-leading [nome]="item.nome" [tamanho]="40" />
+              <span class="nome">{{ item.nome }}</span>
+              <span class="meta">
+                {{ item.cargo }} ·
+                @if (item.valorDiaria > 0) {
+                  {{ item.valorDiaria | cePreco }}
+                } @else {
+                  Sem diária
+                }
               </span>
-              <ce-badge [cor]="item.ativo ? 'success' : 'neutral'">
+              <ce-badge ce-trailing [cor]="item.ativo ? 'success' : 'neutral'">
                 {{ item.ativo ? 'Ativo' : 'Inativo' }}
               </ce-badge>
-            </a>
+              <ce-icon ce-trailing nome="seta-direita" [tamanho]="18" />
+            </ce-list-item>
           </ng-template>
         </ce-data-list>
+        <ce-barra-acao *cePermissao="'rh.gerir'" rotulo="Novo funcionário">
+          <ce-button (click)="novo()">Novo funcionário</ce-button>
+        </ce-barra-acao>
       } @else {
         <ce-funcionario-form [salvando]="salvando()" [erro]="erro()" (salvar)="salvar($event)">
           <ce-button variante="ghost" (click)="formAberto.set(false)">Cancelar</ce-button>
@@ -56,34 +75,34 @@ import { FuncionariosStore } from './funcionarios-store';
     @use 'mixins';
 
     .pagina {
-      padding-inline: var(--ce-space-4);
+      padding: var(--ce-space-4);
+      padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
       max-width: 560px;
 
       @include mixins.from-tablet {
         margin-inline: auto;
         width: 100%;
       }
+
+      @include mixins.from-desktop {
+        padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
+      }
     }
 
-    .linha {
-      @include mixins.touch-target;
-
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--ce-space-3);
-      color: inherit;
-      text-decoration: none;
+    // Cartões do design Depósito: raio 18–22 px (o ce-list-item é compartilhado, o raio vale só aqui).
+    :host ::ng-deep .item {
+      border-radius: 20px;
     }
 
-    .linha__dados {
-      display: flex;
-      flex-direction: column;
+    .nome {
+      font-weight: 600;
     }
 
-    .linha__meta {
+    .meta {
       font-size: var(--ce-font-sm);
       color: var(--ce-text-muted);
+
+      @include mixins.tabular-numbers;
     }
   `,
 })
@@ -92,9 +111,14 @@ export class FuncionariosPage {
   protected readonly formAberto = signal(false);
   protected readonly salvando = signal(false);
   protected readonly erro = signal<string | null>(null);
+  private readonly router = inject(Router);
 
   constructor() {
     void this.store.carregar();
+  }
+
+  protected abrir(id: string): void {
+    this.router.navigateByUrl(`/rh/funcionarios/${id}`);
   }
 
   protected novo(): void {

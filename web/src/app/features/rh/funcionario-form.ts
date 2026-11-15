@@ -88,6 +88,10 @@ export function diariaValida(v: number | null): boolean {
     }
 
     .erro {
+      margin: 0;
+      padding: var(--ce-space-3);
+      border: 1px solid var(--ce-danger);
+      border-radius: var(--ce-radius-controle);
       color: var(--ce-danger);
     }
   `,

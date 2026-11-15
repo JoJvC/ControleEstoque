@@ -4,12 +4,17 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { CargoResponse } from '../../core/api/models/rh';
 import { ApiError } from '../../core/http/api-error';
 import { CePermissao } from '../../core/permissions/ce-permissao';
+import { PermissionService } from '../../core/permissions/permission-service';
 import { PERMISSOES } from '../../core/permissions/permissoes';
 import { Badge } from '../../ui/atoms/badge';
 import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
+import { Icon } from '../../ui/atoms/icon';
 import { TextInput } from '../../ui/atoms/text-input';
 import { FormField } from '../../ui/molecules/form-field';
+import { ListItem } from '../../ui/molecules/list-item';
+import { AppHeader } from '../../ui/organisms/app-header';
+import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { DataList } from '../../ui/organisms/data-list';
 import { CargosStore } from './cargos-store';
 
@@ -19,18 +24,21 @@ import { CargosStore } from './cargos-store';
   imports: [
     ReactiveFormsModule,
     CePermissao,
+    AppHeader,
     Badge,
+    BarraAcao,
     Button,
     Checkbox,
+    Icon,
     TextInput,
     FormField,
+    ListItem,
     DataList,
   ],
   template: `
+    <ce-app-header titulo="Cargos" />
     <div class="pagina">
-      <h1>Cargos</h1>
       @if (!formAberto()) {
-        <ce-button *cePermissao="'rh.gerir'" (click)="novo()">Novo cargo</ce-button>
         <ce-data-list
           [itens]="store.cargos()"
           [status]="store.status()"
@@ -38,18 +46,21 @@ import { CargosStore } from './cargos-store';
           (recarregar)="store.carregar()"
         >
           <ng-template let-item>
-            <div class="linha">
-              <span>{{ item.nome }}</span>
+            <ce-list-item [desabilitado]="item.nativo || !pode()" (click)="editar(item)">
+              <span class="nome">{{ item.nome }}</span>
               @if (item.nativo) {
-                <ce-badge>nativo</ce-badge>
-              } @else {
-                <ce-button *cePermissao="'rh.gerir'" variante="ghost" (click)="editar(item)">
-                  Editar
-                </ce-button>
+                <ce-badge ce-trailing>nativo</ce-badge>
+              } @else if (pode()) {
+                <span ce-trailing class="editar">
+                  <ce-icon nome="editar" [tamanho]="18" /> Editar
+                </span>
               }
-            </div>
+            </ce-list-item>
           </ng-template>
         </ce-data-list>
+        <ce-barra-acao *cePermissao="'rh.gerir'" rotulo="Novo cargo">
+          <ce-button (click)="novo()">Novo cargo</ce-button>
+        </ce-barra-acao>
       } @else {
         <form [formGroup]="form" (ngSubmit)="salvar()">
           <ce-form-field rotulo="Nome" [obrigatorio]="true" [erro]="erroNome()">
@@ -75,12 +86,17 @@ import { CargosStore } from './cargos-store';
     @use 'mixins';
 
     .pagina {
-      padding-inline: var(--ce-space-4);
+      padding: var(--ce-space-4);
+      padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
       max-width: 560px;
 
       @include mixins.from-tablet {
         margin-inline: auto;
         width: 100%;
+      }
+
+      @include mixins.from-desktop {
+        padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
       }
     }
 
@@ -95,22 +111,41 @@ import { CargosStore } from './cargos-store';
       gap: var(--ce-space-3);
     }
 
-    .linha {
-      @include mixins.touch-target;
+    // Cartões do design Depósito: raio 18–22 px (o ce-list-item é compartilhado, o raio vale só aqui).
+    :host ::ng-deep .item {
+      border-radius: 20px;
+    }
 
-      display: flex;
+    // linha sem ação (nativo ou sem permissão) é informativa: mantém o contraste do texto
+    :host ::ng-deep .item:disabled {
+      opacity: 1;
+      cursor: default;
+    }
+
+    .nome {
+      font-weight: 600;
+    }
+
+    .editar {
+      display: inline-flex;
       align-items: center;
-      justify-content: space-between;
-      gap: var(--ce-space-3);
+      gap: var(--ce-space-1);
+      color: var(--ce-acao-texto);
     }
 
     .erro {
+      margin: 0;
+      padding: var(--ce-space-3);
+      border: 1px solid var(--ce-danger);
+      border-radius: var(--ce-radius-controle);
       color: var(--ce-danger);
     }
   `,
 })
 export class CargosPage {
   protected readonly store = inject(CargosStore);
+  private readonly permissions = inject(PermissionService);
+  protected readonly pode = () => this.permissions.has('rh.gerir');
   protected readonly permissoes = PERMISSOES;
   protected readonly formAberto = signal(false);
   protected readonly salvando = signal(false);
@@ -139,6 +174,9 @@ export class CargosPage {
   }
 
   protected editar(cargo: CargoResponse): void {
+    if (cargo.nativo || !this.pode()) {
+      return;
+    }
     this.abrir(cargo.id, cargo.nome, cargo.permissoes);
   }
 

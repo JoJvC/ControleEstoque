@@ -1,3 +1,4 @@
+import { resolverTema } from '../theme/theme-store';
 import { razaoContraste } from './contraste';
 
 // Hex copiados de web/src/styles/tokens.scss (linha entre parênteses), uma paleta por tema.
@@ -254,4 +255,68 @@ describe('contraste dos tokens', () => {
     const base = Object.keys(TEMAS.oceano).sort();
     for (const t of NOMES) expect(Object.keys(TEMAS[t]).sort()).toEqual(base);
   });
+});
+
+// RH no design Depósito: pares das telas de funcionários, edição com conta-corrente e cargos
+// [frente, fundo, limiar, onde ocorre]
+const PARES_RH: [Chave, Chave, number, string][] = [
+  ['text', 'bg', TEXTO, 'título (ce-app-header sem onda) sobre o fundo da página'],
+  ['textoSobreTopo', 'topo', TEXTO, 'ce-app-header com onda (app-header.ts:.topo--onda)'],
+  ['text', 'surface', TEXTO, 'nome na linha, valores do extrato e título de cartão'],
+  ['textMuted', 'surface', TEXTO, 'cargo · diária, observação do lançamento, carregando'],
+  ['textMuted', 'bg', TEXTO, 'texto de apoio sobre o fundo da página'],
+  [
+    'textOnPrimary',
+    'primary',
+    TEXTO,
+    'ce-button primário na ce-barra-acao (Novo funcionário/cargo, Salvar)',
+  ],
+  [
+    'primary',
+    'surface',
+    TEXTO,
+    'ce-button ghost (Cancelar, Lançar vale/pagamento) sobre a ce-barra-acao e cartões',
+  ],
+  ['acaoTexto', 'surface', TEXTO, 'rótulo Editar na linha de cargo (cargos-page.ts:.editar)'],
+  ['success', 'successSoft', TEXTO, 'ce-badge Ativo (badge.ts:31-32)'],
+  ['textMuted', 'surfaceMuted', TEXTO, 'ce-badge Inativo (badge.ts:46-47)'],
+  ['primaryStrong', 'primarySoft', TEXTO, 'ce-badge nativo (badge.ts:26-27)'],
+  ['warning', 'surface', TEXTO, 'ce-saldo-chip com saldo a pagar (saldo-chip.ts:53)'],
+  ['success', 'surface', TEXTO, 'ce-saldo-chip com saldo zerado (saldo-chip.ts:49)'],
+  ['danger', 'surface', TEXTO, 'p.erro e role=alert (borda e texto em --ce-danger)'],
+  [
+    'bordaCampo',
+    'surface',
+    NAO_TEXTUAL,
+    'borda de campo (nome, telefone, valor, observação) sobre cartão',
+  ],
+  ['bordaCampo', 'bg', NAO_TEXTUAL, 'borda de campo sobre o fundo da página'],
+  ['focusRing', 'surface', NAO_TEXTUAL, 'anel de foco em linhas, botões e campos sobre cartão'],
+  ['focusRing', 'bg', NAO_TEXTUAL, 'anel de foco sobre o fundo da página'],
+];
+
+describe('RH no design Depósito', () => {
+  const casosRh = NOMES.flatMap((tema) => PARES_RH.map((p) => [tema, ...p] as const));
+
+  it.each(casosRh)('[%s] %s sobre %s ≥ %s (%s)', (tema, frente, fundo, limiar) => {
+    const p: Paleta = TEMAS[tema];
+    expect(razaoContraste(p[frente], p[fundo])).toBeGreaterThanOrEqual(limiar);
+  });
+
+  it.each([
+    [false, 'oceano'],
+    [true, 'noite'],
+  ] as const)(
+    'Automático com prefereEscuro=%s resolve %s e os pares passam',
+    (escuro, esperado) => {
+      const tema = resolverTema('automatico', escuro);
+      expect(tema).toBe(esperado);
+      const p: Paleta = TEMAS[tema];
+      for (const [frente, fundo, limiar] of PARES_RH) {
+        expect(razaoContraste(p[frente], p[fundo]), `${frente}/${fundo}`).toBeGreaterThanOrEqual(
+          limiar,
+        );
+      }
+    },
+  );
 });

@@ -12,18 +12,34 @@ public sealed class PostgresSaldosRepository : ISaldosRepository
     public async Task<SaldosCliente> GetSaldosAsync(Guid clienteId, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.GetSaldos, connection);
-        command.Parameters.AddWithValue("clienteId", clienteId);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
+
+        var cascos = new List<SaldoCascoPorTipo>();
+        await using (var command = new NpgsqlCommand(Sql.GetCascosPorTipo, connection))
         {
-            return new SaldosCliente(0, 0, 0m);
+            command.Parameters.AddWithValue("clienteId", clienteId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                cascos.Add(new SaldoCascoPorTipo(reader.GetGuid(0), reader.GetString(1), reader.GetInt64(2)));
+            }
         }
 
-        return new SaldosCliente(
-            reader.IsDBNull(0) ? 0 : reader.GetInt64(0),
-            reader.IsDBNull(1) ? 0 : reader.GetInt64(1),
-            reader.IsDBNull(2) ? 0m : reader.GetDecimal(2));
+        var sucata = new List<SucataPorTipo>();
+        await using (var command = new NpgsqlCommand(Sql.GetSucataPorTipo, connection))
+        {
+            command.Parameters.AddWithValue("clienteId", clienteId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                sucata.Add(new SucataPorTipo(reader.GetGuid(0), reader.GetString(1), reader.GetInt64(2)));
+            }
+        }
+
+        await using var fiadoCommand = new NpgsqlCommand(Sql.GetSaldoFiado, connection);
+        fiadoCommand.Parameters.AddWithValue("clienteId", clienteId);
+        var saldoFiado = (decimal?)await fiadoCommand.ExecuteScalarAsync(cancellationToken) ?? 0m;
+
+        return SaldosCascos.Montar(cascos, sucata, saldoFiado);
     }
 
     public async Task<IReadOnlyList<SaldoCascoRelatorio>> ListSaldosCascoAsync(
@@ -67,29 +83,46 @@ public sealed class PostgresSaldosRepository : ISaldosRepository
 
     private static class Sql
     {
-        public const string GetSaldos = """
-            SELECT
-                (SELECT saldo_cascos    FROM vw_saldo_casco_cliente     WHERE cliente_id = @clienteId),
-                (SELECT total_entregue  FROM vw_sucata_entregue_cliente WHERE cliente_id = @clienteId),
-                (SELECT saldo_devedor   FROM vw_saldo_fiado_cliente     WHERE cliente_id = @clienteId)
+        // Tipo apagado com movimento continua na lista (sem filtrar deleted_at), para o total bater com a soma.
+        public const string GetCascosPorTipo = """
+            SELECT v.tipo_casco_id, tc.nome, v.saldo_cascos
+            FROM vw_saldo_casco_cliente v
+            JOIN tipos_casco tc ON tc.id = v.tipo_casco_id
+            WHERE v.cliente_id = @clienteId AND v.saldo_cascos <> 0
+            ORDER BY tc.nome
             """;
 
+        public const string GetSucataPorTipo = """
+            SELECT v.tipo_casco_id, tc.nome, v.total_entregue
+            FROM vw_sucata_entregue_cliente v
+            JOIN tipos_casco tc ON tc.id = v.tipo_casco_id
+            WHERE v.cliente_id = @clienteId AND v.total_entregue > 0
+            ORDER BY tc.nome
+            """;
+
+        public const string GetSaldoFiado =
+            "SELECT saldo_devedor FROM vw_saldo_fiado_cliente WHERE cliente_id = @clienteId";
+
         public const string ListSaldosCasco = """
-            SELECT cliente_id, nome, saldo_cascos
+            SELECT cliente_id, nome, SUM(saldo_cascos)::bigint AS saldo_cascos
             FROM vw_saldo_casco_cliente
-            WHERE saldo_cascos <> 0
-            ORDER BY saldo_cascos DESC
+            GROUP BY cliente_id, nome
+            HAVING SUM(saldo_cascos) <> 0
+            ORDER BY SUM(saldo_cascos) DESC
             """;
 
         public const string TotalCascosNaRua = """
-            SELECT COALESCE(SUM(saldo_cascos), 0) FROM vw_saldo_casco_cliente WHERE saldo_cascos > 0
+            SELECT COALESCE(SUM(saldo), 0)::bigint
+            FROM (SELECT SUM(saldo_cascos) AS saldo FROM vw_saldo_casco_cliente GROUP BY cliente_id) t
+            WHERE saldo > 0
             """;
 
         public const string ListSucataEntregue = """
-            SELECT cliente_id, nome, total_entregue
+            SELECT cliente_id, nome, SUM(total_entregue)::bigint AS total_entregue
             FROM vw_sucata_entregue_cliente
-            WHERE total_entregue > 0
-            ORDER BY total_entregue DESC
+            GROUP BY cliente_id, nome
+            HAVING SUM(total_entregue) > 0
+            ORDER BY SUM(total_entregue) DESC
             """;
     }
 }

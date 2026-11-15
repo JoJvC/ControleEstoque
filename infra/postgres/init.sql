@@ -382,14 +382,16 @@ ALTER TABLE movimentos_estoque
     FOREIGN KEY (venda_id) REFERENCES vendas(id);
 
 -- ----------------------------------------------------------------------------
--- CASCO NORMAL — LEDGER POR CLIENTE
--- (sucata NUNCA entra aqui; venda de água só empresta casco normal)
+-- CASCO NORMAL — LEDGER POR CLIENTE E TIPO DE CASCO
+-- (o saldo de casco é por cliente e tipo de casco; sucata NUNCA entra aqui, vai para
+-- entregas_sucata_cliente, na seção abaixo; venda de água só empresta casco normal)
 -- ----------------------------------------------------------------------------
 
 CREATE TABLE movimentos_casco_cliente (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     cliente_id  UUID NOT NULL REFERENCES clientes(id),
     venda_id    UUID REFERENCES vendas(id), -- NULL = movimentação avulsa
+    tipo_casco_id UUID NOT NULL REFERENCES tipos_casco(id),
     tipo        tipo_movimento_casco NOT NULL,
     quantidade  INT NOT NULL CHECK (quantidade > 0),
     created_by  UUID REFERENCES funcionarios(id),
@@ -397,7 +399,7 @@ CREATE TABLE movimentos_casco_cliente (
     deleted_at  TIMESTAMPTZ
 );
 
-CREATE INDEX idx_mov_casco_cliente ON movimentos_casco_cliente(cliente_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_mov_casco_cliente ON movimentos_casco_cliente(cliente_id, tipo_casco_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_mov_casco_venda   ON movimentos_casco_cliente(venda_id)   WHERE venda_id IS NOT NULL;
 
 -- ----------------------------------------------------------------------------
@@ -409,6 +411,7 @@ CREATE TABLE entregas_sucata_cliente (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     cliente_id       UUID NOT NULL REFERENCES clientes(id),
     venda_id         UUID REFERENCES vendas(id), -- NULL = entrega avulsa
+    tipo_casco_id    UUID NOT NULL REFERENCES tipos_casco(id),
     quantidade       INT NOT NULL CHECK (quantidade > 0),
     valor_conversao  NUMERIC(19,2), -- NULL = não convertida em crédito no fiado
     created_by       UUID REFERENCES funcionarios(id),
@@ -416,7 +419,7 @@ CREATE TABLE entregas_sucata_cliente (
     deleted_at       TIMESTAMPTZ
 );
 
-CREATE INDEX idx_sucata_cliente ON entregas_sucata_cliente(cliente_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sucata_cliente ON entregas_sucata_cliente(cliente_id, tipo_casco_id) WHERE deleted_at IS NULL;
 
 -- ----------------------------------------------------------------------------
 -- BAIXA DE CASCO POR QUEBRA (estoque físico → sucata)
@@ -592,10 +595,12 @@ LEFT JOIN movimentos_estoque_casco m
 WHERE tc.deleted_at IS NULL
 GROUP BY tc.id, ma.nome;
 
--- Saldo de casco NORMAL por cliente (positivo = cliente deve cascos à loja).
+-- Saldo de casco NORMAL por cliente e tipo de casco (positivo = cliente deve cascos à loja).
+-- Cliente sem movimento aparece com tipo_casco_id NULL.
 CREATE VIEW vw_saldo_casco_cliente AS
 SELECT c.id AS cliente_id,
        c.nome,
+       m.tipo_casco_id,
        COALESCE(SUM(CASE m.tipo
            WHEN 'EMPRESTIMO'      THEN  m.quantidade
            WHEN 'DEVOLUCAO'       THEN -m.quantidade
@@ -605,18 +610,19 @@ FROM clientes c
 LEFT JOIN movimentos_casco_cliente m
        ON m.cliente_id = c.id AND m.deleted_at IS NULL
 WHERE c.deleted_at IS NULL
-GROUP BY c.id;
+GROUP BY c.id, m.tipo_casco_id;
 
--- Total de sucata entregue por cliente (registro, não débito).
+-- Total de sucata entregue por cliente e tipo de casco (registro, não débito).
 CREATE VIEW vw_sucata_entregue_cliente AS
 SELECT c.id AS cliente_id,
        c.nome,
+       e.tipo_casco_id,
        COALESCE(SUM(e.quantidade), 0) AS total_entregue
 FROM clientes c
 LEFT JOIN entregas_sucata_cliente e
        ON e.cliente_id = c.id AND e.deleted_at IS NULL
 WHERE c.deleted_at IS NULL
-GROUP BY c.id;
+GROUP BY c.id, e.tipo_casco_id;
 
 -- Saldo devedor de fiado por cliente
 -- (débitos − créditos de sucata − pagamentos; positivo = cliente deve).

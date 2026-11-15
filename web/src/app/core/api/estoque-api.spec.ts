@@ -142,4 +142,29 @@ describe('EstoqueApi', () => {
     req.flush(corpo);
     expect(resp).toEqual(corpo);
   });
+
+  it('listarTiposCasco: GET /tipos-casco', () => {
+    let resp: unknown;
+    api.listarTiposCasco().subscribe((r) => (resp = r));
+    const req = http.expectOne(`${BASE}/tipos-casco`);
+    expect(req.request.method).toBe('GET');
+    req.flush([{ id: 't1' }]);
+    expect(resp).toEqual([{ id: 't1' }]);
+  });
+
+  it('criarTipoCasco: POST /tipos-casco com o corpo', () => {
+    api.criarTipoCasco(body).subscribe();
+    const req = http.expectOne(`${BASE}/tipos-casco`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toBe(body);
+    req.flush({});
+  });
+
+  it('atualizarTipoCasco: PUT /tipos-casco/{id} com o corpo', () => {
+    api.atualizarTipoCasco('t-1', body).subscribe();
+    const req = http.expectOne(`${BASE}/tipos-casco/t-1`);
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toBe(body);
+    req.flush({});
+  });
 });

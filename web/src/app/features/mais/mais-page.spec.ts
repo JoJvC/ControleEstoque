@@ -92,4 +92,15 @@ describe('MaisPage', () => {
     );
     expect(link?.getAttribute('href')).toBe('/financeiro/caixa');
   });
+
+  it('link Tipos de casco leva a /tipos-casco (sem permissão)', async () => {
+    TestBed.inject(OperatorStore).select(operadorValido([]));
+    const fixture = TestBed.createComponent(MaisPage);
+    const el = fixture.nativeElement as HTMLElement;
+    await fixture.whenStable();
+    const link = Array.from(el.querySelectorAll<HTMLAnchorElement>('.mais__item')).find((a) =>
+      a.textContent?.includes('Tipos de casco'),
+    );
+    expect(link?.getAttribute('href')).toBe('/tipos-casco');
+  });
 });

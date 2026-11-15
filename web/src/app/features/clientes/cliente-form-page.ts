@@ -9,12 +9,13 @@ import { Button } from '../../ui/atoms/button';
 import { TextInput } from '../../ui/atoms/text-input';
 import { FormField } from '../../ui/molecules/form-field';
 import { AppHeader } from '../../ui/organisms/app-header';
+import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { ClientesStore } from './clientes-store';
 
 @Component({
   selector: 'ce-cliente-form-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, AppHeader, Button, TextInput, FormField],
+  imports: [ReactiveFormsModule, AppHeader, BarraAcao, Button, TextInput, FormField],
   template: `
     <ce-app-header
       [titulo]="id() === null ? 'Novo cliente' : 'Editar cliente'"
@@ -44,9 +45,11 @@ import { ClientesStore } from './clientes-store';
         <p class="form__erro" role="alert">{{ mensagem }}</p>
       }
 
-      <ce-button tipo="submit" [block]="true" [loading]="salvando()">
-        {{ id() === null ? 'Cadastrar cliente' : 'Salvar alterações' }}
-      </ce-button>
+      <ce-barra-acao rotulo="Salvar cliente">
+        <ce-button tipo="submit" [block]="true" [loading]="salvando()">
+          {{ id() === null ? 'Cadastrar cliente' : 'Salvar alterações' }}
+        </ce-button>
+      </ce-barra-acao>
     </form>
   `,
   styles: `
@@ -57,11 +60,16 @@ import { ClientesStore } from './clientes-store';
       flex-direction: column;
       gap: var(--ce-space-4);
       padding-inline: var(--ce-space-4);
+      padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
       max-width: 560px;
 
       @include mixins.from-tablet {
         margin-inline: auto;
         width: 100%;
+      }
+
+      @include mixins.from-desktop {
+        padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
       }
     }
 
@@ -73,7 +81,10 @@ import { ClientesStore } from './clientes-store';
 })
 export class ClienteFormPage {
   /** Route param (:id) — null em /clientes/novo. */
-  readonly id = input<string | null>(null);
+  readonly id = input<string | null, string | null | undefined>(null, {
+    // withComponentInputBinding entrega undefined (não null) quando a rota não tem :id.
+    transform: (v) => v ?? null,
+  });
 
   private readonly store = inject(ClientesStore);
   private readonly api = inject(ClientesApi);

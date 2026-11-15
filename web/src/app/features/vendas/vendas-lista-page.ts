@@ -136,7 +136,7 @@ const ERRO_PADRAO = 'Verifique a conexão e tente novamente.';
       text-align: left;
       padding: var(--ce-space-3);
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
       background: var(--ce-surface);
     }
 

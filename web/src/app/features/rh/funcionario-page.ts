@@ -75,7 +75,9 @@ const ROTULOS: Record<TipoLancamentoFuncionario, string> = {
           @if (conta.status() === 'ok') {
             <ce-saldo-chip
               rotulo="Saldo a pagar"
-              [cor]="conta.saldoAPagar() > 0 ? 'warning' : 'success'"
+              [cor]="
+                conta.saldoAPagar() > 0 ? 'warning' : conta.saldoAPagar() < 0 ? 'danger' : 'neutral'
+              "
             >
               {{ conta.saldoAPagar() | cePreco }}
             </ce-saldo-chip>

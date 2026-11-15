@@ -91,7 +91,7 @@ export interface AjusteSheetDados {
       @include mixins.touch-target;
 
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border-radius: var(--ce-radius-controle);
       background: var(--ce-surface);
       font-weight: 600;
       color: var(--ce-text-muted);

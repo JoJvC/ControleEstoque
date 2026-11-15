@@ -52,7 +52,7 @@ import { PrecoPipe } from '../pipes/preco-pipe';
       padding: var(--ce-space-3);
       background: var(--ce-surface);
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-lg);
+      border-radius: 20px;
     }
 
     .linha__icone {

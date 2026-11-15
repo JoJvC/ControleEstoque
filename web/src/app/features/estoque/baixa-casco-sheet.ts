@@ -90,7 +90,7 @@ import { EstoqueStore } from './estoque-store';
       align-items: center;
       gap: var(--ce-space-2);
       padding: var(--ce-space-2) var(--ce-space-3);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
       background: var(--ce-primary-soft);
       color: var(--ce-primary-strong);
       font-size: var(--ce-font-sm);

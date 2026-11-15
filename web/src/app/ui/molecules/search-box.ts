@@ -49,7 +49,7 @@ const DEBOUNCE_MS = 300;
       min-height: var(--ce-touch-target);
       padding-inline: var(--ce-space-3);
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-lg);
+      border-radius: var(--ce-radius-controle);
       background: var(--ce-surface);
       color: var(--ce-text-muted);
 

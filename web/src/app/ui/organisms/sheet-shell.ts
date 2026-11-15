@@ -42,11 +42,11 @@ export const SHEET_TITULO_ID = new InjectionToken<string>('SHEET_TITULO_ID');
       display: flex;
       flex-direction: column;
       background: var(--ce-surface);
-      border-radius: var(--ce-radius-lg) var(--ce-radius-lg) 0 0;
+      border-radius: 20px 20px 0 0;
       max-height: 85dvh;
 
       @include mixins.from-tablet {
-        border-radius: var(--ce-radius-lg);
+        border-radius: 20px;
         max-height: 80dvh;
       }
     }

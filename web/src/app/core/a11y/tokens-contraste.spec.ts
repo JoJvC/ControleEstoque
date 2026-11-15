@@ -42,112 +42,112 @@ const TEMAS = {
     aguaNivel: '#4cc9e8', // tokens.scss:40
   },
   uva: {
-    primary: '#6d28d9', // tokens.scss:85
-    primaryStrong: '#2e1065', // tokens.scss:86
-    primarySoft: '#ede9fe', // tokens.scss:87
-    success: '#15803d', // tokens.scss:88
-    successSoft: '#dcfce7', // tokens.scss:89
-    warning: '#b45309', // tokens.scss:90
-    warningSoft: '#fef3c7', // tokens.scss:91
-    danger: '#b91c1c', // tokens.scss:92
-    dangerSoft: '#fee2e2', // tokens.scss:93
-    bg: '#f6f5fb', // tokens.scss:94
-    surface: '#ffffff', // tokens.scss:95
-    surfaceMuted: '#f6f5fb', // tokens.scss:96
-    text: '#1e1537', // tokens.scss:97
-    textMuted: '#5b5570', // tokens.scss:98
-    textOnPrimary: '#ffffff', // tokens.scss:99
-    border: '#e7e4f0', // tokens.scss:100
-    focusRing: '#6d28d9', // tokens.scss:101
-    topo: '#2e1065', // tokens.scss:102
-    topoCartao: '#43198f', // tokens.scss:103
-    textoSobreTopo: '#ffffff', // tokens.scss:104
-    destaque: '#c4b5fd', // tokens.scss:105
-    acaoTexto: '#6d28d9', // tokens.scss:106
-    bordaCampo: '#8a80a3', // tokens.scss:107
-    casco: '#0b6e63', // tokens.scss:108
-    cascoSoft: '#ddf2ee', // tokens.scss:109
-    sucata: '#5b6472', // tokens.scss:110
-    sucataSoft: '#eceef1', // tokens.scss:111
-    fiado: '#c2410c', // tokens.scss:112
-    fiadoSoft: '#ffede3', // tokens.scss:113
-    pago: '#15803d', // tokens.scss:114
-    pagoSoft: '#e3f5ea', // tokens.scss:115
-    agua: '#08769c', // tokens.scss:116
-    aguaSoft: '#e3f3f8', // tokens.scss:117
-    aguaNivel: '#4cc9e8', // tokens.scss:118
+    primary: '#6d28d9', // tokens.scss:86
+    primaryStrong: '#2e1065', // tokens.scss:87
+    primarySoft: '#ede9fe', // tokens.scss:88
+    success: '#15803d', // tokens.scss:89
+    successSoft: '#dcfce7', // tokens.scss:90
+    warning: '#b45309', // tokens.scss:91
+    warningSoft: '#fef3c7', // tokens.scss:92
+    danger: '#b91c1c', // tokens.scss:93
+    dangerSoft: '#fee2e2', // tokens.scss:94
+    bg: '#f6f5fb', // tokens.scss:95
+    surface: '#ffffff', // tokens.scss:96
+    surfaceMuted: '#f6f5fb', // tokens.scss:97
+    text: '#1e1537', // tokens.scss:98
+    textMuted: '#5b5570', // tokens.scss:99
+    textOnPrimary: '#ffffff', // tokens.scss:100
+    border: '#e7e4f0', // tokens.scss:101
+    focusRing: '#6d28d9', // tokens.scss:102
+    topo: '#2e1065', // tokens.scss:103
+    topoCartao: '#43198f', // tokens.scss:104
+    textoSobreTopo: '#ffffff', // tokens.scss:105
+    destaque: '#c4b5fd', // tokens.scss:106
+    acaoTexto: '#6d28d9', // tokens.scss:107
+    bordaCampo: '#8a80a3', // tokens.scss:108
+    casco: '#0b6e63', // tokens.scss:109
+    cascoSoft: '#ddf2ee', // tokens.scss:110
+    sucata: '#5b6472', // tokens.scss:111
+    sucataSoft: '#eceef1', // tokens.scss:112
+    fiado: '#c2410c', // tokens.scss:113
+    fiadoSoft: '#ffede3', // tokens.scss:114
+    pago: '#15803d', // tokens.scss:115
+    pagoSoft: '#e3f5ea', // tokens.scss:116
+    agua: '#08769c', // tokens.scss:117
+    aguaSoft: '#e3f3f8', // tokens.scss:118
+    aguaNivel: '#4cc9e8', // tokens.scss:119
   },
   carvao: {
-    primary: '#2f3338', // tokens.scss:122
-    primaryStrong: '#1f2226', // tokens.scss:123
-    primarySoft: '#ecedef', // tokens.scss:124
-    success: '#15803d', // tokens.scss:125
-    successSoft: '#dcfce7', // tokens.scss:126
-    warning: '#b45309', // tokens.scss:127
-    warningSoft: '#fef3c7', // tokens.scss:128
-    danger: '#b91c1c', // tokens.scss:129
-    dangerSoft: '#fee2e2', // tokens.scss:130
-    bg: '#f4f4f2', // tokens.scss:131
-    surface: '#ffffff', // tokens.scss:132
-    surfaceMuted: '#f4f4f2', // tokens.scss:133
-    text: '#1a1c1f', // tokens.scss:134
-    textMuted: '#575c63', // tokens.scss:135
-    textOnPrimary: '#ffffff', // tokens.scss:136
-    border: '#e4e4e1', // tokens.scss:137
-    focusRing: '#2f3338', // tokens.scss:138
-    topo: '#1f2226', // tokens.scss:139
-    topoCartao: '#33373d', // tokens.scss:140
-    textoSobreTopo: '#ffffff', // tokens.scss:141
-    destaque: '#f5b942', // tokens.scss:142
-    acaoTexto: '#2f3338', // tokens.scss:143
-    bordaCampo: '#868782', // tokens.scss:144
-    casco: '#0b6e63', // tokens.scss:145
-    cascoSoft: '#ddf2ee', // tokens.scss:146
-    sucata: '#5b6472', // tokens.scss:147
-    sucataSoft: '#eceef1', // tokens.scss:148
-    fiado: '#c2410c', // tokens.scss:149
-    fiadoSoft: '#ffede3', // tokens.scss:150
-    pago: '#15803d', // tokens.scss:151
-    pagoSoft: '#e3f5ea', // tokens.scss:152
-    agua: '#08769c', // tokens.scss:153
-    aguaSoft: '#e3f3f8', // tokens.scss:154
-    aguaNivel: '#4cc9e8', // tokens.scss:155
+    primary: '#2f3338', // tokens.scss:124
+    primaryStrong: '#1f2226', // tokens.scss:125
+    primarySoft: '#ecedef', // tokens.scss:126
+    success: '#15803d', // tokens.scss:127
+    successSoft: '#dcfce7', // tokens.scss:128
+    warning: '#b45309', // tokens.scss:129
+    warningSoft: '#fef3c7', // tokens.scss:130
+    danger: '#b91c1c', // tokens.scss:131
+    dangerSoft: '#fee2e2', // tokens.scss:132
+    bg: '#f4f4f2', // tokens.scss:133
+    surface: '#ffffff', // tokens.scss:134
+    surfaceMuted: '#f4f4f2', // tokens.scss:135
+    text: '#1a1c1f', // tokens.scss:136
+    textMuted: '#575c63', // tokens.scss:137
+    textOnPrimary: '#ffffff', // tokens.scss:138
+    border: '#e4e4e1', // tokens.scss:139
+    focusRing: '#2f3338', // tokens.scss:140
+    topo: '#1f2226', // tokens.scss:141
+    topoCartao: '#33373d', // tokens.scss:142
+    textoSobreTopo: '#ffffff', // tokens.scss:143
+    destaque: '#f5b942', // tokens.scss:144
+    acaoTexto: '#2f3338', // tokens.scss:145
+    bordaCampo: '#868782', // tokens.scss:146
+    casco: '#0b6e63', // tokens.scss:147
+    cascoSoft: '#ddf2ee', // tokens.scss:148
+    sucata: '#5b6472', // tokens.scss:149
+    sucataSoft: '#eceef1', // tokens.scss:150
+    fiado: '#c2410c', // tokens.scss:151
+    fiadoSoft: '#ffede3', // tokens.scss:152
+    pago: '#15803d', // tokens.scss:153
+    pagoSoft: '#e3f5ea', // tokens.scss:154
+    agua: '#08769c', // tokens.scss:155
+    aguaSoft: '#e3f3f8', // tokens.scss:156
+    aguaNivel: '#4cc9e8', // tokens.scss:157
   },
   noite: {
-    primary: '#4cc9e8', // tokens.scss:159
-    primaryStrong: '#7dd8ee', // tokens.scss:160
-    primarySoft: '#0e2a3b', // tokens.scss:161
-    success: '#4ade80', // tokens.scss:162
-    successSoft: '#0f2e1c', // tokens.scss:163
-    warning: '#fb923c', // tokens.scss:164
-    warningSoft: '#3a1f10', // tokens.scss:165
-    danger: '#f87171', // tokens.scss:166
-    dangerSoft: '#3b1518', // tokens.scss:167
-    bg: '#07141c', // tokens.scss:168
-    surface: '#0e2230', // tokens.scss:169
-    surfaceMuted: '#07141c', // tokens.scss:170
-    text: '#e6f2f6', // tokens.scss:171
-    textMuted: '#9db5c2', // tokens.scss:172
-    textOnPrimary: '#03202c', // tokens.scss:173
-    border: '#1d3a4c', // tokens.scss:174
-    focusRing: '#4cc9e8', // tokens.scss:175
-    topo: '#050e15', // tokens.scss:176
-    topoCartao: '#0e2a3b', // tokens.scss:177
-    textoSobreTopo: '#e6f2f6', // tokens.scss:178
-    destaque: '#4cc9e8', // tokens.scss:179
-    acaoTexto: '#7dd8ee', // tokens.scss:180
-    bordaCampo: '#5a7b90', // tokens.scss:181
-    casco: '#4fd1be', // tokens.scss:182
-    cascoSoft: '#0d3a35', // tokens.scss:183
-    sucata: '#aab3bf', // tokens.scss:184
-    sucataSoft: '#232c36', // tokens.scss:185
-    fiado: '#fb923c', // tokens.scss:186
-    fiadoSoft: '#3a1f10', // tokens.scss:187
-    pago: '#4ade80', // tokens.scss:188
-    pagoSoft: '#0f2e1c', // tokens.scss:189
-    agua: '#4cc9e8', // tokens.scss:190
-    aguaSoft: '#0e2a3b', // tokens.scss:191
-    aguaNivel: '#4cc9e8', // tokens.scss:192
+    primary: '#4cc9e8', // tokens.scss:162
+    primaryStrong: '#7dd8ee', // tokens.scss:163
+    primarySoft: '#0e2a3b', // tokens.scss:164
+    success: '#4ade80', // tokens.scss:165
+    successSoft: '#0f2e1c', // tokens.scss:166
+    warning: '#fb923c', // tokens.scss:167
+    warningSoft: '#3a1f10', // tokens.scss:168
+    danger: '#f87171', // tokens.scss:169
+    dangerSoft: '#3b1518', // tokens.scss:170
+    bg: '#07141c', // tokens.scss:171
+    surface: '#0e2230', // tokens.scss:172
+    surfaceMuted: '#07141c', // tokens.scss:173
+    text: '#e6f2f6', // tokens.scss:174
+    textMuted: '#9db5c2', // tokens.scss:175
+    textOnPrimary: '#03202c', // tokens.scss:176
+    border: '#1d3a4c', // tokens.scss:177
+    focusRing: '#4cc9e8', // tokens.scss:178
+    topo: '#050e15', // tokens.scss:179
+    topoCartao: '#0e2a3b', // tokens.scss:180
+    textoSobreTopo: '#e6f2f6', // tokens.scss:181
+    destaque: '#4cc9e8', // tokens.scss:182
+    acaoTexto: '#7dd8ee', // tokens.scss:183
+    bordaCampo: '#5a7b90', // tokens.scss:184
+    casco: '#4fd1be', // tokens.scss:185
+    cascoSoft: '#0d3a35', // tokens.scss:186
+    sucata: '#aab3bf', // tokens.scss:187
+    sucataSoft: '#232c36', // tokens.scss:188
+    fiado: '#fb923c', // tokens.scss:189
+    fiadoSoft: '#3a1f10', // tokens.scss:190
+    pago: '#4ade80', // tokens.scss:191
+    pagoSoft: '#0f2e1c', // tokens.scss:192
+    agua: '#4cc9e8', // tokens.scss:193
+    aguaSoft: '#0e2a3b', // tokens.scss:194
+    aguaNivel: '#4cc9e8', // tokens.scss:195
   },
 };
 
@@ -313,6 +313,120 @@ describe('RH no design Depósito', () => {
       expect(tema).toBe(esperado);
       const p: Paleta = TEMAS[tema];
       for (const [frente, fundo, limiar] of PARES_RH) {
+        expect(razaoContraste(p[frente], p[fundo]), `${frente}/${fundo}`).toBeGreaterThanOrEqual(
+          limiar,
+        );
+      }
+    },
+  );
+});
+
+// Cadastros, seleção de operador e telas restantes no design Depósito
+// [frente, fundo, limiar, onde ocorre]
+const PARES_TELAS: [Chave, Chave, number, string][] = [
+  [
+    'text',
+    'surface',
+    TEXTO,
+    'nome no item do operador, linhas e cartões (select-operator-page.scss:.operador__item)',
+  ],
+  [
+    'textMuted',
+    'surface',
+    TEXTO,
+    'cargo do operador, estoque e preço nos cards (select-operator-page.scss:.operador__cargo)',
+  ],
+  [
+    'textMuted',
+    'bg',
+    TEXTO,
+    'cabeçalho do operador e texto de apoio sobre o fundo (select-operator-page.scss:.operador__header)',
+  ],
+  [
+    'textOnPrimary',
+    'primary',
+    TEXTO,
+    'Tentar novamente (select-operator-page.scss:.operador__retry) e ação da prévia (aparencia-page.scss:.aparencia__previa-acao)',
+  ],
+  [
+    'focusRing',
+    'surface',
+    NAO_TEXTUAL,
+    'anel de foco no item do operador (select-operator-page.scss:.operador__item:focus-visible)',
+  ],
+  [
+    'focusRing',
+    'bg',
+    NAO_TEXTUAL,
+    'anel de foco sobre o fundo da página (Tentar novamente, formulários)',
+  ],
+  [
+    'danger',
+    'surface',
+    TEXTO,
+    'ce-saldo-chip com saldo negativo (saldo-chip.ts:56-58, funcionario-page.ts:78)',
+  ],
+  [
+    'text',
+    'surface',
+    TEXTO,
+    'ce-saldo-chip com saldo zerado (saldo-chip.ts:60-62, funcionario-page.ts:78)',
+  ],
+  [
+    'warning',
+    'surface',
+    TEXTO,
+    'ce-saldo-chip com saldo a pagar positivo (saldo-chip.ts:52-54, funcionario-page.ts:78)',
+  ],
+  [
+    'textMuted',
+    'surfaceMuted',
+    TEXTO,
+    'totais do PDV e da venda (pdv-page.ts:.totais, item-venda-sheet.ts:.totais)',
+  ],
+  [
+    'text',
+    'surfaceMuted',
+    TEXTO,
+    'valores dos totais (pagamento-lista.ts, item-venda-sheet.ts:.totais)',
+  ],
+  ['text', 'sucataSoft', TEXTO, 'aviso de sucata no PDV (pdv-page.ts:.sucata__aviso)'],
+  [
+    'primaryStrong',
+    'primarySoft',
+    TEXTO,
+    'aviso das sheets de sucata e baixa de casco (entregar-sucata-sheet.ts:.aviso, baixa-casco-sheet.ts:.aviso)',
+  ],
+  ['surface', 'text', TEXTO, 'toast (toast-outlet.ts: fundo --ce-text, texto --ce-surface)'],
+  [
+    'textOnPrimary',
+    'primary',
+    TEXTO,
+    'ce-button primário na ce-barra-acao dos formulários (produto, marca, cliente)',
+  ],
+  ['bordaCampo', 'surface', NAO_TEXTUAL, 'borda de campo nos formulários de cadastro e nas sheets'],
+  ['bordaCampo', 'bg', NAO_TEXTUAL, 'borda de campo sobre o fundo da página'],
+  ['danger', 'surface', TEXTO, 'p.erro/role=alert dos formulários e sheets'],
+];
+
+describe('Cadastros, seleção de operador e telas restantes no design Depósito', () => {
+  const casos = NOMES.flatMap((tema) => PARES_TELAS.map((p) => [tema, ...p] as const));
+
+  it.each(casos)('[%s] %s sobre %s ≥ %s (%s)', (tema, frente, fundo, limiar) => {
+    const p: Paleta = TEMAS[tema];
+    expect(razaoContraste(p[frente], p[fundo])).toBeGreaterThanOrEqual(limiar);
+  });
+
+  it.each([
+    [false, 'oceano'],
+    [true, 'noite'],
+  ] as const)(
+    'Automático com prefereEscuro=%s resolve %s e os pares passam',
+    (escuro, esperado) => {
+      const tema = resolverTema('automatico', escuro);
+      expect(tema).toBe(esperado);
+      const p: Paleta = TEMAS[tema];
+      for (const [frente, fundo, limiar] of PARES_TELAS) {
         expect(razaoContraste(p[frente], p[fundo]), `${frente}/${fundo}`).toBeGreaterThanOrEqual(
           limiar,
         );

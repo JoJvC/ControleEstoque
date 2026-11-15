@@ -24,7 +24,7 @@ import { BadgeCor } from '../atoms/badge';
       flex-direction: column;
       gap: 2px;
       padding: var(--ce-space-3);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
       border: 1px solid var(--ce-border);
       background: var(--ce-surface);
     }

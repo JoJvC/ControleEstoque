@@ -58,7 +58,9 @@
     <p class="form__erro" role="alert">{{ erro }}</p>
   }
 
-  <ce-button tipo="submit" [block]="true" [loading]="salvando()">
-    {{ id() === null ? 'Cadastrar produto' : 'Salvar alterações' }}
-  </ce-button>
+  <ce-barra-acao rotulo="Salvar produto">
+    <ce-button tipo="submit" [block]="true" [disabled]="formInvalido()" [loading]="salvando()">
+      {{ id() === null ? 'Cadastrar produto' : 'Salvar alterações' }}
+    </ce-button>
+  </ce-barra-acao>
 </form>

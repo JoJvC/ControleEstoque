@@ -18,7 +18,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
     .skeleton {
       display: block;
-      border-radius: var(--ce-radius-sm);
+      border-radius: var(--ce-radius-controle);
       background: linear-gradient(
         90deg,
         var(--ce-border) 25%,

@@ -46,11 +46,15 @@
   padding: var(--ce-space-4);
   background: var(--ce-surface);
   border: 1px solid var(--ce-border);
-  border-radius: var(--ce-radius-md);
-  box-shadow: var(--ce-shadow-1);
+  border-radius: 20px;
 
   &:active {
     background: var(--ce-primary-soft);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--ce-focus-ring);
+    outline-offset: 2px;
   }
 }
 
@@ -76,7 +80,7 @@
 
   align-self: flex-start;
   padding-inline: var(--ce-space-5);
-  border-radius: var(--ce-radius-md);
+  border-radius: var(--ce-radius-controle);
   background: var(--ce-primary);
   color: var(--ce-text-on-primary);
   font-weight: 600;

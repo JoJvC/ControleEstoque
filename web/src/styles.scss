@@ -22,7 +22,7 @@ body {
 // ≥600px: dialog central.
 
 .ce-sheet-backdrop {
-  background: rgb(15 23 42 / 45%);
+  background: var(--ce-veu);
 }
 
 .cdk-overlay-pane.ce-sheet-panel {

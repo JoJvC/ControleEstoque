@@ -1,7 +1,7 @@
 @use 'mixins';
 
 .form {
-  @include mixins.safe-area-bottom(var(--ce-space-6));
+  padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
 
   display: flex;
   flex-direction: column;
@@ -12,6 +12,10 @@
   @include mixins.from-tablet {
     margin-inline: auto;
     width: 100%;
+  }
+
+  @include mixins.from-desktop {
+    padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
   }
 }
 
@@ -25,7 +29,7 @@
   width: 112px;
   height: 112px;
   border: 1px dashed var(--ce-border);
-  border-radius: var(--ce-radius-md);
+  border-radius: 20px;
   background: var(--ce-surface);
   color: var(--ce-text-muted);
   font-size: var(--ce-font-sm);

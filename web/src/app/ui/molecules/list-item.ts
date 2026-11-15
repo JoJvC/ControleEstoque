@@ -31,7 +31,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
       padding: var(--ce-space-3) var(--ce-space-4);
       background: var(--ce-surface);
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
       text-align: left;
       font-size: var(--ce-font-md);
 

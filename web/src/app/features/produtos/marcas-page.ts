@@ -9,13 +9,23 @@ import { FormField } from '../../ui/molecules/form-field';
 import { ListItem } from '../../ui/molecules/list-item';
 import { TextInput } from '../../ui/atoms/text-input';
 import { AppHeader } from '../../ui/organisms/app-header';
+import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { DataList } from '../../ui/organisms/data-list';
 import { MarcasStore } from './marcas-store';
 
 @Component({
   selector: 'ce-marcas-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, AppHeader, Button, FormField, TextInput, ListItem, DataList],
+  imports: [
+    ReactiveFormsModule,
+    AppHeader,
+    BarraAcao,
+    Button,
+    FormField,
+    TextInput,
+    ListItem,
+    DataList,
+  ],
   template: `
     <ce-app-header titulo="Marcas" [mostrarVoltar]="true" (voltar)="voltar()" />
 
@@ -24,7 +34,11 @@ import { MarcasStore } from './marcas-store';
         <ce-form-field rotulo="Nova marca" [erro]="erro()">
           <ce-input placeholder="Ex.: Indaiá" [formControl]="nome" />
         </ce-form-field>
-        <ce-button tipo="submit" [loading]="criando()">Adicionar</ce-button>
+        <ce-barra-acao rotulo="Adicionar marca">
+          <ce-button tipo="submit" [disabled]="nome.invalid" [loading]="criando()"
+            >Adicionar</ce-button
+          >
+        </ce-barra-acao>
       </form>
 
       <ce-data-list
@@ -41,12 +55,19 @@ import { MarcasStore } from './marcas-store';
     </div>
   `,
   styles: `
+    @use 'mixins';
+
     .conteudo {
       display: flex;
       flex-direction: column;
       gap: var(--ce-space-5);
-      padding: 0 var(--ce-space-4) var(--ce-space-6);
+      padding: 0 var(--ce-space-4)
+        calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
       max-width: 560px;
+
+      @include mixins.from-desktop {
+        padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
+      }
     }
 
     .nova {

@@ -61,7 +61,7 @@
   overflow: hidden;
   background: var(--ce-bg);
   border: 1px solid var(--ce-border);
-  border-radius: var(--ce-radius-md);
+  border-radius: 20px;
 }
 
 .aparencia__previa-topo {
@@ -80,14 +80,14 @@
 .aparencia__previa-cartao {
   flex: 1;
   background: var(--ce-surface);
-  border-radius: var(--ce-radius-sm);
+  border-radius: 20px;
 }
 
 .aparencia__previa-acao {
   align-self: flex-end;
   padding: 0 var(--ce-space-2);
   background: var(--ce-primary);
-  border-radius: var(--ce-radius-sm);
+  border-radius: var(--ce-radius-controle);
   font-size: 9px;
   line-height: 12px;
   color: var(--ce-text-on-primary);

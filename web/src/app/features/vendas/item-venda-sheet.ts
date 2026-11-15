@@ -156,7 +156,7 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
       gap: var(--ce-space-3);
       padding: var(--ce-space-3);
       border: 1px dashed var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
     }
 
     .desconto__tipo {
@@ -169,7 +169,7 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
       @include mixins.touch-target;
 
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border-radius: var(--ce-radius-controle);
       background: var(--ce-surface);
       font-weight: 600;
       color: var(--ce-text-muted);
@@ -186,7 +186,7 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
       flex-direction: column;
       gap: var(--ce-space-1);
       padding: var(--ce-space-3);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
       background: var(--ce-surface-muted);
     }
 

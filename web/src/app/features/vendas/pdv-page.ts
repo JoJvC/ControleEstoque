@@ -545,7 +545,7 @@ const ROTULOS: Record<Passo, string> = {
       gap: var(--ce-space-2);
       padding: var(--ce-space-3);
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-lg);
+      border-radius: 20px;
       background: var(--ce-surface);
     }
 
@@ -599,7 +599,7 @@ const ROTULOS: Record<Passo, string> = {
       gap: var(--ce-space-2);
       padding: var(--ce-space-3);
       border: 1px solid var(--ce-sucata);
-      border-radius: var(--ce-radius-lg);
+      border-radius: 20px;
       background: var(--ce-sucata-soft);
     }
 
@@ -649,7 +649,7 @@ const ROTULOS: Record<Passo, string> = {
       gap: var(--ce-space-2);
       padding: var(--ce-space-2) var(--ce-space-3);
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
       background: var(--ce-surface);
       text-align: left;
     }
@@ -674,7 +674,7 @@ const ROTULOS: Record<Passo, string> = {
       flex-direction: column;
       gap: var(--ce-space-1);
       padding: var(--ce-space-3);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
       background: var(--ce-surface-muted);
       border: 1px solid var(--ce-border);
     }

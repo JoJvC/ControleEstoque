@@ -84,7 +84,7 @@ export type PagarCascoSheetResultado = DevolucaoCascosResponse | ConversaoCascos
       min-height: var(--ce-touch-target);
       padding: var(--ce-space-2) var(--ce-space-3);
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border-radius: var(--ce-radius-controle);
       background: var(--ce-surface);
       font-size: var(--ce-font-md);
       font-weight: 600;

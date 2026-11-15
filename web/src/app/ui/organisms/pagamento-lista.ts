@@ -191,7 +191,7 @@ export const FORMAS: SelectOpcao[] = [
       flex-direction: column;
       gap: var(--ce-space-1);
       padding: var(--ce-space-3);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
       background: var(--ce-surface-muted);
       border: 1px solid var(--ce-border);
     }

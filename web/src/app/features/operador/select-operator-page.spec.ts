@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
+import userEvent from '@testing-library/user-event';
 
 import { CargoResponse, FuncionarioResponse } from '../../core/api/models/rh';
 import { ConfigStore } from '../../core/config/app-config';
@@ -102,5 +103,67 @@ describe('SelectOperatorPage', () => {
     await fixture.whenStable();
 
     expect((fixture.nativeElement as HTMLElement).querySelector('.operador__retry')).not.toBeNull();
+  });
+
+  it('Tab leva o foco ao primeiro item', async () => {
+    const el = await abrirPagina();
+
+    await userEvent.setup().tab();
+
+    expect(document.activeElement).toBe(el.querySelectorAll('.operador__item')[0]);
+  });
+
+  it.each([
+    ['Enter', '{Enter}'],
+    ['Espaço', ' '],
+  ])('%s no item focado grava as permissões do cargo e navega para /home', async (_nome, tecla) => {
+    await abrirPagina();
+    const user = userEvent.setup();
+
+    await user.tab();
+    await user.keyboard(tecla);
+
+    expect(TestBed.inject(OperatorStore).operator()?.permissoes).toEqual(['vendas.registrar']);
+    expect(TestBed.inject(Router).navigateByUrl).toHaveBeenCalledWith('/home');
+  });
+
+  describe('Tentar novamente', () => {
+    async function abrirComErro(): Promise<HTMLButtonElement> {
+      const fixture = TestBed.createComponent(SelectOperatorPage);
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne('/api/rh/v1/funcionarios').flush(FUNCIONARIOS);
+      http
+        .expectOne('/api/rh/v1/cargos')
+        .flush('erro', { status: 500, statusText: 'Server Error' });
+      await fixture.whenStable();
+      return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+        '.operador__retry',
+      )!;
+    }
+
+    function respondeNovamente(): void {
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne('/api/rh/v1/funcionarios').flush(FUNCIONARIOS);
+      http.expectOne('/api/rh/v1/cargos').flush(CARGOS);
+    }
+
+    it('clique chama a RhApi de novo', async () => {
+      const retry = await abrirComErro();
+
+      await userEvent.setup().click(retry);
+
+      respondeNovamente();
+    });
+
+    it('Enter com o foco no botão chama a RhApi de novo', async () => {
+      const retry = await abrirComErro();
+      const user = userEvent.setup();
+
+      await user.tab();
+      expect(document.activeElement).toBe(retry);
+      await user.keyboard('{Enter}');
+
+      respondeNovamente();
+    });
   });
 });

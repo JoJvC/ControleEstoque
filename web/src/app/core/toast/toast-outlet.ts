@@ -52,7 +52,7 @@ import { ToastService } from './toast-service';
       flex-direction: column;
       gap: var(--ce-space-1);
       padding: var(--ce-space-3) var(--ce-space-4);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
       background: var(--ce-text);
       color: var(--ce-surface);
       box-shadow: var(--ce-shadow-2);

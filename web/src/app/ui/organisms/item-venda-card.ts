@@ -50,7 +50,7 @@ import { PrecoPipe } from '../pipes/preco-pipe';
       padding: var(--ce-space-2) var(--ce-space-2) var(--ce-space-2) var(--ce-space-3);
       background: var(--ce-surface);
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
     }
 
     .item__corpo {

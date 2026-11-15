@@ -107,6 +107,36 @@ describe('FuncionarioPage', () => {
     expect(chip.textContent).toMatch(/R\$\s*37,50/);
   });
 
+  it.each([
+    [37.5, 'warning', /R\$\s*37,50/],
+    [-20, 'danger', /-\s*R\$\s*20,00|R\$\s*-\s*20,00/],
+    [0, 'neutral', /R\$\s*0,00/],
+  ])(
+    'chip "Saldo a pagar" com saldo %s usa o tom %s e o valor do servidor',
+    async (saldo, tom, texto) => {
+      configurar(['rh.gerir']);
+      const http = TestBed.inject(HttpTestingController);
+      const fixture = TestBed.createComponent(FuncionarioPage);
+      fixture.componentRef.setInput('id', 'f1');
+      fixture.detectChanges();
+      await assentar(fixture);
+      http.expectOne(URL).flush(ANA);
+      await assentar(fixture);
+      http.expectOne(CARGOS).flush([CAIXA]);
+      http.expectOne(`${URL}/conta-corrente`).flush(extrato(saldo));
+      await assentar(fixture);
+      const el = fixture.nativeElement as HTMLElement;
+      expect(
+        el.querySelectorAll(
+          'ce-saldo-chip .chip--warning, ce-saldo-chip .chip--danger, ce-saldo-chip .chip--neutral',
+        ),
+      ).toHaveLength(1);
+      const chip = el.querySelector(`ce-saldo-chip .chip--${tom}`)!;
+      expect(chip).not.toBeNull();
+      expect(chip.textContent).toMatch(texto);
+    },
+  );
+
   it('extrato é lista informativa: sem botão nem estado disabled', async () => {
     const t = await montar();
     expect(t.el.querySelector('.lancamentos li.lancamento')).not.toBeNull();

@@ -45,7 +45,7 @@ import { PrecoPipe } from '../pipes/preco-pipe';
       padding: var(--ce-space-3);
       background: var(--ce-surface);
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border-radius: 20px;
       text-align: left;
 
       &:active {
@@ -58,7 +58,7 @@ import { PrecoPipe } from '../pipes/preco-pipe';
       place-items: center;
       width: 56px;
       height: 56px;
-      border-radius: var(--ce-radius-sm);
+      border-radius: var(--ce-radius-controle);
       background: var(--ce-surface-muted);
       color: var(--ce-text-muted);
       overflow: hidden;

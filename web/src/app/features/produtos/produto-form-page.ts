@@ -15,6 +15,7 @@ import { FormField } from '../../ui/molecules/form-field';
 import { MoneyInput } from '../../ui/molecules/money-input';
 import { QuantityStepper } from '../../ui/molecules/quantity-stepper';
 import { AppHeader } from '../../ui/organisms/app-header';
+import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { MarcasStore } from './marcas-store';
 import { ProdutosStore } from './produtos-store';
 
@@ -31,6 +32,7 @@ const TIPOS_CRIAVEIS: { value: TipoProduto; label: string }[] = [
   imports: [
     ReactiveFormsModule,
     AppHeader,
+    BarraAcao,
     Button,
     Icon,
     Select,
@@ -44,7 +46,10 @@ const TIPOS_CRIAVEIS: { value: TipoProduto; label: string }[] = [
 })
 export class ProdutoFormPage {
   /** Route param (:id) — null em /produtos/novo. */
-  readonly id = input<string | null>(null);
+  readonly id = input<string | null, string | null | undefined>(null, {
+    // withComponentInputBinding entrega undefined (não null) quando a rota não tem :id.
+    transform: (v) => v ?? null,
+  });
 
   protected readonly marcasStore = inject(MarcasStore);
   private readonly produtosStore = inject(ProdutosStore);
@@ -115,6 +120,14 @@ export class ProdutoFormPage {
       this.foto.set(arquivo);
       this.fotoPreview.set(this.media.previewUrl(arquivo));
     }
+  }
+
+  protected formInvalido(): boolean {
+    return (
+      this.nome.invalid ||
+      this.tipo.invalid ||
+      (this.marcaObrigatoria() && this.marcaId.value === null)
+    );
   }
 
   protected async salvar(): Promise<void> {

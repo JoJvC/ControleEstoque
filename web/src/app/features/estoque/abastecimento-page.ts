@@ -1,14 +1,19 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
+import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { TipoFrete } from '../../core/api/models/estoque';
 import { ApiError } from '../../core/http/api-error';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { ToastService } from '../../core/toast/toast-service';
 import { Button } from '../../ui/atoms/button';
-import { Icon } from '../../ui/atoms/icon';
-import { Select } from '../../ui/atoms/select';
 import { TextInput } from '../../ui/atoms/text-input';
 import { FormField } from '../../ui/molecules/form-field';
 import { MoneyInput } from '../../ui/molecules/money-input';
@@ -18,15 +23,17 @@ import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { ProdutosStore } from '../produtos/produtos-store';
 import { EstoqueStore } from './estoque-store';
 
-type ItemForm = FormGroup<{
-  produtoId: FormControl<string | null>;
-  quantidade: FormControl<number>;
-  custoUnitario: FormControl<number | null>;
-}>;
+interface Linha {
+  qtd: FormControl<number>;
+  custo: FormControl<number | null>;
+}
+
+/** Sugestão do protótipo para "Repor" (js/app.js:111): só preenche, editável. */
+const QTD_SUGERIDA = 12;
 
 const FRETES: { value: TipoFrete; label: string }[] = [
-  { value: 'TERCEIRIZADO', label: 'Frete terceirizado' },
-  { value: 'PROPRIO', label: 'Caminhão/funcionário próprio' },
+  { value: 'TERCEIRIZADO', label: 'Fornecedor entrega' },
+  { value: 'PROPRIO', label: 'Retirada nossa' },
 ];
 
 @Component({
@@ -36,8 +43,6 @@ const FRETES: { value: TipoFrete; label: string }[] = [
     ReactiveFormsModule,
     AppHeader,
     Button,
-    Icon,
-    Select,
     TextInput,
     FormField,
     MoneyInput,
@@ -50,69 +55,79 @@ const FRETES: { value: TipoFrete; label: string }[] = [
     <form class="form" (submit)="$event.preventDefault(); salvar()">
       <section class="itens">
         <h2 class="itens__titulo">Itens recebidos</h2>
+        <p class="itens__dica">
+          Itens abaixo do mínimo vêm primeiro. Informe a quantidade do que chegou.
+        </p>
 
-        @for (item of itens.controls; track item; let indice = $index) {
-          <div class="item">
-            <ce-form-field rotulo="Produto" [obrigatorio]="true">
-              <ce-select
-                [opcoes]="produtosOpcoes()"
-                placeholder="Selecione…"
-                [formControl]="item.controls.produtoId"
-              />
-            </ce-form-field>
-            <div class="item__linha">
-              <ce-form-field rotulo="Quantidade">
-                <ce-quantity-stepper [formControl]="item.controls.quantidade" [min]="1" />
-              </ce-form-field>
-              <ce-form-field rotulo="Custo unitário" [obrigatorio]="true">
-                <ce-money-input [formControl]="item.controls.custoUnitario" />
-              </ce-form-field>
-              @if (itens.length > 1) {
-                <button
-                  type="button"
-                  class="item__remover"
-                  aria-label="Remover item"
-                  (click)="removerItem(indice)"
-                >
-                  <ce-icon nome="lixeira" [tamanho]="20" />
-                </button>
-              }
+        @for (l of linhas(); track l.id) {
+          <div class="item" [class.item--sel]="ctl(l.id).qtd.value > 0">
+            <div class="item__info">
+              <b>{{ l.nome }}</b>
+              <span class="item__estoque">
+                tem {{ l.estoque }}
+                @if (l.abaixo) {
+                  · <span class="item__alerta">abaixo do mínimo ({{ l.minimo }})</span>
+                }
+              </span>
             </div>
+            <ce-quantity-stepper [formControl]="ctl(l.id).qtd" [min]="0" [item]="l.nome" />
+            @if (ctl(l.id).qtd.value > 0) {
+              <div class="item__custo">
+                <ce-form-field rotulo="Custo unitário" [obrigatorio]="true">
+                  <ce-money-input [formControl]="ctl(l.id).custo" />
+                </ce-form-field>
+              </div>
+            }
           </div>
         }
-
-        <ce-button variante="ghost" (click)="adicionarItem()">
-          <ce-icon nome="mais" [tamanho]="18" /> Adicionar item
-        </ce-button>
       </section>
 
-      <ce-form-field rotulo="Tipo de frete" [obrigatorio]="true">
-        <ce-select [opcoes]="fretes" placeholder="Selecione…" [formControl]="tipoFrete" />
-      </ce-form-field>
+      <div class="lateral">
+        <div class="frete" role="group" aria-label="Tipo de frete">
+          <span class="frete__rotulo">Frete</span>
+          <div class="seg">
+            @for (f of fretes; track f.value) {
+              <button
+                type="button"
+                [attr.aria-pressed]="tipoFrete.value === f.value"
+                (click)="tipoFrete.setValue(f.value)"
+              >
+                {{ f.label }}
+              </button>
+            }
+          </div>
+        </div>
 
-      <ce-form-field
-        rotulo="Custo total"
-        [obrigatorio]="true"
-        dica="Produtos + frete — vai para o financeiro."
-      >
-        <ce-money-input [formControl]="custoTotal" />
-      </ce-form-field>
+        <ce-form-field
+          rotulo="Custo total da carga (R$)"
+          [obrigatorio]="true"
+          dica="Produtos + frete — vai para o financeiro."
+        >
+          <ce-money-input [formControl]="custoTotal" />
+        </ce-form-field>
 
-      @if (somaItens() > 0) {
-        <ce-button variante="ghost" (click)="usarSomaDosItens()">
-          Usar soma dos itens ({{ somaItens() | cePreco }})
+        @if (somaItens() > 0) {
+          <ce-button variante="ghost" (click)="usarSomaDosItens()">
+            Usar soma dos itens ({{ somaItens() | cePreco }})
+          </ce-button>
+        }
+
+        <ce-form-field rotulo="Observação">
+          <ce-input placeholder="Opcional" [formControl]="observacao" />
+        </ce-form-field>
+
+        @if (erroForm(); as erro) {
+          <p class="form__erro" role="alert">{{ erro }}</p>
+        }
+
+        <div class="resumo">
+          <span>{{ totalProdutos() }} {{ totalProdutos() === 1 ? 'produto' : 'produtos' }}</span>
+          <b>{{ totalUnidades() }} un</b>
+        </div>
+        <ce-button tipo="submit" [block]="true" [loading]="salvando()">
+          Chegou mercadoria
         </ce-button>
-      }
-
-      <ce-form-field rotulo="Observação">
-        <ce-input placeholder="Opcional" [formControl]="observacao" />
-      </ce-form-field>
-
-      @if (erroForm(); as erro) {
-        <p class="form__erro" role="alert">{{ erro }}</p>
-      }
-
-      <ce-button tipo="submit" [block]="true" [loading]="salvando()"> Chegou mercadoria </ce-button>
+      </div>
     </form>
   `,
   styles: `
@@ -123,15 +138,17 @@ const FRETES: { value: TipoFrete; label: string }[] = [
       flex-direction: column;
       gap: var(--ce-space-4);
       padding: 0 var(--ce-space-4) var(--ce-space-6);
-      max-width: 560px;
 
-      @include mixins.from-tablet {
-        margin-inline: auto;
-        width: 100%;
+      @include mixins.from-desktop {
+        display: grid;
+        grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+        gap: var(--ce-space-6);
+        align-items: start;
       }
     }
 
-    .itens {
+    .itens,
+    .lateral {
       display: flex;
       flex-direction: column;
       gap: var(--ce-space-3);
@@ -141,33 +158,71 @@ const FRETES: { value: TipoFrete; label: string }[] = [
       font-size: var(--ce-font-lg);
     }
 
+    .itens__dica,
+    .item__estoque,
+    .frete__rotulo {
+      color: var(--ce-text-muted);
+      font-size: var(--ce-font-sm);
+    }
+
     .item {
-      display: flex;
-      flex-direction: column;
-      gap: var(--ce-space-3);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: var(--ce-space-2) var(--ce-space-3);
       padding: var(--ce-space-3);
       border: 1px solid var(--ce-border);
-      border-radius: 18px;
+      border-radius: 16px;
       background: var(--ce-surface);
     }
 
-    .item__linha {
-      display: flex;
-      align-items: flex-end;
-      gap: var(--ce-space-3);
+    .item--sel {
+      border: 2px solid var(--ce-primary);
+    }
 
-      ce-form-field:last-of-type {
-        flex: 1;
+    .item__info {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .item__alerta {
+      color: var(--ce-danger);
+      font-weight: 600;
+    }
+
+    .item__custo {
+      grid-column: 1 / -1;
+    }
+
+    .seg {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
+      gap: 4px;
+      padding: 4px;
+      margin-top: var(--ce-space-1);
+      background: var(--ce-surface-muted);
+      border: 1px solid var(--ce-border);
+      border-radius: 14px;
+
+      button {
+        @include mixins.touch-target;
+
+        border-radius: 10px;
+        font-weight: 600;
+      }
+
+      button[aria-pressed='true'] {
+        background: var(--ce-primary);
+        color: var(--ce-text-on-primary);
       }
     }
 
-    .item__remover {
-      @include mixins.touch-target;
-
-      display: inline-flex;
+    .resumo {
+      display: flex;
+      justify-content: space-between;
       align-items: center;
-      justify-content: center;
-      color: var(--ce-danger);
     }
 
     .form__erro {
@@ -182,36 +237,78 @@ export class AbastecimentoPage {
   private readonly operatorStore = inject(OperatorStore);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
+  private readonly produtoIdInicial =
+    inject(ActivatedRoute).snapshot.queryParamMap.get('produtoId');
 
   protected readonly fretes = FRETES;
 
-  protected readonly itens = new FormArray<ItemForm>([this.novoItem()]);
+  private readonly controles = new Map<string, Linha>();
+  private readonly versao = signal(0);
+
   protected readonly tipoFrete = new FormControl<TipoFrete | null>(null, Validators.required);
   protected readonly custoTotal = new FormControl<number | null>(null);
   protected readonly observacao = new FormControl('', { nonNullable: true });
 
   protected readonly salvando = signal(false);
   protected readonly erroForm = signal<string | null>(null);
-  protected readonly somaItens = signal(0);
 
-  protected readonly produtosOpcoes = computed(() =>
-    this.produtosStore.produtos().map((p) => ({
-      value: p.id,
-      label: [p.nome, p.tamanho].filter(Boolean).join(' '),
-    })),
+  /** Abaixo do mínimo vem primeiro; o flag é do servidor, sem conta no front. */
+  protected readonly linhas = computed(() => {
+    const saldos = new Map(this.estoqueStore.itens().map((i) => [i.produtoId, i]));
+    return this.produtosStore
+      .produtos()
+      .map((p) => ({
+        id: p.id,
+        nome: [p.nome, p.tamanho].filter(Boolean).join(' '),
+        estoque: saldos.get(p.id)?.quantidade ?? 0,
+        minimo: saldos.get(p.id)?.estoqueMinimo ?? p.estoqueMinimo,
+        abaixo: saldos.get(p.id)?.abaixoMinimo ?? false,
+      }))
+      .sort((a, b) => Number(b.abaixo) - Number(a.abaixo));
+  });
+
+  private readonly selecionados = computed(() => {
+    this.versao();
+    return this.linhas().filter((l) => this.ctl(l.id).qtd.value > 0);
+  });
+  protected readonly totalProdutos = computed(() => this.selecionados().length);
+  protected readonly totalUnidades = computed(() =>
+    this.selecionados().reduce((s, l) => s + this.ctl(l.id).qtd.value, 0),
+  );
+  protected readonly somaItens = computed(() =>
+    this.selecionados().reduce((s, l) => {
+      const c = this.ctl(l.id);
+      return s + c.qtd.value * (c.custo.value ?? 0);
+    }, 0),
   );
 
   constructor() {
     this.produtosStore.carregar();
-    this.itens.valueChanges.subscribe(() => this.somaItens.set(this.calcularSoma()));
+    this.estoqueStore.carregar();
+    // Repor (Hoje) abre com o item; id desconhecido deixa tudo vazio.
+    let preenchido = this.produtoIdInicial === null;
+    effect(() => {
+      const produtos = this.produtosStore.produtos();
+      if (preenchido || produtos.length === 0) return;
+      preenchido = true;
+      if (produtos.some((p) => p.id === this.produtoIdInicial)) {
+        this.ctl(this.produtoIdInicial as string).qtd.setValue(QTD_SUGERIDA);
+      }
+    });
   }
 
-  protected adicionarItem(): void {
-    this.itens.push(this.novoItem());
-  }
-
-  protected removerItem(indice: number): void {
-    this.itens.removeAt(indice);
+  protected ctl(id: string): Linha {
+    let c = this.controles.get(id);
+    if (!c) {
+      c = {
+        qtd: new FormControl(0, { nonNullable: true }),
+        custo: new FormControl<number | null>(null),
+      };
+      c.qtd.valueChanges.subscribe(() => this.versao.update((v) => v + 1));
+      c.custo.valueChanges.subscribe(() => this.versao.update((v) => v + 1));
+      this.controles.set(id, c);
+    }
+    return c;
   }
 
   protected usarSomaDosItens(): void {
@@ -221,12 +318,12 @@ export class AbastecimentoPage {
   protected async salvar(): Promise<void> {
     this.erroForm.set(null);
 
-    const itens = this.itens.controls.map((item) => item.getRawValue());
-    if (itens.some((item) => item.produtoId === null)) {
-      this.erroForm.set('Selecione o produto de todos os itens.');
+    const itens = this.selecionados().map((l) => ({ l, c: this.ctl(l.id) }));
+    if (itens.length === 0) {
+      this.erroForm.set('Informe a quantidade de ao menos um produto.');
       return;
     }
-    if (itens.some((item) => item.custoUnitario === null)) {
+    if (itens.some(({ c }) => c.custo.value === null)) {
       this.erroForm.set('Informe o custo unitário de todos os itens.');
       return;
     }
@@ -246,10 +343,10 @@ export class AbastecimentoPage {
         custoTotal: this.custoTotal.value,
         funcionarioId: this.operatorStore.operator()?.id ?? null,
         observacao: this.observacao.value.trim() || null,
-        itens: itens.map((item) => ({
-          produtoId: item.produtoId as string,
-          quantidade: item.quantidade,
-          custoUnitario: item.custoUnitario as number,
+        itens: itens.map(({ l, c }) => ({
+          produtoId: l.id,
+          quantidade: c.qtd.value,
+          custoUnitario: c.custo.value as number,
         })),
       });
       this.toast.success('Abastecimento registrado!');
@@ -265,20 +362,5 @@ export class AbastecimentoPage {
 
   protected voltar(): void {
     this.router.navigateByUrl('/estoque');
-  }
-
-  private novoItem(): ItemForm {
-    return new FormGroup({
-      produtoId: new FormControl<string | null>(null),
-      quantidade: new FormControl(1, { nonNullable: true }),
-      custoUnitario: new FormControl<number | null>(null),
-    });
-  }
-
-  private calcularSoma(): number {
-    return this.itens.controls.reduce((soma, item) => {
-      const { quantidade, custoUnitario } = item.getRawValue();
-      return soma + quantidade * (custoUnitario ?? 0);
-    }, 0);
   }
 }

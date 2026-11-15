@@ -159,3 +159,21 @@ describe('EstoquePage — chip e status', () => {
     expect(http.carregar).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('EstoquePage — selo vem só do flag do servidor', () => {
+  it('quantidade < mínimo com flag false: sem selo; flag true: selo e resumo', async () => {
+    const semFlag = await montar(
+      [],
+      [{ ...AGUA, quantidade: 1, estoqueMinimo: 4, abaixoMinimo: false }],
+    );
+    expect(semFlag.el.textContent).not.toContain('abaixo do mínimo (');
+    expect(semFlag.el.querySelector('.resumo')?.textContent).toContain('Tudo acima do mínimo');
+    TestBed.resetTestingModule();
+    const comFlag = await montar(
+      [],
+      [{ ...AGUA, quantidade: 9, estoqueMinimo: 5, abaixoMinimo: true }],
+    );
+    expect(comFlag.el.textContent).toContain('abaixo do mínimo (5)');
+    expect(comFlag.el.querySelector('.resumo')?.textContent).toContain('1 item abaixo do mínimo');
+  });
+});

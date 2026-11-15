@@ -61,6 +61,9 @@ import { EstoqueStore } from './estoque-store';
               descricao="Registre um abastecimento para começar."
             />
           } @else {
+            <p class="resumo" [class.resumo--alerta]="abaixoMinimo() > 0">
+              {{ resumoMinimo() }}
+            </p>
             <div class="grade">
               @if (grupos().agua.length > 0) {
                 <section class="secao" aria-labelledby="sec-agua">
@@ -153,6 +156,16 @@ import { EstoqueStore } from './estoque-store';
       }
     }
 
+    .resumo {
+      margin-bottom: var(--ce-space-3);
+      color: var(--ce-text-muted);
+    }
+
+    .resumo--alerta {
+      color: var(--ce-danger);
+      font-weight: 600;
+    }
+
     h2 {
       font-size: var(--ce-font-lg);
       margin-bottom: var(--ce-space-3);
@@ -226,6 +239,15 @@ export class EstoquePage {
   }
 
   protected readonly grupos = computed(() => agruparEstoque(this.store.itens()));
+  protected readonly abaixoMinimo = computed(
+    () => this.store.itens().filter((i) => i.abaixoMinimo).length,
+  );
+  protected readonly resumoMinimo = computed(() => {
+    const n = this.abaixoMinimo();
+    return n === 0
+      ? 'Tudo acima do mínimo'
+      : `${n} ${n === 1 ? 'item abaixo' : 'itens abaixo'} do mínimo`;
+  });
   protected readonly maiorAgua = computed(() => maiorEstoque(this.grupos().agua));
 
   protected maiorDe(itens: readonly EstoqueItemResponse[]): number {

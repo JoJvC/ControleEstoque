@@ -14,6 +14,8 @@ export interface FaturamentoPorProduto {
 export interface FaturamentoPorDia {
   dia: string;
   totalLiquido: number;
+  recebido: number;
+  fiadoGerado: number;
 }
 
 export interface FaturamentoPorCategoria {
@@ -29,6 +31,8 @@ export interface RelatorioFaturamento {
   porProduto: FaturamentoPorProduto[];
   porDia: FaturamentoPorDia[];
   porCategoria: FaturamentoPorCategoria[];
+  recebido: number;
+  fiadoGerado: number;
 }
 
 export interface VendasPorFuncionario {

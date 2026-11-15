@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 
 import { EstoqueItemResponse } from '../../core/api/models/estoque';
+import { PermissionService } from '../../core/permissions/permission-service';
 import { Icon, IconeNome } from '../../ui/atoms/icon';
 import { iconeDoProduto } from '../../ui/atoms/icone-do-produto';
 import { Skeleton } from '../../ui/atoms/skeleton';
@@ -13,6 +14,11 @@ export interface AcabandoLinha {
   quantidade: number;
   minimo: number;
   icone: IconeNome;
+}
+
+/** Destino do Repor; a reposição guiada (fatia 5) troca só esta função. */
+export function rotaRepor(produtoId: string): string {
+  return `/estoque/abastecimento?produtoId=${encodeURIComponent(produtoId)}`;
 }
 
 /** O servidor já filtrou (abaixo do mínimo); aqui só se mapeia para exibição. */
@@ -44,6 +50,16 @@ export function modeloAcabando(itens: EstoqueItemResponse[]): AcabandoLinha[] {
                   <ce-icon [nome]="l.icone" [tamanho]="24" />
                   <span class="acabando__nome">{{ l.nome }}</span>
                   <span class="acabando__qtd">{{ l.quantidade }} / {{ l.minimo }}</span>
+                  @if (podeRepor()) {
+                    <button
+                      type="button"
+                      class="acabando__repor"
+                      [attr.aria-label]="'Repor ' + l.nome"
+                      (click)="repor.emit(l.id)"
+                    >
+                      Repor
+                    </button>
+                  }
                 </li>
               }
             </ul>
@@ -89,6 +105,16 @@ export function modeloAcabando(itens: EstoqueItemResponse[]): AcabandoLinha[] {
       flex: 1;
     }
 
+    .acabando__repor {
+      min-height: 44px;
+      padding: 0 var(--ce-space-3);
+      border-radius: var(--ce-radius-controle);
+      border: 1px solid var(--ce-border);
+      background: var(--ce-surface);
+      color: var(--ce-text);
+      font-weight: 600;
+    }
+
     .acabando__qtd {
       color: var(--ce-fiado);
       font-variant-numeric: tabular-nums;
@@ -99,4 +125,7 @@ export function modeloAcabando(itens: EstoqueItemResponse[]): AcabandoLinha[] {
 export class HojeAcabando {
   readonly itens = input<AcabandoLinha[]>([]);
   readonly status = input<HojeStatus>('ok');
+  readonly repor = output<string>();
+  private readonly permissions = inject(PermissionService);
+  protected readonly podeRepor = () => this.permissions.has('estoque.editar');
 }

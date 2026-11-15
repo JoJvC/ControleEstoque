@@ -10,68 +10,76 @@ import { OperatorStore } from '../../core/operator/operator-store';
 import { CePermissao } from '../../core/permissions/ce-permissao';
 import { hojeLocal } from '../../core/util/data-local';
 import { Button } from '../../ui/atoms/button';
-import { AppHeader } from '../../ui/organisms/app-header';
+import { Icon } from '../../ui/atoms/icon';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { CaixaStore } from '../financeiro/caixa-store';
-import { AcabandoLinha, HojeAcabando, modeloAcabando } from './hoje-acabando';
-import { HojeCartao } from './hoje-cartao';
-import { HeroModelo, HojeHero, modeloHero } from './hoje-hero';
+import { AcabandoLinha, HojeAcabando, modeloAcabando, rotaRepor } from './hoje-acabando';
+import { HojeCartao, rotaClientes } from './hoje-cartao';
+import { dataExtenso, HeroModelo, HojeHero, modeloHero, saudacao } from './hoje-hero';
 import { HojeStatus } from './hoje-status';
+import { HojeUltimas, modeloUltimas, rotaVenda, UltimaVenda } from './hoje-ultimas';
 
 @Component({
   selector: 'ce-home-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, Button, CePermissao, HojeAcabando, HojeCartao, HojeHero, PrecoPipe],
+  imports: [Button, CePermissao, HojeAcabando, HojeCartao, HojeHero, HojeUltimas, Icon, PrecoPipe],
   template: `
-    <ce-app-header [titulo]="'Olá, ' + primeiroNome() + '!'" [onda]="true" />
     <section class="home">
-      <ce-hoje-hero class="home__hero" [modelo]="hero()" [status]="heroStatus()" />
-
-      <ce-button
-        *cePermissao="'vendas.registrar'"
-        class="home__nova"
-        [block]="true"
-        (click)="ir('/vendas/nova')"
-        >Nova venda</ce-button
+      <ce-hoje-hero
+        class="home__hero"
+        [modelo]="hero()"
+        [status]="heroStatus()"
+        [data]="data"
+        [saudacao]="primeiroNome() + ', ' + saudacao"
       >
-
-      <ce-hoje-cartao variante="casco" [valor]="'' + totalCascos()" [status]="cascosStatus()" />
-      <ce-hoje-cartao variante="fiado" [valor]="totalFiado() | cePreco" [status]="fiadoStatus()" />
-
-      <ce-hoje-acabando class="home__acabando" [itens]="alertas()" [status]="alertasStatus()" />
-
-      <section class="home__bloco" aria-label="Caixa de hoje">
-        <h2>Caixa de hoje</h2>
-        @switch (caixa.status()) {
-          @case ('ok') {
-            <p>Caixa aberto</p>
-          }
-          @case ('nao-aberto') {
-            <p>Caixa não aberto</p>
-          }
-          @case ('error') {
-            <p>Não foi possível carregar o caixa.</p>
-            <ce-button variante="ghost" (click)="carregarCaixa()">Tentar novamente</ce-button>
-          }
-          @default {
-            <p aria-busy="true">Carregando…</p>
-          }
-        }
-        <ce-button variante="ghost" (click)="ir('/financeiro/caixa')">Ir para o caixa</ce-button>
-      </section>
-
-      <section class="home__bloco" aria-label="Atalhos">
-        <h2>Atalhos</h2>
         <ce-button
-          *cePermissao="'relatorios.ver'"
-          variante="ghost"
-          (click)="ir('/relatorios/estoque')"
-          >Ver relatório de estoque</ce-button
+          *cePermissao="'vendas.registrar'"
+          class="home__nova"
+          [block]="true"
+          (click)="ir('/vendas/nova')"
+          >Nova venda</ce-button
         >
-        <ce-button *cePermissao="'relatorios.ver'" variante="ghost" (click)="ir('/relatorios')"
-          >Relatórios</ce-button
+        <button
+          type="button"
+          class="home__caixa"
+          [attr.aria-label]="'Caixa: ' + rotuloCaixa()"
+          (click)="ir('/financeiro/caixa')"
         >
-      </section>
+          <ce-icon nome="dinheiro" [tamanho]="20" />
+          {{ rotuloCaixa() }}
+        </button>
+      </ce-hoje-hero>
+
+      <div class="home__tiles">
+        <ce-hoje-cartao
+          variante="casco"
+          [valor]="'' + totalCascos()"
+          [status]="cascosStatus()"
+          (abrir)="ir(rotaClientes('casco'))"
+        />
+        <ce-hoje-cartao
+          variante="fiado"
+          [valor]="totalFiado() | cePreco"
+          [status]="fiadoStatus()"
+          (abrir)="ir(rotaClientes('fiado'))"
+        />
+      </div>
+
+      <ce-hoje-acabando
+        class="home__acabando"
+        [itens]="alertas()"
+        [status]="alertasStatus()"
+        (repor)="ir(rotaRepor($event))"
+      />
+
+      <ce-hoje-ultimas
+        class="home__ultimas"
+        [itens]="ultimas()"
+        [status]="ultimasStatus()"
+        (abrir)="ir(rotaVenda($event))"
+        (verTodas)="ir('/vendas')"
+        (primeira)="ir('/vendas/nova')"
+      />
     </section>
   `,
   styles: `
@@ -82,14 +90,31 @@ import { HojeStatus } from './hoje-status';
       padding: var(--ce-space-5) var(--ce-space-4);
     }
 
-    .home__bloco {
-      display: flex;
-      flex-direction: column;
-      gap: var(--ce-space-2);
+    .home__tiles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--ce-space-3);
     }
 
     .home__nova {
+      flex: 1;
+      min-width: 0;
       min-height: 44px;
+    }
+
+    .home__caixa {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--ce-space-2);
+      min-height: 44px;
+      padding: 0 var(--ce-space-4);
+      border: 0;
+      border-radius: var(--ce-radius-controle);
+      background: var(--ce-topo-cartao);
+      color: var(--ce-texto-sobre-topo);
+      font: inherit;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
     }
 
     @media (min-width: 960px) {
@@ -97,11 +122,18 @@ import { HojeStatus } from './hoje-status';
         grid-template-columns: 1fr 1fr;
       }
 
-      .home__hero,
-      .home__nova,
-      .home__acabando,
-      .home__bloco {
+      .home__hero {
         grid-column: 1 / -1;
+      }
+
+      .home__ultimas {
+        grid-column: 1;
+        grid-row: 2 / span 2;
+      }
+
+      .home__tiles,
+      .home__acabando {
+        grid-column: 2;
       }
     }
   `,
@@ -125,9 +157,13 @@ export class HomePage {
   protected readonly totalFiado = signal(0);
   protected readonly alertasStatus = signal<HojeStatus>('loading');
   protected readonly alertas = signal<AcabandoLinha[]>([]);
+  protected readonly ultimasStatus = signal<HojeStatus>('loading');
+  protected readonly ultimas = signal<UltimaVenda[]>([]);
+  protected readonly data = dataExtenso(new Date());
+  protected readonly saudacao = saudacao(new Date().getHours());
 
   constructor() {
-    // cinco cargas em paralelo; cada uma trata o próprio erro
+    // seis cargas em paralelo; cada uma trata o próprio erro
     void this.carregarCaixa();
     void this.carregar(
       firstValueFrom(this.vendasApi.relatorioFaturamento(this.hoje, this.hoje)),
@@ -145,6 +181,25 @@ export class HomePage {
       this.alertasStatus,
       (r) => this.alertas.set(modeloAcabando(r.alertasEstoqueMinimo)),
     );
+    void this.carregar(this.carregarUltimas(), this.ultimasStatus, (r) => this.ultimas.set(r));
+  }
+
+  /** Cinco mais recentes do dia; o servidor ordena por data desc. Nome falho cai em 'Cliente'. */
+  private async carregarUltimas(): Promise<UltimaVenda[]> {
+    const vendas = await firstValueFrom(
+      this.vendasApi.listar({ inicio: this.hoje, fim: this.hoje, page: 1, pageSize: 5 }),
+    );
+    const nomes = new Map<string, string>();
+    await Promise.all(
+      [...new Set(vendas.map((v) => v.clienteId))].map(async (id) => {
+        try {
+          nomes.set(id, (await firstValueFrom(this.clientesApi.obter(id))).nome);
+        } catch {
+          // fica sem nome
+        }
+      }),
+    );
+    return modeloUltimas(vendas, nomes);
   }
 
   protected carregarCaixa(): Promise<void> {
@@ -163,6 +218,26 @@ export class HomePage {
       status.set('error');
     }
   }
+
+  /** Saldo só com caixa aberto (valor do servidor); o resto segue o protótipo. */
+  protected rotuloCaixa(): string {
+    switch (this.caixa.status()) {
+      case 'ok': {
+        const r = this.caixa.resumo();
+        return r?.caixa.status === 'ABERTO' ? new PrecoPipe().transform(r.saldoParcial) : 'Fechado';
+      }
+      case 'nao-aberto':
+        return 'Fechado';
+      case 'error':
+        return 'Caixa';
+      default:
+        return '…';
+    }
+  }
+
+  protected readonly rotaRepor = rotaRepor;
+  protected readonly rotaClientes = rotaClientes;
+  protected readonly rotaVenda = rotaVenda;
 
   protected ir(rota: string): void {
     void this.router.navigateByUrl(rota);

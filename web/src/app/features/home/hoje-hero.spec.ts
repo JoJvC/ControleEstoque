@@ -1,11 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 
-import { HojeHero, modeloHero } from './hoje-hero';
+import { dataExtenso, HojeHero, modeloHero, saudacao } from './hoje-hero';
 
 const REL = {
   totalBruto: 0,
   totalDesconto: 0,
   totalLiquido: 1234.5,
+  recebido: 90,
+  fiadoGerado: 40,
   porProduto: [],
   porDia: [],
   porCategoria: [
@@ -19,6 +21,7 @@ describe('modeloHero', () => {
   it('copia o total do servidor e mapeia ícones, com fallback caixa', () => {
     const m = modeloHero(REL);
     expect(m.total).toBe(1234.5);
+    expect([m.recebido, m.fiadoGerado]).toEqual([90, 40]);
     expect(m.linhas.map((l) => [l.categoria, l.quantidade, l.icone])).toEqual([
       ['GELO', 12, 'gelo'],
       ['CARVAO', 3, 'carvao'],
@@ -34,6 +37,8 @@ describe('HojeHero', () => {
     f.detectChanges();
     const el = f.nativeElement as HTMLElement;
     expect(el.textContent?.replace(/\s/g, ' ')).toContain('R$ 1.234,50');
+    expect(el.textContent?.replace(/\s+/g, ' ')).toContain('Recebido R$ 90,00');
+    expect(el.textContent?.replace(/\s+/g, ' ')).toContain('Fiado gerado R$ 40,00');
     expect(el.querySelectorAll('.hero__saida').length).toBe(3);
     expect(el.querySelector('.hero__saida')?.textContent).toContain('GELO');
   });
@@ -46,5 +51,32 @@ describe('HojeHero', () => {
     f.componentRef.setInput('status', 'error');
     f.detectChanges();
     expect((f.nativeElement as HTMLElement).textContent).toContain('Não foi possível');
+  });
+});
+
+describe('saudacao e dataExtenso', () => {
+  it('saudação por faixa de hora', () => {
+    expect([
+      saudacao(5),
+      saudacao(11),
+      saudacao(12),
+      saudacao(17),
+      saudacao(18),
+      saudacao(23),
+    ]).toEqual(['bom dia', 'bom dia', 'boa tarde', 'boa tarde', 'boa noite', 'boa noite']);
+  });
+
+  it('data por extenso em pt-BR', () => {
+    expect(dataExtenso(new Date(2026, 10, 15))).toBe('domingo, 15 de novembro');
+  });
+
+  it('hero mostra data e saudação', () => {
+    const f = TestBed.createComponent(HojeHero);
+    f.componentRef.setInput('data', 'domingo, 15 de novembro');
+    f.componentRef.setInput('saudacao', 'Ana, bom dia');
+    f.detectChanges();
+    const t = (f.nativeElement as HTMLElement).textContent;
+    expect(t).toContain('domingo, 15 de novembro');
+    expect(t).toContain('Ana, bom dia');
   });
 });

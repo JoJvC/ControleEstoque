@@ -1,10 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import { Icon, IconeNome } from '../../ui/atoms/icon';
 import { Skeleton } from '../../ui/atoms/skeleton';
 import { HojeStatus } from './hoje-status';
 
 export type CartaoVariante = 'casco' | 'fiado';
+
+/** Abre Clientes já filtrado; a leitura de `filtro` fica para a fatia de Clientes. */
+export function rotaClientes(variante: CartaoVariante): string {
+  return `/clientes?filtro=${variante}`;
+}
 
 export function modeloCartao(variante: CartaoVariante): {
   rotulo: string;
@@ -20,8 +25,10 @@ export function modeloCartao(variante: CartaoVariante): {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, Skeleton],
   template: `
-    <section
+    <button
+      type="button"
       class="cartao"
+      (click)="abrir.emit()"
       [class.cartao--casco]="variante() === 'casco'"
       [class.cartao--fiado]="variante() === 'fiado'"
       [attr.aria-label]="m().rotulo"
@@ -43,10 +50,19 @@ export function modeloCartao(variante: CartaoVariante): {
           <ce-skeleton largura="50%" altura="2rem" />
         }
       }
-    </section>
+    </button>
   `,
   styles: `
+    :host {
+      display: block;
+    }
+
     .cartao {
+      width: 100%;
+      text-align: left;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
       background: var(--ce-surface);
       border-radius: calc(var(--ce-radius-lg) + 4px);
       padding: var(--ce-space-4);
@@ -85,5 +101,6 @@ export class HojeCartao {
   readonly variante = input.required<CartaoVariante>();
   readonly valor = input('');
   readonly status = input<HojeStatus>('ok');
+  readonly abrir = output<void>();
   protected readonly m = computed(() => modeloCartao(this.variante()));
 }

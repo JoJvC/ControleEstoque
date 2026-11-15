@@ -9,6 +9,8 @@ import { HojeStatus } from './hoje-status';
 
 export interface HeroModelo {
   total: number;
+  recebido: number;
+  fiadoGerado: number;
   linhas: { categoria: string; quantidade: number; icone: IconeNome }[];
 }
 
@@ -16,6 +18,8 @@ export interface HeroModelo {
 export function modeloHero(r: RelatorioFaturamento): HeroModelo {
   return {
     total: r.totalLiquido,
+    recebido: r.recebido,
+    fiadoGerado: r.fiadoGerado,
     linhas: r.porCategoria.map((c) => ({
       categoria: c.categoria,
       quantidade: c.quantidade,
@@ -24,17 +28,36 @@ export function modeloHero(r: RelatorioFaturamento): HeroModelo {
   };
 }
 
+export function saudacao(hora: number): string {
+  if (hora < 12) return 'bom dia';
+  return hora < 18 ? 'boa tarde' : 'boa noite';
+}
+
+export function dataExtenso(d: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(d);
+}
+
 @Component({
   selector: 'ce-hoje-hero',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, PrecoPipe, Skeleton],
   template: `
     <section class="hero" aria-label="Vendido hoje">
+      <p class="hero__data">{{ data() }}</p>
+      <h1 class="hero__saudacao">{{ saudacao() }}</h1>
       <p class="hero__rotulo">Vendido hoje</p>
       @switch (status()) {
         @case ('ok') {
           @if (modelo(); as m) {
             <p class="hero__valor">{{ m.total | cePreco }}</p>
+            <p class="hero__chips">
+              <span class="hero__chip hero__recebido">Recebido {{ m.recebido | cePreco }}</span>
+              <span class="hero__chip hero__fiado">Fiado gerado {{ m.fiadoGerado | cePreco }}</span>
+            </p>
             <ul class="hero__saidas" aria-label="Saídas por categoria">
               @for (l of m.linhas; track l.categoria) {
                 <li class="hero__saida">
@@ -53,9 +76,28 @@ export function modeloHero(r: RelatorioFaturamento): HeroModelo {
           <ce-skeleton largura="60%" altura="2.5rem" />
         }
       }
+      <div class="hero__acoes"><ng-content /></div>
     </section>
   `,
   styles: `
+    .hero__data {
+      font-size: var(--ce-font-sm);
+      opacity: 0.85;
+      text-transform: capitalize;
+    }
+
+    .hero__saudacao {
+      font-family: var(--ce-font-family-titulo);
+      font-size: var(--ce-font-xl);
+      font-weight: 700;
+    }
+
+    .hero__acoes {
+      display: flex;
+      gap: var(--ce-space-3);
+      margin-top: var(--ce-space-2);
+    }
+
     .hero {
       background: var(--ce-topo);
       color: var(--ce-texto-sobre-topo);
@@ -75,6 +117,21 @@ export function modeloHero(r: RelatorioFaturamento): HeroModelo {
       font-family: var(--ce-font-family-titulo);
       font-size: 2.25rem;
       font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .hero__chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--ce-space-2);
+    }
+
+    .hero__chip {
+      background: var(--ce-topo-cartao);
+      color: var(--ce-texto-sobre-topo);
+      border-radius: var(--ce-radius-lg);
+      padding: var(--ce-space-1) var(--ce-space-3);
+      font-size: var(--ce-font-sm);
       font-variant-numeric: tabular-nums;
     }
 
@@ -98,4 +155,6 @@ export function modeloHero(r: RelatorioFaturamento): HeroModelo {
 export class HojeHero {
   readonly modelo = input<HeroModelo | null>(null);
   readonly status = input<HojeStatus>('ok');
+  readonly data = input('');
+  readonly saudacao = input('');
 }

@@ -5,19 +5,22 @@ namespace ControleEstoque.Vendas.Domain;
 /// <summary>
 /// Cálculo puro do agregado Venda: totais por item (com desconto VALOR ou
 /// PERCENTUAL), totais da venda e status de pagamento. O preço vem sempre do
-/// request (preço de referência é só sugestão de tela — regra crítica 4).
+/// request (preço de referência é só sugestão de tela — regra crítica 4); o preço do vasilhame, quando o
+/// cliente pagou, vem do tipo de casco resolvido pelo serviço (<paramref name="resolver"/>), nunca do request.
 /// </summary>
 public static class VendaCalculos
 {
     public static TotaisVenda Calcular(
-        IReadOnlyList<ItemVenda> itens, IReadOnlyList<PagamentoVenda> pagamentos)
+        IReadOnlyList<ItemVenda> itens, IReadOnlyList<PagamentoVenda> pagamentos,
+        Func<ItemVenda, ItemResolvido>? resolver = null)
     {
         if (itens.Count == 0)
         {
             throw new RequestValidationException("ITENS_OBRIGATORIOS", "Venda deve ter ao menos um item.");
         }
 
-        var calculados = itens.Select(CalcularItem).ToList();
+        resolver ??= _ => new ItemResolvido(Guid.Empty, null, 0m); // só testes de cálculo puro chegam sem resolver
+        var calculados = itens.Select(i => CalcularItem(i, resolver(i))).ToList();
         var totalBruto = calculados.Sum(i => i.TotalBruto);
         var totalDesconto = calculados.Sum(i => i.ValorDesconto);
         var totalLiquido = calculados.Sum(i => i.TotalItem);
@@ -50,7 +53,7 @@ public static class VendaCalculos
         : totalPago > 0 ? StatusPagamento.PARCIAL
         : StatusPagamento.PENDENTE;
 
-    private static ItemCalculado CalcularItem(ItemVenda item)
+    private static ItemCalculado CalcularItem(ItemVenda item, ItemResolvido resolvido)
     {
         if (item.Quantidade <= 0)
         {
@@ -64,7 +67,8 @@ public static class VendaCalculos
                 "PRECO_INVALIDO", $"Preço unitário inválido para o produto {item.ProdutoId}.");
         }
 
-        var bruto = item.Quantidade * item.PrecoUnitario;
+        decimal? precoVasilhame = item.PagouVasilhame ? resolvido.PrecoVasilhame : null;
+        var bruto = item.Quantidade * item.PrecoUnitario + item.Quantidade * (precoVasilhame ?? 0m);
         var valorDesconto = 0m;
 
         if (item.Desconto is { } desconto)
@@ -99,7 +103,8 @@ public static class VendaCalculos
         }
 
         return new ItemCalculado(
-            item.ProdutoId, item.Quantidade, item.PrecoUnitario, item.Desconto,
+            item.ProdutoId, item.MarcaId, resolvido.ProdutoMarcaId, resolvido.TipoCascoId,
+            item.Quantidade, item.PrecoUnitario, item.Desconto, item.PagouVasilhame, precoVasilhame,
             bruto, valorDesconto, bruto - valorDesconto);
     }
 }

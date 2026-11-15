@@ -327,9 +327,12 @@ CREATE INDEX idx_vendas_data        ON vendas(data)           WHERE deleted_at I
 CREATE TABLE venda_itens (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     venda_id         UUID NOT NULL REFERENCES vendas(id),
-    produto_id       UUID NOT NULL REFERENCES produtos(id),
+    produto_marca_id UUID NOT NULL REFERENCES produto_marcas(id),
+    tipo_casco_id    UUID REFERENCES tipos_casco(id), -- casco resolvido (o específico da marca vence); NULL em descartável
     quantidade       INT NOT NULL CHECK (quantidade > 0),
     preco_unitario   NUMERIC(19,2) NOT NULL CHECK (preco_unitario >= 0),
+    pagou_vasilhame  BOOLEAN NOT NULL DEFAULT FALSE, -- cliente pagou o vasilhame: não empresta casco
+    preco_vasilhame  NUMERIC(19,2) CHECK (preco_vasilhame >= 0), -- preço do vasilhame aplicado; NULL quando não pagou
     desconto_tipo    tipo_desconto,
     desconto_valor   NUMERIC(19,2) CHECK (desconto_valor IS NULL OR desconto_valor >= 0),
     motivo_desconto  TEXT,
@@ -341,11 +344,15 @@ CREATE TABLE venda_itens (
         (desconto_tipo IS NULL AND desconto_valor IS NULL AND motivo_desconto IS NULL)
         OR
         (desconto_tipo IS NOT NULL AND desconto_valor IS NOT NULL AND motivo_desconto IS NOT NULL)
+    ),
+    -- vasilhame pago tem tipo de casco e preço aplicado
+    CONSTRAINT chk_venda_itens_vasilhame_pago CHECK (
+        NOT pagou_vasilhame OR (tipo_casco_id IS NOT NULL AND preco_vasilhame IS NOT NULL)
     )
 );
 
-CREATE INDEX idx_venda_itens_venda   ON venda_itens(venda_id)   WHERE deleted_at IS NULL;
-CREATE INDEX idx_venda_itens_produto ON venda_itens(produto_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_venda_itens_venda         ON venda_itens(venda_id)         WHERE deleted_at IS NULL;
+CREATE INDEX idx_venda_itens_produto_marca ON venda_itens(produto_marca_id) WHERE deleted_at IS NULL;
 
 -- N formas de pagamento por venda, cada uma com valor próprio.
 CREATE TABLE venda_pagamentos (
@@ -452,6 +459,7 @@ CREATE TABLE IF NOT EXISTS movimentos_estoque_casco (
     quantidade      INT NOT NULL CHECK (quantidade <> 0),
     baixa_casco_id  UUID REFERENCES baixas_casco(id),
     abastecimento_id UUID REFERENCES abastecimentos(id),
+    venda_id        UUID REFERENCES vendas(id), -- devolução e sucata da venda; o replay da edição apaga por aqui
     observacao      TEXT,
     created_by      UUID REFERENCES funcionarios(id),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -459,6 +467,7 @@ CREATE TABLE IF NOT EXISTS movimentos_estoque_casco (
 );
 
 ALTER TABLE movimentos_estoque_casco ADD COLUMN IF NOT EXISTS abastecimento_id UUID REFERENCES abastecimentos(id);
+ALTER TABLE movimentos_estoque_casco ADD COLUMN IF NOT EXISTS venda_id UUID REFERENCES vendas(id);
 
 CREATE INDEX IF NOT EXISTS idx_mov_estoque_casco_tipo
     ON movimentos_estoque_casco(tipo_casco_id, situacao) WHERE deleted_at IS NULL;

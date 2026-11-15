@@ -25,30 +25,43 @@ public sealed class PostgresVendaLookup : IVendaLookup
         return (bool?)await command.ExecuteScalarAsync(cancellationToken) == true;
     }
 
-    public async Task<IReadOnlyDictionary<Guid, ProdutoVenda>> GetProdutosAsync(
-        IReadOnlyCollection<Guid> produtoIds, CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<(Guid ProdutoId, Guid MarcaId), ProdutoVenda>> GetProdutosAsync(
+        IReadOnlyCollection<(Guid ProdutoId, Guid MarcaId)> pares, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand(Sql.GetProdutos, connection);
-        command.Parameters.AddWithValue("ids", produtoIds.ToArray());
+        command.Parameters.AddWithValue("produtoIds", pares.Select(p => p.ProdutoId).ToArray());
+        command.Parameters.AddWithValue("marcaIds", pares.Select(p => p.MarcaId).ToArray());
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var results = new Dictionary<Guid, ProdutoVenda>();
+        var results = new Dictionary<(Guid ProdutoId, Guid MarcaId), ProdutoVenda>();
         while (await reader.ReadAsync(cancellationToken))
         {
             var produto = new ProdutoVenda(
-                reader.GetGuid(0), Enum.Parse<TipoProduto>(reader.GetString(1)), reader.GetString(2));
-            results[produto.Id] = produto;
+                reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2),
+                Enum.Parse<TipoProduto>(reader.GetString(3)), reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetGuid(5),
+                reader.IsDBNull(6) ? null : reader.GetGuid(6));
+            results[(produto.ProdutoId, produto.MarcaId)] = produto;
         }
 
         return results;
     }
 
-    public async Task<Guid?> GetProdutoEstruturalAsync(TipoProduto tipo, CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<Guid, TipoCascoVenda>> GetTiposCascoAsync(
+        IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.GetProdutoEstrutural, connection);
-        command.Parameters.AddWithValue("tipo", tipo.ToString());
-        return (Guid?)await command.ExecuteScalarAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.GetTiposCasco, connection);
+        command.Parameters.AddWithValue("ids", ids.ToArray());
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var results = new Dictionary<Guid, TipoCascoVenda>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results[reader.GetGuid(0)] = new TipoCascoVenda(
+                reader.GetGuid(0), reader.GetDecimal(1), reader.GetBoolean(2));
+        }
+
+        return results;
     }
 
     private async Task<bool> ExistsAsync(string sql, Guid id, CancellationToken cancellationToken)
@@ -72,13 +85,15 @@ public sealed class PostgresVendaLookup : IVendaLookup
                            WHERE id = @enderecoId AND cliente_id = @clienteId AND deleted_at IS NULL)
             """;
 
-        public const string GetProdutos =
-            "SELECT id, tipo::text, nome FROM produtos WHERE id = ANY(@ids) AND deleted_at IS NULL";
-
-        public const string GetProdutoEstrutural = """
-            SELECT id FROM produtos
-            WHERE tipo = @tipo::tipo_produto AND deleted_at IS NULL
-            ORDER BY created_at LIMIT 1
+        public const string GetProdutos = """
+            SELECT pm.id, pm.produto_id, pm.marca_id, p.tipo::text, p.nome, p.tipo_casco_id, pm.tipo_casco_id
+            FROM unnest(@produtoIds::uuid[], @marcaIds::uuid[]) AS par(produto_id, marca_id)
+            JOIN produto_marcas pm ON pm.produto_id = par.produto_id AND pm.marca_id = par.marca_id
+            JOIN produtos p ON p.id = pm.produto_id
+            WHERE pm.deleted_at IS NULL AND p.deleted_at IS NULL
             """;
+
+        public const string GetTiposCasco =
+            "SELECT id, preco_vasilhame, aceita_sucata FROM tipos_casco WHERE id = ANY(@ids)";
     }
 }

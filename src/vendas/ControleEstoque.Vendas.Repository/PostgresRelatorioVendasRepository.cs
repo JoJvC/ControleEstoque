@@ -60,7 +60,7 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
 
         var porDia = SerieDiariaFaturamento.Montar(liquidoPorDia, recebidoPorDia, fiadoPorDia);
 
-        var linhasCategoria = new List<(TipoProduto Tipo, string? Categoria, long Quantidade, decimal Total)>();
+        var linhasCategoria = new List<(string? Categoria, long Quantidade, decimal Total)>();
         await using (var command = new NpgsqlCommand(Sql.PorCategoria, connection))
         {
             AddFiltros(command, inicio, fim, produtoId);
@@ -68,10 +68,9 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
             while (await reader.ReadAsync(cancellationToken))
             {
                 linhasCategoria.Add((
-                    Enum.Parse<TipoProduto>(reader.GetString(0)),
-                    reader.IsDBNull(1) ? null : reader.GetString(1),
-                    reader.GetInt64(2),
-                    reader.GetDecimal(3)));
+                    reader.IsDBNull(0) ? null : reader.GetString(0),
+                    reader.GetInt64(1),
+                    reader.GetDecimal(2)));
             }
         }
 
@@ -135,41 +134,45 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
         private const string FiltroBase = """
             FROM venda_itens i
             JOIN vendas v ON v.id = i.venda_id
+            JOIN produto_marcas pm ON pm.id = i.produto_marca_id
             WHERE i.deleted_at IS NULL AND v.deleted_at IS NULL
               AND (@inicio IS NULL OR v.data::date >= @inicio)
               AND (@fim IS NULL OR v.data::date <= @fim)
-              AND (@produtoId IS NULL OR i.produto_id = @produtoId)
+              AND (@produtoId IS NULL OR pm.produto_id = @produtoId)
             """;
 
+        // O bruto do item inclui o vasilhame quando o cliente pagou (preco_vasilhame é NULL quando não pagou).
         public const string Totais = """
-            SELECT COALESCE(SUM(i.quantidade * i.preco_unitario), 0),
-                   COALESCE(SUM(i.quantidade * i.preco_unitario - i.total_item), 0),
+            SELECT COALESCE(SUM(i.quantidade * (i.preco_unitario + COALESCE(i.preco_vasilhame, 0))), 0),
+                   COALESCE(SUM(i.quantidade * (i.preco_unitario + COALESCE(i.preco_vasilhame, 0)) - i.total_item), 0),
                    COALESCE(SUM(i.total_item), 0)
             """ + FiltroBase;
 
         public const string PorProduto = """
-            SELECT i.produto_id, p.nome, SUM(i.quantidade)::bigint, SUM(i.total_item)
+            SELECT pm.produto_id, p.nome, SUM(i.quantidade)::bigint, SUM(i.total_item)
             FROM venda_itens i
             JOIN vendas v ON v.id = i.venda_id
-            JOIN produtos p ON p.id = i.produto_id
+            JOIN produto_marcas pm ON pm.id = i.produto_marca_id
+            JOIN produtos p ON p.id = pm.produto_id
             WHERE i.deleted_at IS NULL AND v.deleted_at IS NULL
               AND (@inicio IS NULL OR v.data::date >= @inicio)
               AND (@fim IS NULL OR v.data::date <= @fim)
-              AND (@produtoId IS NULL OR i.produto_id = @produtoId)
-            GROUP BY i.produto_id, p.nome
+              AND (@produtoId IS NULL OR pm.produto_id = @produtoId)
+            GROUP BY pm.produto_id, p.nome
             ORDER BY SUM(i.total_item) DESC
             """;
 
         public const string PorCategoria = """
-            SELECT p.tipo::text, p.categoria, SUM(i.quantidade)::bigint, SUM(i.total_item)
+            SELECT p.categoria, SUM(i.quantidade)::bigint, SUM(i.total_item)
             FROM venda_itens i
             JOIN vendas v ON v.id = i.venda_id
-            JOIN produtos p ON p.id = i.produto_id
+            JOIN produto_marcas pm ON pm.id = i.produto_marca_id
+            JOIN produtos p ON p.id = pm.produto_id
             WHERE i.deleted_at IS NULL AND v.deleted_at IS NULL
               AND (@inicio IS NULL OR v.data::date >= @inicio)
               AND (@fim IS NULL OR v.data::date <= @fim)
-              AND (@produtoId IS NULL OR i.produto_id = @produtoId)
-            GROUP BY p.tipo, p.categoria
+              AND (@produtoId IS NULL OR pm.produto_id = @produtoId)
+            GROUP BY p.categoria
             """;
 
         public const string PorDia = """

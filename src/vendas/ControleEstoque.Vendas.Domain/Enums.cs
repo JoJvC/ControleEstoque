@@ -5,10 +5,7 @@ namespace ControleEstoque.Vendas.Domain;
 
 public enum TipoProduto
 {
-    AGUA,
-    GALAO_COMPLETO,
-    CASCO,
-    SUCATA,
+    RETORNAVEL,
     DESCARTAVEL
 }
 

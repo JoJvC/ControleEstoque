@@ -113,7 +113,7 @@ public sealed class VendaService : IVendaService
         return await cupons.EmitirAsync(vendaId, cancellationToken);
     }
 
-    /// <summary>Valida o comando, resolve lookups e monta o modelo de gravação com os 8 efeitos.</summary>
+    /// <summary>Valida o comando, resolve lookups e monta o modelo de gravação com os efeitos da venda.</summary>
     private async Task<VendaGravacao> MontarGravacaoAsync(
         Guid vendaId, NovaVenda venda, CancellationToken cancellationToken)
     {
@@ -122,15 +122,18 @@ public sealed class VendaService : IVendaService
         foreach (var item in venda.Itens)
         {
             Validacao.IdPreenchido(item.ProdutoId, "ProdutoId");
+            Validacao.IdPreenchido(item.MarcaId, "MarcaId");
         }
 
-        if (venda.CascosDevolvidos < 0 || venda.SucataEntregue < 0)
+        foreach (var casco in venda.CascosDevolvidos.Concat(venda.SucataEntregue))
         {
-            throw new RequestValidationException(
-                "QUANTIDADE_INVALIDA", "Devoluções e entregas não podem ser negativas.");
+            Validacao.IdPreenchido(casco.TipoCascoId, "TipoCascoId");
+            if (casco.Quantidade <= 0)
+            {
+                throw new RequestValidationException(
+                    "QUANTIDADE_INVALIDA", "Devoluções e entregas de casco devem ter quantidade positiva.");
+            }
         }
-
-        var totais = VendaCalculos.Calcular(venda.Itens, venda.Pagamentos);
 
         if (!await lookup.ClienteExisteAsync(venda.ClienteId, cancellationToken))
         {
@@ -151,49 +154,89 @@ public sealed class VendaService : IVendaService
                 "ENDERECO_NAO_PERTENCE_AO_CLIENTE", "Endereço de entrega não pertence ao cliente.");
         }
 
-        var produtoIds = totais.Itens.Select(i => i.ProdutoId).Distinct().ToList();
-        var produtos = await lookup.GetProdutosAsync(produtoIds, cancellationToken);
-        foreach (var produtoId in produtoIds)
+        var pares = venda.Itens.Select(i => (i.ProdutoId, i.MarcaId)).Distinct().ToList();
+        var produtos = await lookup.GetProdutosAsync(pares, cancellationToken);
+        foreach (var par in pares)
         {
-            if (!produtos.ContainsKey(produtoId))
+            if (!produtos.ContainsKey(par))
             {
                 throw new EntityNotFoundException(
-                    "PRODUTO_NAO_ENCONTRADO", $"Produto {produtoId} não encontrado.");
+                    "PRODUTO_MARCA_NAO_ENCONTRADO",
+                    $"Produto {par.ProdutoId} com a marca {par.MarcaId} não encontrado.");
             }
         }
 
-        // Regra crítica 1: apenas itens de AGUA emprestam casco NORMAL.
-        // GALAO_COMPLETO é propriedade do cliente e não gera débito; sucata nunca é emprestada.
-        var aguaVendida = totais.Itens
-            .Where(i => produtos[i.ProdutoId].Tipo == TipoProduto.AGUA)
-            .Sum(i => i.Quantidade);
-
-        // O toggle "na hora" é atalho de UI e só informativo: o número informado é o que vale.
-        var cascosDevolvidos = venda.CascosDevolvidos;
-
-        Guid? cascoProdutoId = null;
-        if (cascosDevolvidos > 0)
+        // O casco da linha vem só da função pura (o específico da marca vence o genérico do produto).
+        var cascoDoPar = pares.ToDictionary(
+            par => par,
+            par => RegrasCasco.Resolver(
+                produtos[par].Tipo, produtos[par].TipoCascoProdutoId, produtos[par].TipoCascoMarcaId));
+        foreach (var item in venda.Itens)
         {
-            cascoProdutoId = await lookup.GetProdutoEstruturalAsync(TipoProduto.CASCO, cancellationToken)
-                ?? throw new BusinessRuleException(
-                    "PRODUTO_CASCO_AUSENTE", "Produto estrutural CASCO não cadastrado.");
+            var produto = produtos[(item.ProdutoId, item.MarcaId)];
+            if (item.PagouVasilhame && produto.Tipo == TipoProduto.DESCARTAVEL)
+            {
+                throw new BusinessRuleException(
+                    "VASILHAME_EM_DESCARTAVEL", $"'{produto.Nome}' é descartável e não tem vasilhame.");
+            }
+
+            if (produto.Tipo == TipoProduto.RETORNAVEL && cascoDoPar[(item.ProdutoId, item.MarcaId)] is null)
+            {
+                throw new InvalidOperationException($"Produto retornável {produto.Nome} sem tipo de casco.");
+            }
         }
 
-        Guid? sucataProdutoId = null;
-        if (venda.SucataEntregue > 0)
+        var tipos = await lookup.GetTiposCascoAsync(
+            cascoDoPar.Values.OfType<Guid>().Distinct().ToList(), cancellationToken);
+        var totais = VendaCalculos.Calcular(venda.Itens, venda.Pagamentos, item =>
         {
-            sucataProdutoId = await lookup.GetProdutoEstruturalAsync(TipoProduto.SUCATA, cancellationToken)
-                ?? throw new BusinessRuleException(
-                    "PRODUTO_SUCATA_AUSENTE", "Produto estrutural SUCATA não cadastrado.");
+            var par = (item.ProdutoId, item.MarcaId);
+            var tipoCascoId = cascoDoPar[par];
+            return new ItemResolvido(
+                produtos[par].ProdutoMarcaId, tipoCascoId, tipoCascoId is { } id ? tipos[id].PrecoVasilhame : 0m);
+        });
+
+        // Troca (padrão) empresta a quantidade no tipo da linha; pagou o vasilhame não gera empréstimo.
+        var emprestimos = SomarPorTipo(totais.Itens
+            .Where(i => i.TipoCascoId is not null && !i.PagouVasilhame)
+            .Select(i => new CascoQuantidade(i.TipoCascoId!.Value, i.Quantidade)));
+
+        // Devolução e sucata só valem para o tipo resolvido de alguma linha retornável da venda.
+        var tiposDaVenda = cascoDoPar.Values.OfType<Guid>().ToHashSet();
+        var devolvidos = SomarPorTipo(venda.CascosDevolvidos);
+        var sucata = SomarPorTipo(venda.SucataEntregue);
+        foreach (var casco in devolvidos.Concat(sucata))
+        {
+            if (!tiposDaVenda.Contains(casco.TipoCascoId))
+            {
+                throw new BusinessRuleException(
+                    "TIPO_CASCO_FORA_DA_VENDA",
+                    $"O tipo de casco {casco.TipoCascoId} não é de nenhum item retornável da venda.");
+            }
+        }
+
+        foreach (var casco in sucata)
+        {
+            if (!tipos[casco.TipoCascoId].AceitaSucata)
+            {
+                throw new BusinessRuleException(
+                    "SUCATA_NAO_ACEITA", $"O tipo de casco {casco.TipoCascoId} não aceita sucata.");
+            }
         }
 
         return new VendaGravacao(
             vendaId, venda.ClienteId, venda.FuncionarioId, venda.EnderecoEntregaId, venda.Observacao,
             totais.TotalBruto, totais.TotalDesconto, totais.TotalLiquido, totais.Status,
             totais.Itens, venda.Pagamentos,
-            aguaVendida, cascosDevolvidos, venda.SucataEntregue,
-            totais.Faltante, cascoProdutoId, sucataProdutoId);
+            emprestimos, devolvidos, sucata,
+            totais.Faltante);
     }
+
+    private static IReadOnlyList<CascoQuantidade> SomarPorTipo(IEnumerable<CascoQuantidade> cascos) =>
+        cascos
+            .GroupBy(c => c.TipoCascoId)
+            .Select(g => new CascoQuantidade(g.Key, g.Sum(c => c.Quantidade)))
+            .ToList();
 
     /// <summary>A checagem de saldo é do repositório (atômica, na transação); aqui só vira exceção.</summary>
     private async Task<ResultadoVenda> ToResultadoAsync(
@@ -201,8 +244,11 @@ public sealed class VendaService : IVendaService
     {
         if (gravado.Falta is { } falta)
         {
-            var nome = (await lookup.GetProdutosAsync([falta.ProdutoId], cancellationToken))
-                .TryGetValue(falta.ProdutoId, out var produto) ? produto.Nome : falta.ProdutoId.ToString();
+            // Falta.ProdutoId é o id da associação produto+marca.
+            var item = gravacao.Itens.First(i => i.ProdutoMarcaId == falta.ProdutoId);
+            var nome = (await lookup.GetProdutosAsync([(item.ProdutoId, item.MarcaId)], cancellationToken))
+                .TryGetValue((item.ProdutoId, item.MarcaId), out var produto)
+                    ? produto.Nome : falta.ProdutoId.ToString();
             throw new InsufficientStockException(
                 $"Estoque de '{nome}' ({falta.Saldo}) insuficiente para vender {falta.Solicitado}.");
         }
@@ -210,6 +256,6 @@ public sealed class VendaService : IVendaService
         return new ResultadoVenda(
             gravacao.VendaId, gravacao.TotalBruto, gravacao.TotalDesconto, gravacao.TotalLiquido,
             gravacao.TotalLiquido - gravacao.DebitoFiado, gravacao.DebitoFiado, gravacao.Status,
-            gravado.SaldoCasco);
+            gravado.SaldoCascoPorTipo);
     }
 }

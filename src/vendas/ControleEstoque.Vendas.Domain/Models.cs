@@ -4,9 +4,17 @@ namespace ControleEstoque.Vendas.Domain;
 
 public sealed record Desconto(TipoDesconto Tipo, decimal Valor, string Motivo);
 
-public sealed record ItemVenda(Guid ProdutoId, int Quantidade, decimal PrecoUnitario, Desconto? Desconto);
+/// <summary>Item = produto+marca. PagouVasilhame soma o vasilhame ao bruto e não gera empréstimo de casco.</summary>
+public sealed record ItemVenda(
+    Guid ProdutoId, Guid MarcaId, int Quantidade, decimal PrecoUnitario, Desconto? Desconto,
+    bool PagouVasilhame = false);
 
 public sealed record PagamentoVenda(FormaPagamento Forma, decimal Valor);
+
+/// <summary>Quantidade de casco (devolvido, emprestado ou sucata) de um tipo de casco.</summary>
+public sealed record CascoQuantidade(Guid TipoCascoId, int Quantidade);
+
+public sealed record SaldoCascoTipo(Guid TipoCascoId, string Nome, long Saldo);
 
 /// <summary>Comando de criação/edição de venda, como chega da API.</summary>
 public sealed record NovaVenda(
@@ -15,17 +23,27 @@ public sealed record NovaVenda(
     Guid? EnderecoEntregaId,
     IReadOnlyList<ItemVenda> Itens,
     IReadOnlyList<PagamentoVenda> Pagamentos,
-    int CascosDevolvidos,
-    bool CascosDevolvidosNaHora,
-    int SucataEntregue,
+    IReadOnlyList<CascoQuantidade> CascosDevolvidos,
+    IReadOnlyList<CascoQuantidade> SucataEntregue,
     string? Observacao);
 
-/// <summary>Item com totais já calculados pelo sistema (nunca aceitos do cliente HTTP).</summary>
+/// <summary>Resolução do item no banco: associação, casco resolvido e preço do vasilhame desse casco.</summary>
+public sealed record ItemResolvido(Guid ProdutoMarcaId, Guid? TipoCascoId, decimal PrecoVasilhame);
+
+/// <summary>
+/// Item com totais já calculados pelo sistema (nunca aceitos do cliente HTTP). O bruto inclui o vasilhame
+/// quando PagouVasilhame; PrecoVasilhame é o preço aplicado (null quando não pagou).
+/// </summary>
 public sealed record ItemCalculado(
     Guid ProdutoId,
+    Guid MarcaId,
+    Guid ProdutoMarcaId,
+    Guid? TipoCascoId,
     int Quantidade,
     decimal PrecoUnitario,
     Desconto? Desconto,
+    bool PagouVasilhame,
+    decimal? PrecoVasilhame,
     decimal TotalBruto,
     decimal ValorDesconto,
     decimal TotalItem);
@@ -39,8 +57,17 @@ public sealed record TotaisVenda(
     decimal Faltante,
     StatusPagamento Status);
 
-/// <summary>Informações de produto necessárias à venda (lookup no banco).</summary>
-public sealed record ProdutoVenda(Guid Id, TipoProduto Tipo, string Nome);
+/// <summary>Produto+marca da venda (lookup no banco), com os dois tipos de casco que a regra resolve.</summary>
+public sealed record ProdutoVenda(
+    Guid ProdutoMarcaId,
+    Guid ProdutoId,
+    Guid MarcaId,
+    TipoProduto Tipo,
+    string Nome,
+    Guid? TipoCascoProdutoId,
+    Guid? TipoCascoMarcaId);
+
+public sealed record TipoCascoVenda(Guid Id, decimal PrecoVasilhame, bool AceitaSucata);
 
 /// <summary>
 /// Modelo de gravação totalmente resolvido pelo VendaService — o repositório
@@ -58,15 +85,19 @@ public sealed record VendaGravacao(
     StatusPagamento Status,
     IReadOnlyList<ItemCalculado> Itens,
     IReadOnlyList<PagamentoVenda> Pagamentos,
-    int CascosEmprestados,
-    int CascosDevolvidos,
-    int SucataEntregue,
-    decimal DebitoFiado,
-    Guid? CascoProdutoId,
-    Guid? SucataProdutoId);
+    IReadOnlyList<CascoQuantidade> CascosEmprestados,
+    IReadOnlyList<CascoQuantidade> CascosDevolvidos,
+    IReadOnlyList<CascoQuantidade> SucataEntregue,
+    decimal DebitoFiado);
 
-/// <summary>Resultado da gravação: saldo de casco do cliente, ou a falta de estoque que causou o rollback.</summary>
-public sealed record ResultadoGravacao(long SaldoCasco, SaldoInsuficiente? Falta = null);
+/// <summary>
+/// Resultado da gravação: saldo de casco do cliente por tipo, ou a falta de estoque que causou o rollback
+/// (SaldoInsuficiente.ProdutoId carrega o id da associação produto+marca).
+/// </summary>
+public sealed record ResultadoGravacao(IReadOnlyList<SaldoCascoTipo> SaldoCascoPorTipo, SaldoInsuficiente? Falta = null)
+{
+    public long SaldoCasco => SaldoCascoPorTipo.Sum(s => s.Saldo);
+}
 
 public sealed record ResultadoVenda(
     Guid Id,
@@ -76,7 +107,10 @@ public sealed record ResultadoVenda(
     decimal TotalPago,
     decimal SaldoFiadoGerado,
     StatusPagamento StatusPagamento,
-    long SaldoCascoCliente);
+    IReadOnlyList<SaldoCascoTipo> SaldoCascoClientePorTipo)
+{
+    public long SaldoCascoCliente => SaldoCascoClientePorTipo.Sum(s => s.Saldo);
+}
 
 public sealed record Venda(
     Guid Id,
@@ -92,8 +126,8 @@ public sealed record Venda(
     bool CupomEmitido,
     IReadOnlyList<ItemCalculado> Itens,
     IReadOnlyList<PagamentoVenda> Pagamentos,
-    int CascosDevolvidos,
-    int SucataEntregue,
+    IReadOnlyList<CascoQuantidade> CascosDevolvidos,
+    IReadOnlyList<CascoQuantidade> SucataEntregue,
     string? CupomNumero = null,
     DateTimeOffset? CupomEmitidoEm = null);
 

@@ -37,13 +37,15 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 - Cascos têm estoque próprio por tipo de casco, de vazios e de sucata (ver 3.6).
 
 ### 3.4 Registro de Vendas
-- Uma venda pode conter N itens: água (por marca), galão completo, casco avulso e/ou descartáveis, combinados livremente na mesma venda.
+- Uma venda pode conter N itens; cada item é um produto+marca (a associação precisa estar ativa), retornável ou descartável, combinados livremente na mesma venda.
 - Vinculação ao cliente, funcionário responsável e valor (definido no ato da venda, usando o preço de referência apenas como base).
 - **Edição pós-registro**: a venda pode ser editada depois de registrada (itens, pagamentos, desconto, devoluções de casco/sucata).
 - **Cupom fiscal**: o sistema permite emitir cupom fiscal referente à venda.
 - **Formas de pagamento**: uma venda pode ter N formas de pagamento simultâneas (pix, cartão de crédito, cartão de débito, dinheiro, etc.), cada uma com valor lançado individualmente. O que não for coberto pela soma dos pagamentos vira pendência (fiado) na conta corrente do cliente.
 - **Desconto**: pode ser inserido no ato da venda ou em uma edição posterior, sempre com um motivo. O desconto é aplicado por item (produto), digitado manualmente (valor ou percentual); o sistema recalcula o total da venda automaticamente.
-- **Devolução na venda**: no registro (ou edição) da venda é possível informar quantos cascos normais foram devolvidos (abate o débito de casco normal) e, independentemente, quanta sucata o cliente entregou (apenas registro, ver 3.6) — a entrega de sucata não abate o débito de casco normal.
+- **Casco do item**: o tipo de casco de cada linha retornável é resolvido pelo sistema (o específico da associação vence o genérico do produto); descartável não tem casco e não movimenta casco. A linha retornável é, por padrão, uma **troca**: a quantidade vendida é emprestada no tipo da linha e gera débito de casco do cliente nesse tipo.
+- **Pagou o vasilhame**: a linha retornável pode ser marcada como "pagou o vasilhame" (em descartável, a venda é recusada). O valor bruto do item passa a ser quantidade × preço unitário + quantidade × preço do vasilhame do tipo de casco resolvido; o preço do vasilhame vem do cadastro do tipo (relido a cada edição), nunca da requisição, e fica gravado no item. Desconto e total do item seguem a regra normal, aplicados sobre esse bruto. A linha não gera débito de casco.
+- **Devolução e sucata na venda**: no registro (ou edição) da venda, a devolução de cascos e a entrega de sucata são informadas por tipo de casco e só valem para o tipo resolvido de alguma linha retornável da venda (troca ou vasilhame pago); outro tipo é recusado. A devolução abate o débito de casco do cliente naquele tipo e dá entrada no estoque de vazios do tipo; se for maior que o emprestado, vira crédito (saldo negativo do tipo). A sucata é apenas registro (por cliente e tipo, mais a entrada no estoque de sucata do tipo, ver 3.6), só em tipo que aceita sucata (senão a venda é recusada), e não abate o débito de casco. Venda recusada não grava nada.
 - **Status de pagamento**: a venda só é considerada **paga** quando a soma dos pagamentos lançados cobre integralmente o valor total da venda (já com desconto aplicado). Enquanto isso, permanece parcial/pendente, e a diferença compõe o saldo de fiado do cliente.
 
 ### 3.5 Controle de Caixa
@@ -91,20 +93,20 @@ Controles envolvidos:
 - Esta conta é independente do saldo físico de casco normal e do registro de sucata (ver 3.6) — só recebe lançamento quando há conversão explícita em valor.
 
 ## 4. Casos de Uso
-### 4.1 Fluxo de Venda de Água com Troca de Casco
-- Cliente recebe N cheios (sempre casco normal) e devolve M vazios (M pode ser menor, igual ou maior que N; opção rápida "cascos devolvidos na hora" preenche M = N). Sistema registra as duas quantidades, ajusta o saldo de casco normal do cliente pela diferença (débito se M < N, crédito se M > N) e atualiza o estoque físico de cascos vazios. Se o cliente entregar sucata junto, ela é lançada à parte no registro de sucata, sem abater o débito de casco normal.
+### 4.1 Fluxo de Venda de Produto Retornável com Troca de Casco
+- Cliente recebe N cheios de um produto+marca retornável; o casco do tipo resolvido (o específico da marca vence o genérico do produto) fica emprestado, N unidades. Cliente devolve M vazios desse tipo (M pode ser menor, igual ou maior que N; a tela pode preencher M = N com a opção rápida "cascos devolvidos na hora", mas a API recebe só as quantidades por tipo). Sistema registra o empréstimo e a devolução por tipo, ajusta o saldo de casco do cliente no tipo pela diferença (débito se M < N, crédito se M > N) e dá entrada de M no estoque de vazios do tipo. Se o cliente entregar sucata junto, ela é lançada à parte no registro de sucata, sem abater o débito de casco.
 
-### 4.2 Fluxo de Venda de Galão Completo
-- Cliente recebe água + casco como propriedade definitiva, sem gerar débito de casco. Unidade sai do estoque de galão completo.
+### 4.2 Fluxo de Venda com Pagamento do Vasilhame
+- Cliente compra o produto+marca retornável e paga o vasilhame (linha marcada como "pagou o vasilhame"): o item soma ao valor a quantidade × preço do vasilhame do tipo de casco resolvido, e a linha não gera débito de casco. O preço do vasilhame vem do cadastro do tipo e fica gravado no item. Em produto descartável não há vasilhame e a marcação é recusada. Troca e vasilhame pago podem coexistir na mesma venda, em linhas diferentes: só a troca empresta casco.
 
-### 4.3 Fluxo de Venda de Cascos Separados
-- Venda exclusiva de casco (vazio), registro no caixa.
+### 4.3 Fluxo de Devolução de Cascos e Entrega de Sucata na Venda
+- Na própria venda o cliente pode devolver cascos vazios e entregar sucata, sempre por tipo de casco e só de tipo resolvido de alguma linha retornável da venda (troca ou vasilhame pago); outro tipo é recusado. Devolução: abate o saldo do cliente no tipo (acima do emprestado vira crédito) e dá entrada no estoque de vazios do tipo. Sucata: só em tipo que aceita sucata (senão recusa); registra a entrega do cliente no tipo e dá entrada no estoque de sucata do tipo, sem abater o saldo de casco. O casco vazio não é mais um item vendável: o débito de casco se quita por devolução física ou conversão em valor (4.6 e 4.8).
 
 ### 4.4 Fluxo de Venda de Descartáveis
 - Registro de venda de descartáveis, vinculado ao caixa.
 
 ### 4.5 Venda com Múltiplos Itens
-- Uma única venda combina, por exemplo, água de marcas diferentes, casco avulso e descartáveis, cada item com seu produto e valor.
+- Uma única venda combina, por exemplo, produtos retornáveis de marcas (e tipos de casco) diferentes, em troca ou com o vasilhame pago, e descartáveis, cada item com seu produto+marca e valor. Devolução e sucata são informadas por tipo de casco, uma vez para a venda toda.
 
 ### 4.6 Pagar Casco (Devolução Física)
 - Cliente devolve casco(s) normal(is) vazio(s) de um tipo — no ato de uma venda de água ou avulso, sem compra associada — abatendo seu débito de casco normal daquele tipo e dando entrada no estoque físico de vazios do tipo.

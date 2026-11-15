@@ -8,20 +8,25 @@ internal sealed class FakeVendaLookup : IVendaLookup
     public HashSet<Guid> Clientes { get; } = new();
     public HashSet<Guid> Funcionarios { get; } = new();
     public Dictionary<Guid, Guid> EnderecosPorCliente { get; } = new(); // enderecoId -> clienteId
-    public Dictionary<Guid, ProdutoVenda> Produtos { get; } = new();
-    public Dictionary<Guid, long> SaldosEstoque { get; } = new();
-    public Dictionary<TipoProduto, Guid> Estruturais { get; } = new();
+    public Dictionary<(Guid ProdutoId, Guid MarcaId), ProdutoVenda> Produtos { get; } = new();
+    public Dictionary<Guid, TipoCascoVenda> TiposCasco { get; } = new();
+    public Dictionary<Guid, long> SaldosEstoque { get; } = new(); // por produto_marca_id
 
-    public ProdutoVenda AddProduto(TipoProduto tipo, string nome, long saldoEstoque)
+    public TipoCascoVenda AddTipoCasco(decimal precoVasilhame, bool aceitaSucata)
     {
-        var produto = new ProdutoVenda(Guid.NewGuid(), tipo, nome);
-        Produtos[produto.Id] = produto;
-        SaldosEstoque[produto.Id] = saldoEstoque;
-        if (tipo is TipoProduto.CASCO or TipoProduto.SUCATA)
-        {
-            Estruturais[tipo] = produto.Id;
-        }
+        var tipo = new TipoCascoVenda(Guid.NewGuid(), precoVasilhame, aceitaSucata);
+        TiposCasco[tipo.Id] = tipo;
+        return tipo;
+    }
 
+    /// <summary>Produto+marca novo: o casco do produto é o genérico; o da marca, o específico (vence).</summary>
+    public ProdutoVenda AddProduto(
+        TipoProduto tipo, string nome, long saldoEstoque, Guid? tipoCascoProduto = null, Guid? tipoCascoMarca = null)
+    {
+        var produto = new ProdutoVenda(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), tipo, nome, tipoCascoProduto, tipoCascoMarca);
+        Produtos[(produto.ProdutoId, produto.MarcaId)] = produto;
+        SaldosEstoque[produto.ProdutoMarcaId] = saldoEstoque;
         return produto;
     }
 
@@ -35,14 +40,17 @@ internal sealed class FakeVendaLookup : IVendaLookup
         Guid enderecoId, Guid clienteId, CancellationToken cancellationToken) =>
         Task.FromResult(EnderecosPorCliente.TryGetValue(enderecoId, out var dono) && dono == clienteId);
 
-    public Task<IReadOnlyDictionary<Guid, ProdutoVenda>> GetProdutosAsync(
-        IReadOnlyCollection<Guid> produtoIds, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyDictionary<Guid, ProdutoVenda>>(produtoIds
+    public Task<IReadOnlyDictionary<(Guid ProdutoId, Guid MarcaId), ProdutoVenda>> GetProdutosAsync(
+        IReadOnlyCollection<(Guid ProdutoId, Guid MarcaId)> pares, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyDictionary<(Guid ProdutoId, Guid MarcaId), ProdutoVenda>>(pares
             .Where(Produtos.ContainsKey)
-            .ToDictionary(id => id, id => Produtos[id]));
+            .ToDictionary(par => par, par => Produtos[par]));
 
-    public Task<Guid?> GetProdutoEstruturalAsync(TipoProduto tipo, CancellationToken cancellationToken) =>
-        Task.FromResult<Guid?>(Estruturais.TryGetValue(tipo, out var id) ? id : null);
+    public Task<IReadOnlyDictionary<Guid, TipoCascoVenda>> GetTiposCascoAsync(
+        IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, TipoCascoVenda>>(ids
+            .Where(TiposCasco.ContainsKey)
+            .ToDictionary(id => id, id => TiposCasco[id]));
 }
 
 /// <summary>
@@ -64,7 +72,10 @@ public sealed class FakeVendaRepository : IVendaRepository
     public VendaGravacao? UltimaEdicao { get; private set; }
     public (Guid? ClienteId, int PageSize)? UltimaListagem { get; private set; }
     public HashSet<Guid> VendasExistentes { get; } = new();
-    public long SaldoCascoRetorno { get; set; }
+
+    /// <summary>Saldo de casco por cliente e tipo, como a view vw_saldo_casco_cliente: empréstimo soma, devolução abate.</summary>
+    private readonly Dictionary<(Guid ClienteId, Guid TipoCascoId), long> saldoCasco = new();
+    private readonly Dictionary<Guid, VendaGravacao> gravacoesPorVenda = new();
     public InfoPagamentoVenda? InfoPagamento { get; set; }
     public (FormaPagamento Forma, decimal Valor)? UltimoPagamento { get; private set; }
 
@@ -90,12 +101,13 @@ public sealed class FakeVendaRepository : IVendaRepository
         var falta = await BaixarSaldoAsync(gravacao);
         if (falta is not null)
         {
-            return new ResultadoGravacao(0, falta);
+            return new ResultadoGravacao([], falta);
         }
 
         UltimaGravacao = gravacao;
         VendasExistentes.Add(gravacao.VendaId);
-        return new ResultadoGravacao(SaldoCascoRetorno);
+        AplicarCascos(gravacao);
+        return new ResultadoGravacao(SaldoCascoDe(gravacao.ClienteId));
     }
 
     public async Task<ResultadoGravacao> EditarAsync(VendaGravacao gravacao, CancellationToken cancellationToken)
@@ -108,18 +120,52 @@ public sealed class FakeVendaRepository : IVendaRepository
         var falta = await BaixarSaldoAsync(gravacao);
         if (falta is not null)
         {
-            return new ResultadoGravacao(0, falta);
+            return new ResultadoGravacao([], falta);
         }
 
         UltimaEdicao = gravacao;
-        return new ResultadoGravacao(SaldoCascoRetorno);
+        AplicarCascos(gravacao);
+        return new ResultadoGravacao(SaldoCascoDe(gravacao.ClienteId));
     }
+
+    /// <summary>Replay da edição: desfaz os cascos da gravação anterior da venda e aplica os novos.</summary>
+    private void AplicarCascos(VendaGravacao gravacao)
+    {
+        if (gravacoesPorVenda.TryGetValue(gravacao.VendaId, out var anterior))
+        {
+            Somar(anterior, -1);
+        }
+
+        Somar(gravacao, 1);
+        gravacoesPorVenda[gravacao.VendaId] = gravacao;
+    }
+
+    private void Somar(VendaGravacao gravacao, int sinal)
+    {
+        foreach (var c in gravacao.CascosEmprestados)
+        {
+            Ajustar(gravacao.ClienteId, c.TipoCascoId, sinal * c.Quantidade);
+        }
+
+        foreach (var c in gravacao.CascosDevolvidos)
+        {
+            Ajustar(gravacao.ClienteId, c.TipoCascoId, -sinal * c.Quantidade);
+        }
+    }
+
+    private void Ajustar(Guid clienteId, Guid tipoCascoId, long delta) =>
+        saldoCasco[(clienteId, tipoCascoId)] = saldoCasco.GetValueOrDefault((clienteId, tipoCascoId)) + delta;
+
+    private IReadOnlyList<SaldoCascoTipo> SaldoCascoDe(Guid clienteId) => saldoCasco
+        .Where(e => e.Key.ClienteId == clienteId && e.Value != 0)
+        .Select(e => new SaldoCascoTipo(e.Key.TipoCascoId, $"Tipo {e.Key.TipoCascoId}", e.Value))
+        .ToList();
 
     /// <summary>Devolve as saídas antigas da venda (soft-delete), checa e grava as novas; falha não grava nada.</summary>
     private async Task<SaldoInsuficiente?> BaixarSaldoAsync(VendaGravacao gravacao)
     {
         var novas = gravacao.Itens
-            .GroupBy(i => i.ProdutoId)
+            .GroupBy(i => i.ProdutoMarcaId)
             .ToDictionary(g => g.Key, g => g.Sum(i => (long)i.Quantidade));
         var antigas = saidasPorVenda.GetValueOrDefault(gravacao.VendaId) ?? new Dictionary<Guid, long>();
 
@@ -158,14 +204,17 @@ public sealed class FakeVendaRepository : IVendaRepository
     public Task<bool> ExisteAsync(Guid vendaId, CancellationToken cancellationToken) =>
         Task.FromResult(VendasExistentes.Contains(vendaId));
 
-    public Task<Venda?> GetAsync(Guid vendaId, CancellationToken cancellationToken) =>
-        Task.FromResult<Venda?>(VendasExistentes.Contains(vendaId)
+    public Task<Venda?> GetAsync(Guid vendaId, CancellationToken cancellationToken)
+    {
+        var gravacao = UltimaGravacao?.VendaId == vendaId ? UltimaGravacao : null;
+        return Task.FromResult<Venda?>(VendasExistentes.Contains(vendaId)
             ? new Venda(vendaId, Guid.NewGuid(), Guid.NewGuid(), null, DateTimeOffset.UtcNow,
                 0m, 0m, InfoPagamento?.TotalLiquido ?? 0m, InfoPagamento?.Status ?? StatusPagamento.PENDENTE,
-                null, false, [], [],
-                UltimaGravacao?.VendaId == vendaId ? UltimaGravacao.CascosDevolvidos : 0,
-                UltimaGravacao?.VendaId == vendaId ? UltimaGravacao.SucataEntregue : 0)
+                null, false, gravacao?.Itens ?? [], [],
+                gravacao?.CascosDevolvidos ?? [],
+                gravacao?.SucataEntregue ?? [])
             : null);
+    }
 
     public Task<IReadOnlyList<Venda>> ListAsync(
         Guid? clienteId, DateOnly? inicio, DateOnly? fim, int page, int pageSize,
@@ -195,8 +244,9 @@ public sealed class FakeVendaRepository : IVendaRepository
         return Task.FromResult(InfoPagamento!);
     }
 
-    public Task<long> GetSaldoCascoClienteAsync(Guid clienteId, CancellationToken cancellationToken) =>
-        Task.FromResult(SaldoCascoRetorno);
+    public Task<IReadOnlyList<SaldoCascoTipo>> GetSaldoCascoClienteAsync(
+        Guid clienteId, CancellationToken cancellationToken) =>
+        Task.FromResult(SaldoCascoDe(clienteId));
 }
 
 internal sealed class FakeCupomFiscalRepository : ICupomFiscalRepository

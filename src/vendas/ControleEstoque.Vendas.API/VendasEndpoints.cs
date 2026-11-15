@@ -79,12 +79,15 @@ public static class VendasEndpoints
         request.FuncionarioId,
         request.EnderecoEntregaId,
         Validacao.SemNulos(request.Itens, "Itens").Select(i => new ItemVenda(
-            i.ProdutoId, i.Quantidade, i.PrecoUnitario,
+            i.ProdutoId, i.MarcaId, i.Quantidade, i.PrecoUnitario,
             i.Desconto is null ? null : new Desconto(
-                i.Desconto.Tipo, i.Desconto.Valor, i.Desconto.Motivo ?? string.Empty))).ToList(),
+                i.Desconto.Tipo, i.Desconto.Valor, i.Desconto.Motivo ?? string.Empty),
+            i.PagouVasilhame)).ToList(),
         Validacao.SemNulos(request.Pagamentos, "Pagamentos").Select(p => new PagamentoVenda(p.Forma, p.Valor)).ToList(),
-        request.CascosDevolvidos,
-        request.CascosDevolvidosNaHora,
-        request.SucataEntregue,
+        ToCascos(request.CascosDevolvidos, "CascosDevolvidos"),
+        ToCascos(request.SucataEntregue, "SucataEntregue"),
         request.Observacao);
+
+    private static List<CascoQuantidade> ToCascos(List<CascoQuantidadeRequest>? cascos, string campo) =>
+        Validacao.SemNulos(cascos, campo).Select(c => new CascoQuantidade(c.TipoCascoId, c.Quantidade)).ToList();
 }

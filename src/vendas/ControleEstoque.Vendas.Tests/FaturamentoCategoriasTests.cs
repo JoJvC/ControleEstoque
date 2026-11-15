@@ -6,54 +6,40 @@ namespace ControleEstoque.Vendas.Tests;
 public sealed class FaturamentoCategoriasTests
 {
     private static IReadOnlyList<FaturamentoPorCategoria> Consolidar(
-        params (TipoProduto, string?, long, decimal)[] linhas) => FaturamentoCategorias.Consolidar(linhas);
+        params (string?, long, decimal)[] linhas) => FaturamentoCategorias.Consolidar(linhas);
 
     [Fact]
-    public void Agua_ComCategoriaNula_ViraAgua() =>
-        Assert.Equal(
-            [new FaturamentoPorCategoria("Água", 5, 50m)],
-            Consolidar((TipoProduto.AGUA, null, 5, 50m)));
-
-    [Fact]
-    public void AguaEGalao_ComCategoriasDiferentes_FundemEmAgua() =>
-        Assert.Equal(
-            [new FaturamentoPorCategoria("Água", 6, 90m)],
-            Consolidar((TipoProduto.AGUA, "X", 5, 50m), (TipoProduto.GALAO_COMPLETO, "Galões", 1, 40m)));
-
-    [Fact]
-    public void CascoESucata_IgnoramCategoria() =>
-        Assert.Equal(
-            [new FaturamentoPorCategoria("Casco", 2, 40m), new FaturamentoPorCategoria("Sucata", 1, 1m)],
-            Consolidar((TipoProduto.CASCO, "a", 2, 40m), (TipoProduto.SUCATA, "qualquer", 1, 1m)));
-
-    [Fact]
-    public void Descartavel_ComCategoriaNula_ViraOutros() =>
+    public void CategoriaNula_ViraOutros() =>
         Assert.Equal(
             [new FaturamentoPorCategoria("Outros", 2, 10m)],
-            Consolidar((TipoProduto.DESCARTAVEL, null, 2, 10m)));
+            Consolidar((null, 2, 10m)));
 
     [Fact]
-    public void Descartavel_ComVazioOuEspacos_ViraOutros() =>
+    public void CategoriaVaziaOuEspacos_ViraOutros() =>
         Assert.Equal(
             [new FaturamentoPorCategoria("Outros", 2, 8m)],
-            Consolidar((TipoProduto.DESCARTAVEL, "", 1, 5m), (TipoProduto.DESCARTAVEL, "  ", 1, 3m)));
+            Consolidar(("", 1, 5m), ("  ", 1, 3m)));
 
     [Fact]
-    public void Descartavel_NomesIguaisAposTrim_Fundem() =>
+    public void CategoriaComEspacosNasPontas_EApada() =>
+        Assert.Equal(
+            [new FaturamentoPorCategoria("Água", 5, 50m)],
+            Consolidar((" Água ", 5, 50m)));
+
+    [Fact]
+    public void CategoriasIguaisAposTrim_Fundem() =>
         Assert.Equal(
             [new FaturamentoPorCategoria("Carvão", 4, 80m)],
-            Consolidar((TipoProduto.DESCARTAVEL, "Carvão", 3, 60m), (TipoProduto.DESCARTAVEL, " Carvão ", 1, 20m)));
+            Consolidar(("Carvão", 3, 60m), (" Carvão ", 1, 20m)));
 
     [Fact]
     public void Ordem_TotalDecrescente_EmpatePorNome() =>
         Assert.Equal(
-            ["Água", "Carvão", "Gelo", "Casco", "Outros", "Sucata"],
+            ["Carvão", "Gelo", "Copos", "Água", "Outros"],
             Consolidar(
-                (TipoProduto.AGUA, null, 5, 50m), (TipoProduto.GALAO_COMPLETO, "Galões", 1, 40m),
-                (TipoProduto.DESCARTAVEL, "Carvão", 3, 60m), (TipoProduto.DESCARTAVEL, " Carvão ", 1, 20m),
-                (TipoProduto.DESCARTAVEL, "Gelo", 4, 80m), (TipoProduto.DESCARTAVEL, null, 2, 10m),
-                (TipoProduto.DESCARTAVEL, "", 1, 5m), (TipoProduto.CASCO, null, 2, 40m),
-                (TipoProduto.SUCATA, "qualquer", 1, 1m)).Select(c => c.Categoria));
+                ("Água", 1, 40m), ("Carvão", 3, 60m), (" Carvão ", 1, 20m),
+                ("Gelo", 4, 80m), ("Copos", 2, 40m), (null, 2, 10m),
+                ("", 1, 5m)).Select(c => c.Categoria));
 
     [Fact]
     public void EntradaVazia_DevolveListaVazia() => Assert.Empty(Consolidar());

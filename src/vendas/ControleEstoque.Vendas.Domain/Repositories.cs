@@ -9,9 +9,11 @@ public interface IVendaLookup
     Task<bool> FuncionarioExisteAsync(Guid funcionarioId, CancellationToken cancellationToken);
     Task<bool> EnderecoPertenceAoClienteAsync(
         Guid enderecoId, Guid clienteId, CancellationToken cancellationToken);
-    Task<IReadOnlyDictionary<Guid, ProdutoVenda>> GetProdutosAsync(
-        IReadOnlyCollection<Guid> produtoIds, CancellationToken cancellationToken);
-    Task<Guid?> GetProdutoEstruturalAsync(TipoProduto tipo, CancellationToken cancellationToken);
+    /// <summary>Só devolve pares (produtoId, marcaId) com associação produto+marca ativa.</summary>
+    Task<IReadOnlyDictionary<(Guid ProdutoId, Guid MarcaId), ProdutoVenda>> GetProdutosAsync(
+        IReadOnlyCollection<(Guid ProdutoId, Guid MarcaId)> pares, CancellationToken cancellationToken);
+    Task<IReadOnlyDictionary<Guid, TipoCascoVenda>> GetTiposCascoAsync(
+        IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
 }
 
 public interface IVendaRepository
@@ -19,13 +21,13 @@ public interface IVendaRepository
     /// <summary>
     /// Persiste a venda e todos os efeitos em uma transação; retorna o novo saldo de casco do cliente.
     /// Com pagamento, trava o caixa de hoje (FOR SHARE) e lança ConflictException CAIXA_FECHADO se fechado.
-    /// Trava os produtos vendidos e checa o saldo dentro da transação; sem saldo, faz rollback e devolve a falta.
+    /// Trava as associações produto+marca vendidas e checa o saldo dentro da transação; sem saldo, faz rollback e devolve a falta.
     /// </summary>
     Task<ResultadoGravacao> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken);
 
     /// <summary>
     /// Edição por replay: soft-deleta itens, pagamentos, movimentos de estoque,
-    /// movimentos de casco, entregas de sucata e lançamentos de fiado vinculados
+    /// movimentos de casco (do cliente e do estoque), entregas de sucata e lançamentos de fiado vinculados
     /// à venda, e reinsere conforme a gravação — tudo em uma transação. A checagem de saldo roda
     /// depois do soft-delete, então as saídas antigas da própria venda não contam. Lança CAIXA_FECHADO se
     /// um pagamento atual da venda cair em caixa FECHADO, ou se reinserir pagamento com o caixa de hoje FECHADO.
@@ -48,7 +50,7 @@ public interface IVendaRepository
     Task<InfoPagamentoVenda> AddPagamentoAsync(
         Guid vendaId, FormaPagamento forma, decimal valor, CancellationToken cancellationToken);
 
-    Task<long> GetSaldoCascoClienteAsync(Guid clienteId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<SaldoCascoTipo>> GetSaldoCascoClienteAsync(Guid clienteId, CancellationToken cancellationToken);
 }
 
 public interface ICupomFiscalRepository

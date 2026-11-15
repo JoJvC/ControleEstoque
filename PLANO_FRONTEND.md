@@ -313,6 +313,21 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 - [x] `web/README.md`: setup em ≤ 5 comandos
 - **Critério de aceite:** `docker compose up` do zero + smoke Playwright verde; Lighthouse mobile ≥ 90 em performance e a11y na home e no PDV.
 
+### Fase 3 — Design Depósito (refatoração visual, `web/DESIGN.md`)
+- [x] Tokens e 4 temas (Oceano, Uva, Carvão, Noite) com Automático por padrão (`styles/tokens.scss`, `core/theme/theme-store.ts`)
+- [x] Fontes Sora e Figtree (`@fontsource` em `web/src/styles.scss`)
+- [x] Ícones do `ce-icon` (sprite, `ui/atoms/icon.ts`)
+- [x] Shell novo (bottom-nav no celular, menu lateral no desktop)
+- [x] Venda (PDV), Hoje (home), Cliente, Estoque
+- [x] Caixa, Relatórios, RH, cadastros (Clientes, Produtos, Marcas) e seleção de operador
+- [x] Mais › Aparência (seletor de tema)
+- [x] Smoke Playwright atualizado (operador, navegação, venda) e `web/README.md` com temas, telas e passo a passo
+- [x] Varredura de sobras do visual antigo: 0 ocorrências. Comando (raiz): `rg -n -g '!*.spec.ts' -g '!tokens.scss' -g '!index.html' -e '--ce-(radius-(sm|md)|shadow-1)\b|border-radius:\s*var\(--ce-radius-lg\)|#[0-9a-fA-F]{3,8}\b|\brgba?\(' web/src`
+- [ ] Entregas, caderneta do fiado e consumo médio: fora de escopo do design (`web/DESIGN.md` §6)
+- [ ] Smoke rodado contra o compose: verificar no host/aceite (na caixa não se roda docker, compose nem Playwright)
+- [ ] Lighthouse e a11y no navegador: conferência do usuário no aceite
+- **Critério de aceite:** telas de `web/DESIGN.md` §5 nos tokens do tema, sem sobras do visual antigo (varredura `rg` = 0) e smoke Playwright verde no host.
+
 ---
 
 ## 8. Regras Críticas de UI

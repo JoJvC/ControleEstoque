@@ -6,19 +6,22 @@ import { ApiError } from '../../core/http/api-error';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { PermissionService } from '../../core/permissions/permission-service';
 import { ToastService } from '../../core/toast/toast-service';
+import { Icon, IconeNome } from '../../ui/atoms/icon';
 import { AppHeader } from '../../ui/organisms/app-header';
 
 interface MaisLink {
   readonly path: string;
   readonly label: string;
   readonly icon: string;
+  /** Quando presente, renderiza o ce-icon no lugar do emoji. */
+  readonly iconeNome?: IconeNome;
   readonly permissao?: string;
 }
 
 @Component({
   selector: 'ce-mais-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, AppHeader],
+  imports: [RouterLink, AppHeader, Icon],
   templateUrl: './mais-page.html',
   styleUrl: './mais-page.scss',
 })
@@ -38,7 +41,13 @@ export class MaisPage {
     { path: '/produtos', label: 'Produtos', icon: '🫙' },
     { path: '/marcas', label: 'Marcas', icon: '🏷️' },
     { path: '/mais/aparencia', label: 'Aparência', icon: '🎨' },
-    { path: '/rh', label: 'Funcionários e cargos', icon: '🪪', permissao: 'rh.gerir' },
+    {
+      path: '/rh',
+      label: 'Funcionários e cargos',
+      icon: '🪪',
+      iconeNome: 'rh',
+      permissao: 'rh.gerir',
+    },
     { path: '/relatorios', label: 'Relatórios', icon: '📊', permissao: 'relatorios.ver' },
   ];
 

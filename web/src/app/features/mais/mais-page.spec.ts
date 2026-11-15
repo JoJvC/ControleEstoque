@@ -7,6 +7,7 @@ import { ConfigStore } from '../../core/config/app-config';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { FakeStorage, operadorValido } from '../../core/permissions/testing';
 import { StorageService } from '../../core/platform/storage-service';
+import { ICONES } from '../../ui/atoms/icon';
 import { MaisPage } from './mais-page';
 
 describe('MaisPage', () => {
@@ -50,6 +51,24 @@ describe('MaisPage', () => {
     store.select(operadorValido(['rh.gerir']));
     await fixture.whenStable();
     expect(rotulos(el).some((t) => t.includes('Funcionários e cargos'))).toBe(true);
+  });
+
+  it('item Funcionários e cargos usa o ce-icon rh, não o emoji', async () => {
+    TestBed.inject(OperatorStore).select(operadorValido(['rh.gerir']));
+    const fixture = TestBed.createComponent(MaisPage);
+    const el = fixture.nativeElement as HTMLElement;
+    await fixture.whenStable();
+    const link = Array.from(el.querySelectorAll<HTMLAnchorElement>('.mais__item')).find((a) =>
+      a.textContent?.includes('Funcionários e cargos'),
+    )!;
+    expect(link.querySelector('ce-icon svg path')!.getAttribute('d')).toBe(ICONES.rh[0]);
+    expect(link.textContent).not.toContain('🪪');
+    // os demais itens continuam com emoji
+    const estoque = Array.from(el.querySelectorAll<HTMLAnchorElement>('.mais__item')).find((a) =>
+      a.textContent?.includes('Estoque'),
+    )!;
+    expect(estoque.querySelector('ce-icon')).toBeNull();
+    expect(estoque.textContent).toContain('📦');
   });
 
   it('link Aparência aparece para operador sem permissões', async () => {

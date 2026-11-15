@@ -59,6 +59,9 @@ export const ICONES = {
     'M12 18a2.5 2.5 0 0 0 2.5-2.5c0-1.5-1-2-1.5-3-.5 1-1 1.2-1.5 2-.6.8-.5 3.5.5 3.5z',
   ],
   copo: ['M6 4h12l-1.5 16h-9L6 4z', 'M6.5 9h11'],
+  rh: ['M12 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z', 'M5 20.5c0-4 3-6 7-6s7 2 7 6'],
+  cadeado: ['M6 11h12v9.5H6z', 'M8.5 11V8a3.5 3.5 0 0 1 7 0v3'],
+  receber: ['M12 4v12M7 11l5 5 5-5M5 20h14'],
 } as const;
 
 export type IconeNome = keyof typeof ICONES;

@@ -1,20 +1,77 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { BreakpointObserver } from '@angular/cdk/layout';
+import { NgTemplateOutlet } from '@angular/common';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { Router } from '@angular/router';
+import { map } from 'rxjs';
 
-import { CePermissao } from '../../core/permissions/ce-permissao';
+import { PermissionService } from '../../core/permissions/permission-service';
+import { EmptyState } from '../../ui/molecules/empty-state';
+import { AppHeader } from '../../ui/organisms/app-header';
+import { CargosPage } from './cargos-page';
+import { FuncionariosPage } from './funcionarios-page';
+import { RhGrade } from './rh-grade';
+
+type Aba = 'func' | 'cargos';
 
 @Component({
   selector: 'ce-rh-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, CePermissao],
+  imports: [NgTemplateOutlet, AppHeader, EmptyState, CargosPage, FuncionariosPage, RhGrade],
   template: `
-    <div class="pagina">
-      <h1>Funcionários e cargos</h1>
-      <nav>
-        <a *cePermissao="'rh.gerir'" class="link" routerLink="/rh/funcionarios">Funcionários</a>
-        <a *cePermissao="'rh.gerir'" class="link" routerLink="/rh/cargos">Cargos</a>
-      </nav>
-    </div>
+    <ng-template #abas>
+      <div class="abas" role="group" aria-label="Seção">
+        <button type="button" [attr.aria-pressed]="aba() === 'func'" (click)="aba.set('func')">
+          Funcionários
+        </button>
+        <button type="button" [attr.aria-pressed]="aba() === 'cargos'" (click)="aba.set('cargos')">
+          Cargos
+        </button>
+      </div>
+    </ng-template>
+
+    @if (!pode()) {
+      <ce-app-header
+        titulo="Funcionários e cargos"
+        [onda]="true"
+        [mostrarVoltar]="!desktop()"
+        (voltar)="voltar()"
+      />
+      <div class="pagina">
+        <ce-empty-state
+          icone="cadeado"
+          titulo="Sem acesso"
+          descricao="Seu cargo não tem a permissão rh.gerir. Peça ao ADM."
+        />
+      </div>
+    } @else if (desktop()) {
+      <ce-rh-grade>
+        <div mestre>
+          <ng-container *ngTemplateOutlet="abas" />
+          @if (aba() === 'func') {
+            <ce-funcionarios-page [embutido]="true" />
+          }
+        </div>
+        @if (aba() === 'func') {
+          <ce-empty-state icone="rh" titulo="Escolha um funcionário na lista" />
+        } @else {
+          <ce-cargos-page [embutido]="true" />
+        }
+      </ce-rh-grade>
+    } @else {
+      <ce-app-header
+        titulo="Funcionários e cargos"
+        [onda]="true"
+        [mostrarVoltar]="true"
+        (voltar)="voltar()"
+      />
+      <ng-container *ngTemplateOutlet="abas" />
+      @if (aba() === 'func') {
+        <ce-funcionarios-page [embutido]="true" />
+      } @else {
+        <ce-cargos-page [embutido]="true" />
+      }
+    }
   `,
   styles: `
     @use 'mixins';
@@ -29,18 +86,49 @@ import { CePermissao } from '../../core/permissions/ce-permissao';
       }
     }
 
-    nav {
-      display: flex;
-      flex-direction: column;
-      gap: var(--ce-space-2);
+    .abas {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
+      gap: 4px;
+      margin: 4px var(--ce-space-4) 12px;
+      padding: 4px;
+      background: var(--ce-surface-muted);
+      border: 1px solid var(--ce-border);
+      border-radius: 14px;
     }
 
-    .link {
-      @include mixins.touch-target;
+    .abas button {
+      min-height: 44px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 15px;
+    }
 
-      display: inline-flex;
-      align-items: center;
+    .abas button[aria-pressed='true'] {
+      background: var(--ce-primary);
+      color: var(--ce-text-on-primary);
+    }
+
+    // no mestre do desktop o padding já vem da grade
+    ce-rh-grade .abas {
+      margin-inline: 0;
     }
   `,
 })
-export class RhPage {}
+export class RhPage {
+  private readonly router = inject(Router);
+  private readonly permissions = inject(PermissionService);
+  protected readonly pode = () => this.permissions.has('rh.gerir');
+  protected readonly aba = signal<Aba>('func');
+  protected readonly desktop = toSignal(
+    inject(BreakpointObserver)
+      .observe('(min-width: 960px)')
+      .pipe(map((r) => r.matches)),
+    { initialValue: false },
+  );
+
+  protected voltar(): void {
+    this.router.navigateByUrl('/mais');
+  }
+}

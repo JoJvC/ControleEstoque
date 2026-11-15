@@ -2,11 +2,9 @@ import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, UrlTree } from '@angular/router';
 
-import { OperatorStore } from '../../core/operator/operator-store';
-import { operadorValido, rodarGuardDaRota } from '../../core/permissions/testing';
+import { rodarGuardDaRota } from '../../core/permissions/testing';
 import { diariaValida } from './funcionario-form';
 import { FuncionariosPage } from './funcionarios-page';
-import { RhPage } from './rh-page';
 import { RH_ROUTES } from './rh-routes';
 import { acoes, assentar, configurar } from './testing';
 
@@ -77,6 +75,30 @@ describe('FuncionariosPage', () => {
   it('ce-app-header mostra o título Funcionários', async () => {
     const t = await montar(['rh.gerir']);
     expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Funcionários');
+  });
+
+  it('a linha mostra as iniciais do nome, o nome e o cargo', async () => {
+    const t = await montar(['rh.gerir'], [{ ...ANA, nome: 'João (ADM)' }]);
+    const linha = t.el.querySelector('li')!;
+    expect(linha.querySelector('.avatar')!.textContent).toBe('JA');
+    expect(linha.textContent).toContain('João (ADM)');
+    expect(linha.textContent).toContain('Caixa');
+  });
+
+  it('selecionadoId marca só a linha aberta com aria-current', async () => {
+    configurar(['rh.gerir']);
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(FuncionariosPage);
+    fixture.componentRef.setInput('embutido', true);
+    fixture.componentRef.setInput('selecionadoId', 'f2');
+    fixture.detectChanges();
+    await assentar(fixture);
+    http.expectOne(URL).flush([ANA, DONO]);
+    await assentar(fixture);
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('ce-app-header')).toBeNull();
+    const itens = Array.from(el.querySelectorAll('ce-list-item'));
+    expect(itens.map((i) => i.getAttribute('aria-current'))).toEqual([null, 'true']);
   });
 
   it('clique na linha navega para /rh/funcionarios/:id', async () => {
@@ -198,18 +220,4 @@ describe('rotas /rh/funcionarios', () => {
       expect(TestBed.inject(Router).serializeUrl(r as UrlTree)).toBe('/');
     });
   }
-});
-
-describe('RhPage: link Funcionários', () => {
-  it('aparece só com rh.gerir', () => {
-    configurar(['rh.gerir']);
-    let f = TestBed.createComponent(RhPage);
-    f.detectChanges();
-    const a = (f.nativeElement as HTMLElement).querySelector('a[href="/rh/funcionarios"]')!;
-    expect(a.textContent).toContain('Funcionários');
-    TestBed.inject(OperatorStore).select(operadorValido([]));
-    f = TestBed.createComponent(RhPage);
-    f.detectChanges();
-    expect((f.nativeElement as HTMLElement).querySelector('a[href="/rh/funcionarios"]')).toBeNull();
-  });
 });

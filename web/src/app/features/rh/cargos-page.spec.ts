@@ -13,8 +13,8 @@ import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { StorageService } from '../../core/platform/storage-service';
+import { ICONES } from '../../ui/atoms/icon';
 import { CargosPage } from './cargos-page';
-import { RhPage } from './rh-page';
 import { RH_ROUTES } from './rh-routes';
 
 const URL = '/api/rh/v1/cargos';
@@ -132,9 +132,38 @@ describe('CargosPage', () => {
     expect(t.el.querySelectorAll('li button:not([disabled])').length).toBe(1);
   });
 
+  it('ícone cadeado e chip nativo no cargo nativo; ícone rh no não nativo', async () => {
+    const t = await montar(['rh.gerir']);
+    const linhas = Array.from(t.el.querySelectorAll('li'));
+    const d = (li: Element) => li.querySelector('.icone-tipo svg path')!.getAttribute('d');
+    const adm = linhas.find((l) => l.textContent?.includes('ADM'))!;
+    const caixa = linhas.find((l) => l.textContent?.includes('Caixa'))!;
+    expect(d(adm)).toBe(ICONES.cadeado[0]);
+    expect(adm.querySelector('ce-badge')!.textContent).toContain('nativo');
+    expect(d(caixa)).toBe(ICONES.rh[0]);
+    expect(caixa.querySelector('ce-badge')).toBeNull();
+    expect(adm.textContent).toContain('Todas as permissões');
+    // seção "Cargos" num único cartão, com as linhas dentro
+    const cartao = t.el.querySelector('section.cartao')!;
+    expect(cartao.querySelector('h2')!.textContent).toBe('Cargos');
+    expect(cartao.querySelectorAll('li')).toHaveLength(2);
+  });
+
   it('ce-app-header mostra o título Cargos', async () => {
     const t = await montar(['rh.gerir']);
     expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Cargos');
+  });
+
+  it('embutido: sem ce-app-header', async () => {
+    configurar(['rh.gerir']);
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(CargosPage);
+    fixture.componentRef.setInput('embutido', true);
+    fixture.detectChanges();
+    await assentar(fixture);
+    http.expectOne(URL).flush([ADM]);
+    await assentar(fixture);
+    expect((fixture.nativeElement as HTMLElement).querySelector('ce-app-header')).toBeNull();
   });
 
   it('ação da ce-barra-acao abre o formulário de criação', async () => {
@@ -212,19 +241,5 @@ describe('rota /rh/cargos', () => {
     const resultado = rodar();
     expect(resultado).toBeInstanceOf(UrlTree);
     expect(TestBed.inject(Router).serializeUrl(resultado as UrlTree)).toBe('/');
-  });
-});
-
-describe('RhPage', () => {
-  it('mostra Cargos com link para /rh/cargos só com rh.gerir', () => {
-    configurar(['rh.gerir']);
-    let f = TestBed.createComponent(RhPage);
-    f.detectChanges();
-    const a = (f.nativeElement as HTMLElement).querySelector('a[href="/rh/cargos"]')!;
-    expect(a.textContent).toContain('Cargos');
-    TestBed.inject(OperatorStore).select(operador([]));
-    f = TestBed.createComponent(RhPage);
-    f.detectChanges();
-    expect((f.nativeElement as HTMLElement).querySelector('a')).toBeNull();
   });
 });

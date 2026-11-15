@@ -1,10 +1,9 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { CreateFuncionarioRequest } from '../../core/api/models/rh';
 import { ApiError } from '../../core/http/api-error';
 import { CePermissao } from '../../core/permissions/ce-permissao';
-import { Avatar } from '../../ui/atoms/avatar';
 import { Badge } from '../../ui/atoms/badge';
 import { Button } from '../../ui/atoms/button';
 import { Icon } from '../../ui/atoms/icon';
@@ -13,6 +12,7 @@ import { AppHeader } from '../../ui/organisms/app-header';
 import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { DataList } from '../../ui/organisms/data-list';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
+import { iniciais } from '../operador/iniciais';
 import { FuncionarioForm } from './funcionario-form';
 import { FuncionariosStore } from './funcionarios-store';
 
@@ -22,7 +22,6 @@ import { FuncionariosStore } from './funcionarios-store';
   imports: [
     CePermissao,
     AppHeader,
-    Avatar,
     Badge,
     BarraAcao,
     Button,
@@ -33,7 +32,9 @@ import { FuncionariosStore } from './funcionarios-store';
     PrecoPipe,
   ],
   template: `
-    <ce-app-header titulo="Funcionários" />
+    @if (!embutido()) {
+      <ce-app-header titulo="Funcionários" />
+    }
     <div class="pagina">
       @if (!formAberto()) {
         <ce-data-list
@@ -43,8 +44,11 @@ import { FuncionariosStore } from './funcionarios-store';
           (recarregar)="store.carregar()"
         >
           <ng-template let-item>
-            <ce-list-item (click)="abrir(item.id)">
-              <ce-avatar ce-leading [nome]="item.nome" [tamanho]="40" />
+            <ce-list-item
+              [attr.aria-current]="item.id === selecionadoId() ? 'true' : null"
+              (click)="abrir(item.id)"
+            >
+              <span ce-leading class="avatar" aria-hidden="true">{{ iniciais(item.nome) }}</span>
               <span class="nome">{{ item.nome }}</span>
               <span class="meta">
                 {{ item.cargo }} ·
@@ -61,7 +65,11 @@ import { FuncionariosStore } from './funcionarios-store';
             </ce-list-item>
           </ng-template>
         </ce-data-list>
-        <ce-barra-acao *cePermissao="'rh.gerir'" rotulo="Novo funcionário">
+        <ce-barra-acao
+          *cePermissao="'rh.gerir'"
+          rotulo="Novo funcionário"
+          [class.na-grade]="embutido()"
+        >
           <ce-button (click)="novo()">Novo funcionário</ce-button>
         </ce-barra-acao>
       } @else {
@@ -89,9 +97,35 @@ import { FuncionariosStore } from './funcionarios-store';
       }
     }
 
+    // no mestre-detalhe (desktop) a barra fica só na coluna do mestre: 220px de menu + 440px de mestre
+    ce-barra-acao.na-grade {
+      @include mixins.from-desktop {
+        --ce-barra-acao-fim: calc(100% - 660px);
+      }
+    }
+
     // Cartões do design Depósito: raio 18–22 px (o ce-list-item é compartilhado, o raio vale só aqui).
     :host ::ng-deep .item {
       border-radius: 20px;
+    }
+
+    // linha do funcionário aberto (desktop, mestre-detalhe)
+    :host ::ng-deep ce-list-item[aria-current='true'] .item {
+      background: var(--ce-primary-soft);
+      box-shadow: inset 3px 0 0 var(--ce-primary);
+    }
+
+    .avatar {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--ce-primary-soft);
+      color: var(--ce-primary-strong);
+      font-size: 16px;
+      font-weight: 700;
     }
 
     .nome {
@@ -107,6 +141,12 @@ import { FuncionariosStore } from './funcionarios-store';
   `,
 })
 export class FuncionariosPage {
+  /** Dentro de /rh ou do detalhe: sem cabeçalho próprio (quem embute mostra o título). */
+  readonly embutido = input(false);
+  /** Funcionário aberto no detalhe (desktop): a linha leva aria-current. */
+  readonly selecionadoId = input<string | null>(null);
+
+  protected readonly iniciais = iniciais;
   protected readonly store = inject(FuncionariosStore);
   protected readonly formAberto = signal(false);
   protected readonly salvando = signal(false);

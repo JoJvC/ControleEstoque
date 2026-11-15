@@ -1,7 +1,10 @@
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { Provider } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { BehaviorSubject } from 'rxjs';
 
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
@@ -15,14 +18,19 @@ export async function assentar(fixture: ComponentFixture<unknown>): Promise<void
   await fixture.whenStable();
 }
 
-export function configurar(permissoes: string[]) {
+export function configurar(permissoes: string[], desktop = false, extras: Provider[] = []) {
   TestBed.configureTestingModule({
     providers: [
       provideRouter([]),
+      {
+        provide: BreakpointObserver,
+        useValue: { observe: () => new BehaviorSubject({ matches: desktop }) },
+      },
       provideHttpClient(withInterceptors([apiErrorInterceptor])),
       provideHttpClientTesting(),
       { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
       { provide: StorageService, useValue: new FakeStorage() },
+      ...extras,
     ],
   });
   TestBed.inject(OperatorStore).select(operadorValido(permissoes));

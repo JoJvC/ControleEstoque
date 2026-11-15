@@ -68,6 +68,33 @@ describe('ContaCorrenteStore', () => {
     expect(store.lancamentos()).toEqual([DIARIA, VALE]);
   });
 
+  it('refetch com sucesso: lista e âncora se atualizam juntas', async () => {
+    await carregarInicial();
+    const p = store.lancarVale('f1', { valor: 30, observacao: null });
+    http
+      .expectOne(`${URL}/vales`)
+      .flush({ saldoAPagar: 70 }, { status: 201, statusText: 'Created' });
+    await tick();
+    http
+      .expectOne(`${URL}/conta-corrente`)
+      .flush({ funcionarioId: 'f1', saldoAPagar: 70, lancamentos: [DIARIA, VALE] });
+    await p;
+    expect(store.extrato().map((l) => l.saldoApos)).toEqual([70, 100]);
+  });
+
+  it('refetch com falha: a lista mantém a âncora antiga e o saldo é o do POST', async () => {
+    await carregarInicial();
+    const p = store.lancarVale('f1', { valor: 30, observacao: null });
+    http
+      .expectOne(`${URL}/vales`)
+      .flush({ saldoAPagar: 70 }, { status: 201, statusText: 'Created' });
+    await tick();
+    http.expectOne(`${URL}/conta-corrente`).flush({}, { status: 500, statusText: 'x' });
+    await p;
+    expect(store.saldoAPagar()).toBe(70);
+    expect(store.extrato().map((l) => l.saldoApos)).toEqual([100]);
+  });
+
   it('lancarPagamento: grava o saldo da resposta e recarrega a lista', async () => {
     await carregarInicial();
     const p = store.lancarPagamento('f1', { valor: 100, observacao: null });

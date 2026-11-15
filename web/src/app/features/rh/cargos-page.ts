@@ -1,11 +1,11 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 
 import { CargoResponse } from '../../core/api/models/rh';
 import { ApiError } from '../../core/http/api-error';
 import { CePermissao } from '../../core/permissions/ce-permissao';
 import { PermissionService } from '../../core/permissions/permission-service';
-import { PERMISSOES } from '../../core/permissions/permissoes';
+import { PERMISSAO_TODAS, PERMISSOES } from '../../core/permissions/permissoes';
 import { Badge } from '../../ui/atoms/badge';
 import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
@@ -36,28 +36,37 @@ import { CargosStore } from './cargos-store';
     DataList,
   ],
   template: `
-    <ce-app-header titulo="Cargos" />
+    @if (!embutido()) {
+      <ce-app-header titulo="Cargos" />
+    }
     <div class="pagina">
       @if (!formAberto()) {
-        <ce-data-list
-          [itens]="store.cargos()"
-          [status]="store.status()"
-          vazioTitulo="Nenhum cargo"
-          (recarregar)="store.carregar()"
-        >
-          <ng-template let-item>
-            <ce-list-item [desabilitado]="item.nativo || !pode()" (click)="editar(item)">
-              <span class="nome">{{ item.nome }}</span>
-              @if (item.nativo) {
-                <ce-badge ce-trailing>nativo</ce-badge>
-              } @else if (pode()) {
-                <span ce-trailing class="editar">
-                  <ce-icon nome="editar" [tamanho]="18" /> Editar
+        <section class="cartao">
+          <h2 class="secao">Cargos</h2>
+          <ce-data-list
+            [itens]="store.cargos()"
+            [status]="store.status()"
+            vazioTitulo="Nenhum cargo"
+            (recarregar)="store.carregar()"
+          >
+            <ng-template let-item>
+              <ce-list-item [desabilitado]="item.nativo || !pode()" (click)="editar(item)">
+                <span ce-leading class="icone-tipo">
+                  <ce-icon [nome]="item.nativo ? 'cadeado' : 'rh'" [tamanho]="20" />
                 </span>
-              }
-            </ce-list-item>
-          </ng-template>
-        </ce-data-list>
+                <span class="nome">{{ item.nome }}</span>
+                <span class="perms">{{ permissoesDe(item) }}</span>
+                @if (item.nativo) {
+                  <ce-badge ce-trailing cor="primary">nativo</ce-badge>
+                } @else if (pode()) {
+                  <span ce-trailing class="editar">
+                    <ce-icon nome="editar" [tamanho]="18" /> Editar
+                  </span>
+                }
+              </ce-list-item>
+            </ng-template>
+          </ce-data-list>
+        </section>
         <ce-barra-acao *cePermissao="'rh.gerir'" rotulo="Novo cargo">
           <ce-button (click)="novo()">Novo cargo</ce-button>
         </ce-barra-acao>
@@ -111,9 +120,34 @@ import { CargosStore } from './cargos-store';
       gap: var(--ce-space-3);
     }
 
-    // Cartões do design Depósito: raio 18–22 px (o ce-list-item é compartilhado, o raio vale só aqui).
-    :host ::ng-deep .item {
+    // Seção "Cargos" num cartão só (protótipo): as linhas viram .li separadas por filete,
+    // sem o cartão próprio do ce-list-item (compartilhado, o ajuste vale só aqui).
+    .cartao {
+      background: var(--ce-surface);
+      border: 1px solid var(--ce-border);
       border-radius: 20px;
+      padding: var(--ce-space-4);
+    }
+
+    .secao {
+      margin: 0 0 var(--ce-space-2);
+      font-family: var(--ce-font-family-titulo);
+      font-size: var(--ce-font-lg);
+    }
+
+    :host ::ng-deep .item {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      padding-inline: var(--ce-space-1);
+    }
+
+    :host ::ng-deep li:not(:last-child) {
+      border-bottom: 1px solid var(--ce-border);
+    }
+
+    :host ::ng-deep .lista {
+      gap: 0;
     }
 
     // linha sem ação (nativo ou sem permissão) é informativa: mantém o contraste do texto
@@ -124,6 +158,21 @@ import { CargosStore } from './cargos-store';
 
     .nome {
       font-weight: 600;
+    }
+
+    .icone-tipo {
+      display: inline-grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: var(--ce-primary-soft);
+      color: var(--ce-acao-texto);
+    }
+
+    .perms {
+      font-size: var(--ce-font-sm);
+      color: var(--ce-text-muted);
     }
 
     .editar {
@@ -143,6 +192,9 @@ import { CargosStore } from './cargos-store';
   `,
 })
 export class CargosPage {
+  /** Dentro de /rh: sem cabeçalho próprio. */
+  readonly embutido = input(false);
+
   protected readonly store = inject(CargosStore);
   private readonly permissions = inject(PermissionService);
   protected readonly pode = () => this.permissions.has('rh.gerir');
@@ -167,6 +219,15 @@ export class CargosPage {
 
   constructor() {
     void this.store.carregar();
+  }
+
+  protected permissoesDe(cargo: CargoResponse): string {
+    const rotulos = cargo.permissoes.map((c) =>
+      c === PERMISSAO_TODAS
+        ? 'Todas as permissões'
+        : (PERMISSOES.find((p) => p.chave === c)?.rotulo ?? c),
+    );
+    return rotulos.length ? rotulos.join(', ') : 'Sem permissões';
   }
 
   protected novo(): void {

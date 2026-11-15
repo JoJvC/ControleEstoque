@@ -1,9 +1,15 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
+import { of } from 'rxjs';
+
+import { SheetService } from '../../core/overlay/sheet-service';
+import { ToastService } from '../../core/toast/toast-service';
+import { ICONES } from '../../ui/atoms/icon';
 
 import { acoes, assentar, configurar } from './testing';
 import { FuncionarioPage } from './funcionario-page';
+import { LancarSheet } from './lancar-sheet';
 
 const URL = '/api/rh/v1/funcionarios/f1';
 const CARGOS = '/api/rh/v1/cargos';
@@ -30,31 +36,27 @@ const extrato = (saldoAPagar: number, lancamentos: unknown[] = [DIARIA]) => ({
 });
 const CAIXA = { id: 'c1', nome: 'Caixa', nativo: false, permissoes: [] };
 
-async function montar(func: object = ANA, permissoes = ['rh.gerir']) {
-  configurar(permissoes);
+async function montar(
+  func: object = ANA,
+  permissoes = ['rh.gerir'],
+  opcoes: { desktop?: boolean; lancamentos?: unknown[]; saldo?: number; fecharCom?: number } = {},
+) {
+  const abrir = vi.fn(() => ({ closed: of(opcoes.fecharCom) }));
+  configurar(permissoes, opcoes.desktop ?? false, [{ provide: SheetService, useValue: { abrir } }]);
   const http = TestBed.inject(HttpTestingController);
   const fixture = TestBed.createComponent(FuncionarioPage);
   fixture.componentRef.setInput('id', 'f1');
   fixture.detectChanges();
   await assentar(fixture);
+  if (opcoes.desktop) {
+    http.expectOne('/api/rh/v1/funcionarios').flush([ANA]);
+  }
   http.expectOne(URL).flush(func);
   await assentar(fixture);
   http.expectOne(CARGOS).flush([CAIXA]);
-  http.expectOne(`${URL}/conta-corrente`).flush(extrato(100));
+  http.expectOne(`${URL}/conta-corrente`).flush(extrato(opcoes.saldo ?? 100, opcoes.lancamentos));
   await assentar(fixture);
-  const a = acoes(fixture);
-  return {
-    fixture,
-    http,
-    ...a,
-    chip: () => a.el.querySelector('ce-saldo-chip')!.textContent!,
-    valor: async (digitos: string) => {
-      const campo = a.el.querySelector('form.lancar ce-money-input input') as HTMLInputElement;
-      campo.value = digitos;
-      campo.dispatchEvent(new Event('input'));
-      await fixture.whenStable();
-    },
-  };
+  return { fixture, http, abrir, ...acoes(fixture) };
 }
 
 describe('FuncionarioPage', () => {
@@ -90,69 +92,6 @@ describe('FuncionarioPage', () => {
     expect(el.querySelector('ce-skeleton')).toBeNull();
   });
 
-  it('o saldo exibido é o que o servidor devolveu, sem soma no front', async () => {
-    configurar(['rh.gerir']);
-    const http = TestBed.inject(HttpTestingController);
-    const fixture = TestBed.createComponent(FuncionarioPage);
-    fixture.componentRef.setInput('id', 'f1');
-    fixture.detectChanges();
-    await assentar(fixture);
-    http.expectOne(URL).flush(ANA);
-    await assentar(fixture);
-    http.expectOne(CARGOS).flush([CAIXA]);
-    // saldo do servidor (37,50) difere da soma dos lançamentos (100,00)
-    http.expectOne(`${URL}/conta-corrente`).flush(extrato(37.5));
-    await assentar(fixture);
-    const chip = (fixture.nativeElement as HTMLElement).querySelector('ce-saldo-chip')!;
-    expect(chip.textContent).toMatch(/R\$\s*37,50/);
-  });
-
-  it.each([
-    [37.5, 'warning', /R\$\s*37,50/],
-    [-20, 'danger', /-\s*R\$\s*20,00|R\$\s*-\s*20,00/],
-    [0, 'neutral', /R\$\s*0,00/],
-  ])(
-    'chip "Saldo a pagar" com saldo %s usa o tom %s e o valor do servidor',
-    async (saldo, tom, texto) => {
-      configurar(['rh.gerir']);
-      const http = TestBed.inject(HttpTestingController);
-      const fixture = TestBed.createComponent(FuncionarioPage);
-      fixture.componentRef.setInput('id', 'f1');
-      fixture.detectChanges();
-      await assentar(fixture);
-      http.expectOne(URL).flush(ANA);
-      await assentar(fixture);
-      http.expectOne(CARGOS).flush([CAIXA]);
-      http.expectOne(`${URL}/conta-corrente`).flush(extrato(saldo));
-      await assentar(fixture);
-      const el = fixture.nativeElement as HTMLElement;
-      expect(
-        el.querySelectorAll(
-          'ce-saldo-chip .chip--warning, ce-saldo-chip .chip--danger, ce-saldo-chip .chip--neutral',
-        ),
-      ).toHaveLength(1);
-      const chip = el.querySelector(`ce-saldo-chip .chip--${tom}`)!;
-      expect(chip).not.toBeNull();
-      expect(chip.textContent).toMatch(texto);
-    },
-  );
-
-  it('extrato é lista informativa: sem botão nem estado disabled', async () => {
-    const t = await montar();
-    expect(t.el.querySelector('.lancamentos li.lancamento')).not.toBeNull();
-    expect(t.el.querySelector('.lancamentos button, .lancamentos ce-list-item')).toBeNull();
-  });
-
-  it('mostra saldo no chip e o extrato com tipo, data, valor', async () => {
-    const t = await montar();
-    expect(t.chip()).toContain('Saldo a pagar');
-    expect(t.chip()).toMatch(/R\$\s*100,00/);
-    const li = t.el.querySelector('.lancamentos li')!.textContent!;
-    expect(li).toContain('Diária');
-    expect(li).toContain('13/11/2026');
-    expect(li).toMatch(/R\$\s*100,00/);
-  });
-
   it('Salvar com ativo desmarcado gera PUT com ativo false', async () => {
     const t = await montar();
     await t.marcar('Ativo');
@@ -183,61 +122,129 @@ describe('FuncionarioPage', () => {
     await assentar(t.fixture);
   });
 
-  it('ciclo: vale de 30 e pagamento de 70 atualizam o chip', async () => {
-    const t = await montar();
-    await t.valor('3000');
-    t.botao('Lançar vale')!.click();
-    const vale = t.http.expectOne(`${URL}/vales`);
-    expect(vale.request.method).toBe('POST');
-    expect(vale.request.body).toEqual({ valor: 30, observacao: null });
-    vale.flush({ saldoAPagar: 70 }, { status: 201, statusText: 'Created' });
-    await assentar(t.fixture);
-    t.http.expectOne(`${URL}/conta-corrente`).flush(extrato(70));
-    await assentar(t.fixture);
-    expect(t.chip()).toMatch(/R\$\s*70,00/);
-
-    await t.valor('7000');
-    t.botao('Lançar pagamento')!.click();
-    const pag = t.http.expectOne(`${URL}/pagamentos`);
-    expect(pag.request.body).toEqual({ valor: 70, observacao: null });
-    pag.flush({ saldoAPagar: 0 }, { status: 201, statusText: 'Created' });
-    await assentar(t.fixture);
-    t.http.expectOne(`${URL}/conta-corrente`).flush(extrato(0));
-    await assentar(t.fixture);
-    expect(t.chip()).toMatch(/R\$\s*0,00/);
-  });
-
-  it('422 PAGAMENTO_EXCEDE_SALDO mostra o alerta e o chip não muda', async () => {
-    const t = await montar();
-    await t.valor('8000');
-    t.botao('Lançar pagamento')!.click();
-    t.http
-      .expectOne(`${URL}/pagamentos`)
-      .flush(
-        { code: 'PAGAMENTO_EXCEDE_SALDO', message: 'm', traceId: 't' },
-        { status: 422, statusText: 'Unprocessable' },
-      );
-    await assentar(t.fixture);
-    expect(t.el.querySelector('[role="alert"]')!.textContent).toContain(
-      'O valor do pagamento é maior que o saldo devedor.',
+  it('herói: saldo do servidor, rótulo com o primeiro nome e linha cargo · diária', async () => {
+    const t = await montar({ ...ANA, nome: 'Ana Souza' }, ['rh.gerir'], { saldo: 37.5 });
+    // saldo do servidor (37,50) difere da soma dos lançamentos (100,00)
+    expect(t.el.querySelector('.destaque__saldo')!.textContent).toMatch(/R\$\s*37,50/);
+    expect(t.el.querySelector('.destaque__rotulo')!.textContent).toContain(
+      'Conta-corrente · a pagar a Ana',
     );
-    expect(t.chip()).toMatch(/R\$\s*100,00/);
+    expect(t.el.querySelector('.destaque__linha')!.textContent).toMatch(
+      /Caixa ·\s*diária R\$\s*100,00/,
+    );
   });
 
-  it('botões de lançar ficam desabilitados sem valor', async () => {
+  it('valorDiaria 0: linha com "sem diária"', async () => {
+    const t = await montar({ ...ANA, valorDiaria: 0 });
+    expect(t.el.querySelector('.destaque__linha')!.textContent).toMatch(/Caixa ·\s*sem diária/);
+  });
+
+  it('botões Vale e Pagamento com aria-label e ícones do protótipo', async () => {
     const t = await montar();
-    expect(t.botao('Lançar vale')!.disabled).toBe(true);
-    expect(t.botao('Lançar pagamento')!.disabled).toBe(true);
+    const vale = t.el.querySelector('[aria-label="Lançar vale"]')!;
+    const pagamento = t.el.querySelector('[aria-label="Lançar pagamento"]')!;
+    expect(vale.textContent).toContain('Vale');
+    expect(vale.querySelector('path')!.getAttribute('d')).toBe(ICONES.vale[0]);
+    expect(pagamento.textContent).toContain('Pagamento');
+    expect(pagamento.querySelector('path')!.getAttribute('d')).toBe(ICONES.dinheiro[0]);
+  });
+
+  it.each([
+    ['Lançar vale', 'VALE'],
+    ['Lançar pagamento', 'PAGAMENTO'],
+  ])(
+    '%s abre a sheet e, ao fechar com o saldo novo, mostra "Saldo agora"',
+    async (rotulo, tipo) => {
+      const t = await montar(ANA, ['rh.gerir'], { fecharCom: 70 });
+      t.el.querySelector<HTMLButtonElement>(`[aria-label="${rotulo}"]`)!.click();
+      await assentar(t.fixture);
+      expect(t.abrir).toHaveBeenCalledWith(LancarSheet, {
+        funcionarioId: 'f1',
+        nome: 'Ana',
+        tipo,
+        saldo: 100,
+      });
+      const toasts = TestBed.inject(ToastService).toasts();
+      expect(toasts).toHaveLength(1);
+      expect(toasts[0].message).toMatch(/Saldo agora R\$\s*70,00/);
+    },
+  );
+
+  it('sheet cancelada: sem "Saldo agora"', async () => {
+    const t = await montar();
+    t.el.querySelector<HTMLButtonElement>('[aria-label="Lançar vale"]')!.click();
+    await assentar(t.fixture);
+    expect(TestBed.inject(ToastService).toasts()).toHaveLength(0);
+  });
+
+  it('extrato: da mais nova para a mais antiga, com sinal, saldo por linha e ícones', async () => {
+    const t = await montar(ANA, ['rh.gerir'], {
+      saldo: 300,
+      lancamentos: [
+        { id: 'p', tipo: 'PAGAMENTO', valor: 100, data: '2026-11-10T09:00:00', observacao: null },
+        { id: 'v', tipo: 'VALE', valor: 50, data: '2026-11-14T09:30:00', observacao: 'gasolina' },
+      ],
+    });
+    const linhas = Array.from(t.el.querySelectorAll('.extrato li'));
+    expect(linhas).toHaveLength(2);
+    expect(linhas[0].textContent).toContain('Vale');
+    expect(linhas[0].textContent).toContain('gasolina');
+    expect(linhas[0].textContent).toMatch(/14\/11\/2026 09:30 · saldo\s*R\$\s*300,00/);
+    expect(linhas[0].querySelector('.valor')!.textContent).toMatch(/−\s*R\$\s*50,00/);
+    expect(linhas[1].textContent).toContain('Pagamento');
+    expect(linhas[1].textContent).toMatch(/saldo\s*R\$\s*350,00/);
+    expect(linhas[1].querySelector('.valor')!.textContent).toMatch(/−\s*R\$\s*100,00/);
+    expect(linhas[0].querySelector('.icone-tipo.fiado svg path')!.getAttribute('d')).toBe(
+      ICONES.vale[0],
+    );
+  });
+
+  it('extrato: diária soma ("+") com o ícone receber', async () => {
+    const t = await montar();
+    const li = t.el.querySelector('.extrato li')!;
+    expect(li.querySelector('.valor')!.textContent).toMatch(/\+\s*R\$\s*100,00/);
+    expect(li.querySelector('.icone-tipo.pago svg path')!.getAttribute('d')).toBe(
+      ICONES.receber[0],
+    );
+    expect(li.textContent).toMatch(/saldo\s*R\$\s*100,00/);
+  });
+
+  it('extrato vazio: estado "Sem lançamentos"', async () => {
+    const t = await montar(ANA, ['rh.gerir'], { lancamentos: [] });
+    expect(t.el.querySelector('.extrato')).toBeNull();
+    expect(t.el.querySelector('ce-empty-state')!.textContent).toContain('Sem lançamentos');
+    expect(t.el.textContent).toContain(
+      'Diárias entram no fechamento do caixa; vales e pagamentos você lança aqui.',
+    );
+  });
+
+  it('o formulário de dados fica abaixo do extrato', async () => {
+    const t = await montar();
+    const extrato = t.el.querySelector('.extrato')!;
+    const form = t.el.querySelector('ce-funcionario-form')!;
+    expect(extrato.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('desktop: grade com a lista (aria-current no aberto) e sem botão Voltar', async () => {
+    const t = await montar(ANA, ['rh.gerir'], { desktop: true });
+    expect(t.el.querySelector('ce-rh-grade')).not.toBeNull();
+    expect(t.el.querySelector('.mestre ce-list-item')!.getAttribute('aria-current')).toBe('true');
+    expect(t.el.querySelector('.detalhe ce-app-header h1')!.textContent).toContain('Ana');
+    // 'Novo funcionário' só na coluna do mestre, fora do detalhe (não cobre o Salvar)
+    expect(t.el.querySelector('.mestre ce-barra-acao')!.classList).toContain('na-grade');
+    expect(t.el.querySelector('.detalhe ce-barra-acao')).toBeNull();
+    expect(t.el.querySelector('ce-app-header button[aria-label="Voltar"]')).toBeNull();
   });
 
   it('sem rh.gerir: sem Salvar nem lançar', async () => {
     const t = await montar(ANA, []);
     expect(t.botao('Salvar')).toBeUndefined();
-    expect(t.botao('Lançar vale')).toBeUndefined();
-    expect(t.botao('Lançar pagamento')).toBeUndefined();
+    expect(t.el.querySelector('[aria-label="Lançar vale"]')).toBeNull();
+    expect(t.el.querySelector('[aria-label="Lançar pagamento"]')).toBeNull();
+    expect(t.el.querySelector('.destaque__acoes button')).toBeNull();
   });
 
-  it('falha no GET da conta-corrente: alerta e sem chip', async () => {
+  it('falha no GET da conta-corrente: alerta e sem herói', async () => {
     configurar(['rh.gerir']);
     const http = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(FuncionarioPage);
@@ -250,7 +257,7 @@ describe('FuncionarioPage', () => {
     http.expectOne(`${URL}/conta-corrente`).flush({}, { status: 500, statusText: 'Server Error' });
     await assentar(fixture);
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('ce-saldo-chip')).toBeNull();
+    expect(el.querySelector('.destaque__saldo')).toBeNull();
     expect(el.querySelector('[role="alert"]')!.textContent).toContain('conta-corrente');
   });
 });

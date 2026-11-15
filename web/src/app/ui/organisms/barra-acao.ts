@@ -44,6 +44,8 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
     @include mixins.from-desktop {
       :host {
         inset-inline-start: 220px; // largura do menu lateral (shell-layout.scss)
+        // quem embute no mestre-detalhe encurta a barra com --ce-barra-acao-fim
+        inset-inline-end: var(--ce-barra-acao-fim, 0px);
         bottom: 0;
       }
 

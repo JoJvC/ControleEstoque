@@ -1,15 +1,18 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { map } from 'rxjs';
 
 import { TipoDespesaResponse } from '../../core/api/models/financeiro';
 import { ApiError } from '../../core/http/api-error';
+import { ToastService } from '../../core/toast/toast-service';
 import { Button } from '../../ui/atoms/button';
-import { Select } from '../../ui/atoms/select';
 import { TextInput } from '../../ui/atoms/text-input';
 import { FormField } from '../../ui/molecules/form-field';
 import { MoneyInput } from '../../ui/molecules/money-input';
 import { SheetShell } from '../../ui/organisms/sheet-shell';
+import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { CaixaStore } from './caixa-store';
 
 export interface DespesaSheetDados {
@@ -19,16 +22,31 @@ export interface DespesaSheetDados {
 /** Resultado: true quando a despesa foi lançada, ou undefined (cancelou). */
 export type DespesaSheetResultado = boolean;
 
+const PRECO = new PrecoPipe();
+
 @Component({
   selector: 'ce-despesa-sheet',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, SheetShell, Button, Select, TextInput, FormField, MoneyInput],
+  imports: [ReactiveFormsModule, SheetShell, Button, TextInput, FormField, MoneyInput, PrecoPipe],
   template: `
     <ce-sheet-shell titulo="Lançar despesa" (fechar)="ref.close()">
       <form class="form" (submit)="$event.preventDefault(); lancar()">
-        <ce-form-field rotulo="Tipo" [obrigatorio]="true" [erro]="erroTipo()">
-          <ce-select [opcoes]="opcoes()" placeholder="Selecione" [formControl]="tipo" />
-        </ce-form-field>
+        <div class="campo">
+          <span class="campo__rotulo">Tipo (obrigatório)</span>
+          <div class="pilulas" role="radiogroup" aria-label="Tipo de despesa">
+            @for (t of tipos(); track t.id) {
+              <button
+                type="button"
+                class="pilula"
+                role="radio"
+                [attr.aria-checked]="tipo() === t.id"
+                (click)="tipo.set(t.id)"
+              >
+                {{ t.nome }}
+              </button>
+            }
+          </div>
+        </div>
 
         <div class="novo-tipo">
           <ce-form-field rotulo="Novo tipo">
@@ -42,11 +60,11 @@ export type DespesaSheetResultado = boolean;
           </ce-button>
         </div>
 
-        <ce-form-field rotulo="Valor" [obrigatorio]="true">
+        <ce-form-field rotulo="Valor (R$)">
           <ce-money-input [formControl]="valor" />
         </ce-form-field>
-        <ce-form-field rotulo="Descrição">
-          <ce-input [formControl]="descricao" />
+        <ce-form-field rotulo="Observação">
+          <ce-input placeholder="Opcional" [formControl]="descricao" />
         </ce-form-field>
 
         @if (caixaFechado(); as mensagem) {
@@ -60,11 +78,15 @@ export type DespesaSheetResultado = boolean;
           <p class="erro" role="alert">{{ mensagem }}</p>
         }
 
-        <ce-button tipo="submit" [block]="true" [loading]="enviando()">Lançar despesa</ce-button>
+        <ce-button tipo="submit" [block]="true" [disabled]="!podeLancar()" [loading]="enviando()">
+          Lançar saída {{ valorAtual() > 0 ? (valorAtual() | cePreco) : '' }}
+        </ce-button>
       </form>
     </ce-sheet-shell>
   `,
   styles: `
+    @use 'mixins';
+
     .form {
       display: flex;
       flex-direction: column;
@@ -78,6 +100,39 @@ export type DespesaSheetResultado = boolean;
 
       ce-form-field {
         flex: 1;
+      }
+    }
+
+    .campo {
+      display: flex;
+      flex-direction: column;
+      gap: var(--ce-space-2);
+    }
+
+    .campo__rotulo {
+      font-size: var(--ce-font-sm);
+      font-weight: 600;
+    }
+
+    .pilulas {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--ce-space-2);
+    }
+
+    .pilula {
+      @include mixins.touch-target;
+
+      padding-inline: var(--ce-space-4);
+      border: 1px solid var(--ce-border);
+      border-radius: 999px;
+      background: var(--ce-surface);
+      font-weight: 600;
+
+      &[aria-checked='true'] {
+        border-color: var(--ce-primary);
+        background: var(--ce-primary-soft);
+        color: var(--ce-primary-strong);
       }
     }
 
@@ -113,18 +168,20 @@ export class DespesaSheet {
   private readonly dados = inject<DespesaSheetDados>(DIALOG_DATA);
   private readonly store = inject(CaixaStore);
 
-  protected readonly tipo = new FormControl<string | null>(null);
+  private readonly toast = inject(ToastService);
+
+  protected readonly tipo = signal<string | null>(null);
   protected readonly novoTipo = new FormControl('', { nonNullable: true });
   protected readonly valor = new FormControl<number | null>(null);
   protected readonly descricao = new FormControl('', { nonNullable: true });
 
-  private readonly tipos = signal<TipoDespesaResponse[]>([]);
-  protected readonly opcoes = computed(() =>
-    this.tipos().map((t) => ({ value: t.id, label: t.nome })),
-  );
+  protected readonly tipos = signal<TipoDespesaResponse[]>([]);
+  protected readonly valorAtual = toSignal(this.valor.valueChanges.pipe(map((v) => v ?? 0)), {
+    initialValue: 0,
+  });
+  protected readonly podeLancar = computed(() => !!this.tipo() && this.valorAtual() > 0);
   protected readonly erro = signal<string | null>(null);
   protected readonly caixaFechado = signal<string | null>(null);
-  protected readonly erroTipo = signal<string | null>(null);
   protected readonly enviando = signal(false);
   private readonly criandoTipo = signal(false);
   private readonly novoTipoTexto = signal('');
@@ -158,8 +215,7 @@ export class DespesaSheet {
     try {
       const criado = await this.store.criarTipo(nome);
       await this.carregarTipos();
-      this.tipo.setValue(criado.id);
-      this.erroTipo.set(null);
+      this.tipo.set(criado.id);
       this.novoTipo.setValue('');
     } catch (e) {
       this.tratar(e);
@@ -169,15 +225,9 @@ export class DespesaSheet {
   }
 
   protected async lancar(): Promise<void> {
-    const tipoId = this.tipo.value;
-    if (!tipoId) {
-      this.erroTipo.set('Escolha o tipo da despesa.');
-      return;
-    }
-    this.erroTipo.set(null);
+    const tipoId = this.tipo();
     const valor = this.valor.value;
-    if (valor === null || valor <= 0) {
-      this.erro.set('Informe o valor da despesa.');
+    if (!tipoId || valor === null || valor <= 0) {
       return;
     }
     this.enviando.set(true);
@@ -190,6 +240,7 @@ export class DespesaSheet {
         valor,
         this.descricao.value.trim() || null,
       );
+      this.toast.success(`Despesa lançada: ${PRECO.transform(valor)}`);
       this.ref.close(true);
     } catch (e) {
       // 409 CAIXA_FECHADO vira bloco de alerta; 400 VALOR_INVALIDO e 422 TIPO_DESPESA_INEXISTENTE ficam inline.

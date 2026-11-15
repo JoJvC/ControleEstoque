@@ -9,7 +9,7 @@ import { Icon } from '../atoms/icon';
   imports: [Icon],
   host: { '[class.app-header--onda]': 'onda()' },
   template: `
-    <div class="topo" [class.topo--onda]="onda()">
+    <div class="topo" [class.topo--onda]="onda()" [class.topo--folgado]="folgado()">
       <header class="cabecalho">
         @if (mostrarVoltar()) {
           <button
@@ -21,9 +21,15 @@ import { Icon } from '../atoms/icon';
             <ce-icon nome="seta-esquerda" />
           </button>
         }
-        <h1 class="cabecalho__titulo">{{ titulo() }}</h1>
+        <div class="cabecalho__texto">
+          @if (rotulo(); as r) {
+            <p class="cabecalho__rotulo">{{ r }}</p>
+          }
+          <h1 class="cabecalho__titulo">{{ titulo() }}</h1>
+        </div>
         <span class="cabecalho__acoes"><ng-content /></span>
       </header>
+      <div class="destaque"><ng-content select="[ce-destaque]" /></div>
       @if (onda()) {
         <svg class="topo__onda" viewBox="0 0 360 24" preserveAspectRatio="none" aria-hidden="true">
           <path d="M0 24V10C60 24 120 0 180 10S300 24 360 8V24Z" />
@@ -77,9 +83,34 @@ import { Icon } from '../atoms/icon';
       color: inherit;
     }
 
-    .cabecalho__titulo {
+    // desktop folgado (Caixa do dia): padding do protótipo, 28px 32px 56px
+    @include mixins.from-desktop {
+      .topo--folgado .cabecalho {
+        padding: 28px 32px 0;
+      }
+
+      .topo--folgado .destaque:not(:empty) {
+        padding: 0 32px 56px;
+      }
+    }
+
+    .cabecalho__texto {
       flex: 1;
       min-width: 0;
+    }
+
+    .cabecalho__rotulo {
+      margin: 0;
+      font-size: var(--ce-font-sm);
+      opacity: 0.85;
+      text-transform: capitalize;
+    }
+
+    .destaque:not(:empty) {
+      padding: 0 var(--ce-space-4) var(--ce-space-4);
+    }
+
+    .cabecalho__titulo {
       font-size: var(--ce-font-xl);
       white-space: nowrap;
       overflow: hidden;
@@ -97,5 +128,9 @@ export class AppHeader {
   readonly titulo = input.required<string>();
   readonly mostrarVoltar = input(false);
   readonly onda = input(false);
+  /** Em ≥960px usa o padding amplo do protótipo (28px 32px 56px). */
+  readonly folgado = input(false);
+  /** Linha pequena acima do título (ex.: a data). */
+  readonly rotulo = input<string | null>(null);
   readonly voltar = output<void>();
 }

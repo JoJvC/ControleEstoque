@@ -8,7 +8,12 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   selector: 'ce-barra-acao',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="barra" role="region" [attr.aria-label]="rotulo()">
+    <div
+      class="barra"
+      [class.barra--direita]="alinharDireita()"
+      role="region"
+      [attr.aria-label]="rotulo()"
+    >
       <ng-content />
     </div>
   `,
@@ -41,9 +46,15 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
         inset-inline-start: 220px; // largura do menu lateral (shell-layout.scss)
         bottom: 0;
       }
+
+      .barra--direita {
+        justify-content: flex-end;
+      }
     }
   `,
 })
 export class BarraAcao {
   readonly rotulo = input.required<string>();
+  /** Em ≥960px os botões ficam à direita (protótipo: Caixa do dia). */
+  readonly alinharDireita = input(false);
 }

@@ -5,6 +5,7 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { ConfigStore } from '../../core/config/app-config';
+import { ToastService } from '../../core/toast/toast-service';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { DespesaSheet } from './despesa-sheet';
 
@@ -43,39 +44,61 @@ async function montar() {
     campo.dispatchEvent(new Event('input'));
     await fixture.whenStable();
   };
-  const escolherTipo = async (valor: string) => {
-    const select = el.querySelector('ce-select select') as HTMLSelectElement;
-    select.value = valor;
-    select.dispatchEvent(new Event('change'));
+  const pilula = (nome: string) =>
+    Array.from(el.querySelectorAll('[role="radio"]')).find((b) =>
+      b.textContent?.includes(nome),
+    ) as HTMLButtonElement;
+  const escolherTipo = async (id: string) => {
+    pilula(TIPOS.find((t) => t.id === id)!.nome).click();
     await fixture.whenStable();
+    fixture.detectChanges();
   };
-  return { fixture, el, http, close, botao, digitar, escolherTipo };
+  return { fixture, el, http, close, botao, digitar, escolherTipo, pilula };
 }
 
 describe('DespesaSheet', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
-  it('escolher tipo, digitar valor e lançar faz POST e fecha com true', async () => {
+  it('pílula muda o aria-checked; botão só habilita com tipo e valor > 0', async () => {
+    const { fixture, el, botao, digitar, escolherTipo, pilula } = await montar();
+    expect(el.querySelector('[role="radiogroup"]')?.getAttribute('aria-label')).toBe(
+      'Tipo de despesa',
+    );
+    expect(pilula('Luz').getAttribute('aria-checked')).toBe('false');
+    await digitar('ce-money-input input', '0');
+    fixture.detectChanges();
+    expect(botao('Lançar saída').disabled).toBe(true);
+    await digitar('ce-money-input input', '4550');
+    fixture.detectChanges();
+    expect(botao('Lançar saída').disabled).toBe(true);
+    await escolherTipo('t-1');
+    expect(pilula('Luz').getAttribute('aria-checked')).toBe('true');
+    expect(pilula('Água').getAttribute('aria-checked')).toBe('false');
+    expect(botao('Lançar saída').disabled).toBe(false);
+    expect(botao('Lançar saída').textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Lançar saída R$ 45,50',
+    );
+  });
+
+  it('lançar envia {tipoDespesaId, valor, descricao}, avisa e fecha com true', async () => {
     const { fixture, http, close, botao, digitar, escolherTipo } = await montar();
     await escolherTipo('t-1');
     await digitar('ce-money-input input', '2500');
-    botao('Lançar despesa').click();
+    await digitar('input[placeholder="Opcional"]', ' Conta ');
+    fixture.detectChanges();
+    botao('Lançar saída').click();
     await fixture.whenStable();
     const req = http.expectOne(`${BASE}/caixas/cx-1/despesas`);
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ tipoDespesaId: 't-1', valor: 25, descricao: null });
+    expect(req.request.body).toEqual({ tipoDespesaId: 't-1', valor: 25, descricao: 'Conta' });
     req.flush(null, { status: 201, statusText: 'Created' });
     await fixture.whenStable();
     expect(close).toHaveBeenCalledWith(true);
-  });
-
-  it('sem tipo: nenhuma requisição e mostra a mensagem de obrigatório', async () => {
-    const { fixture, el, close, botao, digitar } = await montar();
-    await digitar('ce-money-input input', '2500');
-    botao('Lançar despesa').click();
-    await fixture.whenStable();
-    expect(el.querySelector('[role="alert"]')?.textContent).toContain('Escolha o tipo da despesa.');
-    expect(close).not.toHaveBeenCalled();
+    expect(
+      TestBed.inject(ToastService)
+        .toasts()
+        .map((t) => t.message.replace(/\s/g, ' ')),
+    ).toContain('Despesa lançada: R$ 25,00');
   });
 
   it('criação rápida: POST /tipos-despesa, recarrega a lista e seleciona o novo tipo', async () => {
@@ -90,8 +113,12 @@ describe('DespesaSheet', () => {
     http.expectOne(`${BASE}/tipos-despesa`).flush([...TIPOS, { id: 't-3', nome: 'Internet' }]);
     await new Promise((r) => setTimeout(r, 0));
     await fixture.whenStable();
-    const select = el.querySelector('ce-select select') as HTMLSelectElement;
-    expect(select.value).toBe('t-3');
+    fixture.detectChanges();
+    expect(
+      Array.from(el.querySelectorAll('[role="radio"]'))
+        .find((b) => b.textContent?.includes('Internet'))
+        ?.getAttribute('aria-checked'),
+    ).toBe('true');
   });
 
   it.each([
@@ -101,7 +128,7 @@ describe('DespesaSheet', () => {
     const { fixture, el, http, close, botao, digitar, escolherTipo } = await montar();
     await escolherTipo('t-1');
     await digitar('ce-money-input input', '2500');
-    botao('Lançar despesa').click();
+    botao('Lançar saída').click();
     http
       .expectOne(`${BASE}/caixas/cx-1/despesas`)
       .flush({ code, message: 'x', traceId: 't' }, { status, statusText: 'Erro' });
@@ -115,7 +142,7 @@ describe('DespesaSheet', () => {
     const { fixture, el, http, close, botao, digitar, escolherTipo } = await montar();
     await escolherTipo('t-1');
     await digitar('ce-money-input input', '2500');
-    botao('Lançar despesa').click();
+    botao('Lançar saída').click();
     http
       .expectOne(`${BASE}/caixas/cx-1/despesas`)
       .flush(

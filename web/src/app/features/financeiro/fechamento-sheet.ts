@@ -7,6 +7,7 @@ import { FechamentoResponse, ResumoCaixaResponse } from '../../core/api/models/f
 import { FuncionarioResponse } from '../../core/api/models/rh';
 import { RhApi } from '../../core/api/rh-api';
 import { ApiError } from '../../core/http/api-error';
+import { ToastService } from '../../core/toast/toast-service';
 import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
 import { SheetShell } from '../../ui/organisms/sheet-shell';
@@ -21,39 +22,44 @@ export interface FechamentoSheetDados {
 /** Resultado: a FechamentoResponse do POST, ou undefined (cancelou). */
 export type FechamentoSheetResultado = FechamentoResponse;
 
+const PRECO = new PrecoPipe();
+
 @Component({
   selector: 'ce-fechamento-sheet',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule, SheetShell, Button, Checkbox, PrecoPipe],
   template: `
-    <ce-sheet-shell titulo="Fechar caixa" (fechar)="ref.close()">
+    <ce-sheet-shell titulo="Fechar o caixa" (fechar)="ref.close()">
       <div class="corpo">
-        <dl class="resumo">
-          <dt>Entradas</dt>
-          <dd>{{ dados.resumo.entradas | cePreco }}</dd>
-          <dt>Despesas</dt>
-          <dd>{{ dados.resumo.totalDespesas | cePreco }}</dd>
-          <dt>Saldo parcial</dt>
-          <dd>{{ dados.resumo.saldoParcial | cePreco }}</dd>
-        </dl>
-
-        <h3 class="titulo">Diárias do dia</h3>
+        <p class="texto">
+          Quem trabalhou hoje? A diária de cada um vira saída do caixa e crédito na conta-corrente.
+        </p>
         @for (f of funcionarios(); track f.id) {
           <ce-checkbox
             [ngModel]="!desmarcados().has(f.id)"
             (ngModelChange)="alternar(f.id, $event)"
           >
-            {{ f.nome }} —
-            @if (f.valorDiaria > 0) {
-              {{ f.valorDiaria | cePreco }}
-            } @else {
-              <span class="sem-diaria">sem diária</span>
+            <b>{{ f.nome }}</b>
+            @if (f.cargo) {
+              <span class="cargo"> · {{ f.cargo }}</span>
             }
+            · {{ f.valorDiaria | cePreco }} diária
           </ce-checkbox>
         } @empty {
-          <p class="vazio">Nenhum funcionário ativo.</p>
+          @if (statusLista() === 'ok') {
+            <p class="vazio">Nenhum funcionário ativo com diária.</p>
+          }
         }
-        <p class="contagem">Diárias marcadas: {{ marcados().length }}</p>
+
+        <dl class="resumo">
+          <dt>Saldo do caixa agora (servidor)</dt>
+          <dd>{{ dados.resumo.saldoParcial | cePreco }}</dd>
+          <dt>Diárias marcadas</dt>
+          <dd class="saida">
+            − {{ totalMarcado() | cePreco }} <span class="cargo">({{ marcados().length }})</span>
+          </dd>
+        </dl>
+        <p class="vazio">O resumo final vem do servidor ao confirmar.</p>
 
         @if (statusLista() === 'error') {
           <p class="erro" role="alert">Não foi possível carregar os funcionários.</p>
@@ -69,6 +75,8 @@ export type FechamentoSheetResultado = FechamentoResponse;
         }
         @if (erro(); as mensagem) {
           <p class="erro" role="alert">{{ mensagem }}</p>
+          <ce-button variante="ghost" (click)="confirmar()">Tentar de novo</ce-button>
+          <ce-button variante="ghost" (click)="ref.close()">Voltar ao caixa</ce-button>
         }
 
         <ce-button
@@ -77,7 +85,7 @@ export type FechamentoSheetResultado = FechamentoResponse;
           [loading]="enviando()"
           (click)="confirmar()"
         >
-          Confirmar fechamento
+          Fechar caixa
         </ce-button>
       </div>
     </ce-sheet-shell>
@@ -100,18 +108,23 @@ export type FechamentoSheetResultado = FechamentoResponse;
       }
     }
 
-    .titulo {
-      font-size: var(--ce-font-md);
+    .texto {
+      margin: 0;
+      color: var(--ce-text-muted);
     }
 
-    .vazio,
-    .contagem {
+    .saida {
+      color: var(--ce-fiado);
+    }
+
+    .cargo {
       color: var(--ce-text-muted);
       font-size: var(--ce-font-sm);
     }
 
-    .sem-diaria {
+    .vazio {
       color: var(--ce-text-muted);
+      font-size: var(--ce-font-sm);
     }
 
     .alerta {
@@ -145,6 +158,7 @@ export class FechamentoSheet {
   protected readonly ref = inject(DialogRef<FechamentoSheetResultado>);
   protected readonly dados = inject<FechamentoSheetDados>(DIALOG_DATA);
   private readonly store = inject(CaixaStore);
+  private readonly toast = inject(ToastService);
   private readonly rhApi = inject(RhApi);
 
   protected readonly statusLista = signal<'loading' | 'ok' | 'error'>('loading');
@@ -153,6 +167,9 @@ export class FechamentoSheet {
   protected readonly desmarcados = signal<ReadonlySet<string>>(new Set());
   protected readonly marcados = computed(() =>
     this.funcionarios().filter((f) => !this.desmarcados().has(f.id)),
+  );
+  protected readonly totalMarcado = computed(() =>
+    this.marcados().reduce((soma, f) => soma + f.valorDiaria, 0),
   );
   protected readonly erro = signal<string | null>(null);
   protected readonly caixaFechado = signal<string | null>(null);
@@ -167,7 +184,7 @@ export class FechamentoSheet {
     this.statusLista.set('loading');
     try {
       const lista = await firstValueFrom(this.rhApi.listarFuncionarios());
-      this.funcionarios.set(lista.filter((f) => f.ativo));
+      this.funcionarios.set(lista.filter((f) => f.ativo && f.valorDiaria > 0));
       this.statusLista.set('ok');
     } catch {
       // 0/5xx já viram toast no interceptor
@@ -199,6 +216,7 @@ export class FechamentoSheet {
         this.dados.caixaId,
         this.marcados().map((f) => f.id),
       );
+      this.toast.success(`Caixa fechado. Saldo final ${PRECO.transform(resposta.saldoFinal)}`);
       this.ref.close(resposta);
     } catch (e) {
       // 409 CAIXA_JA_FECHADO vira bloco de alerta; 400 FUNCIONARIO_DUPLICADO fica inline.

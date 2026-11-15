@@ -1,7 +1,8 @@
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 import { vi } from 'vitest';
 
 import { ConfigStore } from '../../core/config/app-config';
@@ -60,11 +61,19 @@ async function assentar(fixture: ComponentFixture<unknown>): Promise<void> {
   await fixture.whenStable();
 }
 
-async function montar(resumo: object | 404, permissoes: string[] = ['*']) {
+async function montar(
+  resumo: object | 404 | 'pendente',
+  permissoes: string[] = ['*'],
+  desktop = false,
+) {
   const abrir = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       { provide: SheetService, useValue: { abrir } },
+      {
+        provide: BreakpointObserver,
+        useValue: { observe: () => new BehaviorSubject({ matches: desktop }) },
+      },
       { provide: StorageService, useValue: new FakeStorage() },
       provideHttpClient(withInterceptors([apiErrorInterceptor])),
       provideHttpClientTesting(),
@@ -77,7 +86,9 @@ async function montar(resumo: object | 404, permissoes: string[] = ['*']) {
   fixture.detectChanges();
   await assentar(fixture);
   const req = http.expectOne(URL_RESUMO);
-  if (resumo === 404) {
+  if (resumo === 'pendente') {
+    // sem resposta ainda
+  } else if (resumo === 404) {
     req.flush(
       { code: 'CAIXA_NAO_ENCONTRADO', message: 'x', traceId: 't' },
       { status: 404, statusText: 'Not Found' },
@@ -88,6 +99,7 @@ async function montar(resumo: object | 404, permissoes: string[] = ['*']) {
   await assentar(fixture);
   const el = fixture.nativeElement as HTMLElement;
   return {
+    req,
     fixture,
     http,
     abrir,
@@ -149,25 +161,88 @@ describe('CaixaPage', () => {
     expect(el.querySelector('[role="alert"]')?.textContent).toContain('Saldo inicial inválido.');
   });
 
-  it('ABERTO: mostra os valores do resumo e as despesas', async () => {
-    const { el, botao } = await montar(RESUMO_ABERTO);
-    const texto = (el.textContent ?? '').replace(/\s/g, ' ');
-    expect(texto).toContain('Aberto');
-    expect(texto).toContain('R$ 100,00');
-    expect(texto).toContain('R$ 250,00');
+  const norm = (t: string | null) => (t ?? '').replace(/\s+/g, ' ');
+
+  it('ABERTO: chip, rótulo, 3 chips, Entradas e Saídas', async () => {
+    const { el } = await montar(RESUMO_ABERTO);
+    const texto = norm(el.textContent);
+    expect(texto).toContain('● Aberto');
+    expect(texto).toContain('Saldo do caixa agora');
     expect(texto).toContain('R$ 320,00');
-    expect(texto).toContain('Luz — conta de outubro');
-    expect(botao('Lançar despesa')).toBeTruthy();
-    expect(botao('Fechar caixa')).toBeTruthy();
+    const chips = Array.from(el.querySelectorAll('.destaque__chips .chip-topo')).map((c) =>
+      norm(c.textContent),
+    );
+    expect(chips).toEqual(['Abertura R$ 100,00', 'Entradas R$ 250,00', 'Saídas R$ 30,00']);
+    expect(texto).toContain('Entradas');
+    expect(texto).toContain('+ R$ 250,00');
+    expect(texto).toContain('Luz');
+    expect(texto).toContain('conta de outubro');
+    expect(texto).toContain('− R$ 30,00');
+    expect(el.querySelector('ce-page-placeholder')).toBeNull();
   });
 
-  it('ABERTO: totais em cartões e ce-barra-acao com as ações principais', async () => {
+  it('ABERTO: ce-barra-acao com os dois botões', async () => {
     const { el, botao } = await montar(RESUMO_ABERTO);
-    expect(el.querySelectorAll('dl.totais .total').length).toBe(4);
     const barra = el.querySelector('ce-barra-acao');
     expect(barra?.querySelector('[aria-label="Ações do caixa"]')).toBeTruthy();
     expect(barra?.contains(botao('Lançar despesa')!)).toBe(true);
     expect(barra?.contains(botao('Fechar caixa')!)).toBe(true);
+  });
+
+  it('carregando: mostra o skeleton', async () => {
+    const { el, req } = await montar('pendente');
+    expect(el.querySelector('ce-skeleton')).toBeTruthy();
+    req.flush(RESUMO_ABERTO);
+  });
+
+  it('listas vazias: textos de vazio', async () => {
+    const { el } = await montar({
+      ...RESUMO_ABERTO,
+      entradas: 0,
+      totalDespesas: 0,
+      despesas: [],
+    });
+    expect(el.textContent).toContain('Nenhuma entrada hoje.');
+    expect(el.textContent).toContain('Nenhuma saída hoje.');
+  });
+
+  it('nao-aberto: clicar sem valor mostra "Informe o saldo inicial."', async () => {
+    const { fixture, el, botao } = await montar(404);
+    expect(el.textContent).toContain('O caixa de hoje ainda não foi aberto.');
+    botao('Abrir caixa')!.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Informe o saldo inicial.');
+  });
+
+  it('nao-aberto: 409 CAIXA_JA_EXISTE recarrega o resumo', async () => {
+    const { fixture, http, el, botao } = await montar(404);
+    const campo = el.querySelector('ce-money-input input') as HTMLInputElement;
+    campo.value = '100';
+    campo.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    botao('Abrir caixa')!.click();
+    http
+      .expectOne(`${BASE}/caixas`)
+      .flush(
+        { code: 'CAIXA_JA_EXISTE', message: 'x', traceId: 't' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await assentar(fixture);
+    http.expectOne(URL_RESUMO).flush(RESUMO_ABERTO);
+    await assentar(fixture);
+    expect(el.textContent).toContain('Saldo do caixa agora');
+  });
+
+  it('celular: voltar aparece', async () => {
+    const { el } = await montar(RESUMO_ABERTO, ['*'], false);
+    expect(el.querySelector('[aria-label="Voltar"]')).toBeTruthy();
+  });
+
+  it('desktop: voltar some e as duas seções ficam no contêiner de grade', async () => {
+    const { el } = await montar(RESUMO_ABERTO, ['*'], true);
+    expect(el.querySelector('[aria-label="Voltar"]')).toBeNull();
+    expect(el.querySelectorAll('.secoes > section').length).toBe(2);
   });
 
   it('clicar na barra de ação abre o sheet correspondente', async () => {
@@ -183,14 +258,13 @@ describe('CaixaPage', () => {
   });
 
   it('"Lançar despesa" abre DespesaSheet e, ao fechar, consulta de novo', async () => {
-    const { fixture, http, abrir, botao, toasts } = await montar(RESUMO_ABERTO);
+    const { fixture, http, abrir, botao } = await montar(RESUMO_ABERTO);
     abrir.mockReturnValue({ closed: of(true) });
     botao('Lançar despesa')!.click();
     await assentar(fixture);
     expect(abrir).toHaveBeenCalledWith(DespesaSheet, { caixaId: 'cx-1' });
     http.expectOne(URL_RESUMO).flush(RESUMO_ABERTO);
     await assentar(fixture);
-    expect(toasts()).toContain('Despesa lançada.');
   });
 
   it('sheet de despesa cancelado também consulta de novo (CAIXA_FECHADO leva a FECHADO)', async () => {
@@ -204,8 +278,8 @@ describe('CaixaPage', () => {
     expect(botao('Lançar despesa')).toBeUndefined();
   });
 
-  it('"Fechar caixa" abre FechamentoSheet; com resultado mostra o toast e consulta de novo', async () => {
-    const { fixture, http, abrir, botao, toasts } = await montar(RESUMO_ABERTO);
+  it('"Fechar caixa" abre FechamentoSheet e, ao fechar, consulta de novo', async () => {
+    const { fixture, http, abrir, botao, el } = await montar(RESUMO_ABERTO);
     abrir.mockReturnValue({ closed: of({ diariasLancadas: 2 }) });
     botao('Fechar caixa')!.click();
     await assentar(fixture);
@@ -215,19 +289,17 @@ describe('CaixaPage', () => {
     });
     http.expectOne(URL_RESUMO).flush(RESUMO_FECHADO);
     await assentar(fixture);
-    expect(toasts()).toContain('Caixa fechado: 2 diárias lançadas.');
+    expect(el.textContent).toContain('Saldo no fechamento');
   });
 
-  it('FECHADO: badge, aviso, totais finais e sem os botões de lançar e fechar', async () => {
+  it('FECHADO: chip, rótulo, cartão Caixa fechado e sem barra de ação', async () => {
     const { el, botao } = await montar(RESUMO_FECHADO);
-    expect(el.textContent).toContain('Fechado');
-    expect(el.querySelector('[role="status"]')?.textContent).toContain(
-      'O caixa do dia já está fechado.',
-    );
-    expect(el.querySelector('.alerta__titulo')?.textContent).toContain('Caixa fechado');
+    const texto = norm(el.textContent);
+    expect(texto).toContain('Fechado');
+    expect(texto).toContain('Saldo no fechamento');
+    expect(el.querySelector('.alerta__titulo')?.textContent?.trim()).toBe('Caixa fechado');
+    expect(norm(el.querySelector('[role="status"]')?.textContent ?? '')).toContain('R$ 320,00');
     expect(el.querySelector('ce-barra-acao')).toBeNull();
-    expect(el.textContent).toContain('Saldo final');
     expect(botao('Lançar despesa')).toBeUndefined();
-    expect(botao('Fechar caixa')).toBeUndefined();
   });
 });

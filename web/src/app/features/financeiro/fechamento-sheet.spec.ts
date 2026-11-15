@@ -5,6 +5,7 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { ConfigStore } from '../../core/config/app-config';
+import { ToastService } from '../../core/toast/toast-service';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { FechamentoSheet } from './fechamento-sheet';
 
@@ -69,8 +70,8 @@ async function montar(lista: 'ok' | 'pendente' | 500 = 'ok') {
   const caixas = () =>
     Array.from(el.querySelectorAll('ce-checkbox input[type="checkbox"]')) as HTMLInputElement[];
   const confirmar = () =>
-    Array.from(el.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Confirmar fechamento'),
+    Array.from(el.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Fechar caixa',
     ) as HTMLButtonElement;
   return { fixture, el, http, close, caixas, confirmar };
 }
@@ -78,44 +79,64 @@ async function montar(lista: 'ok' | 'pendente' | 500 = 'ok') {
 describe('FechamentoSheet', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
-  it('lista só os ativos, todos marcados, com o resumo do servidor', async () => {
+  const norm = (t: string | null) => (t ?? '').replace(/\s+/g, ' ');
+
+  it('lista só ativos com diária, todos marcados, com o saldo do servidor', async () => {
     const { el, caixas } = await montar();
-    expect(caixas().length).toBe(3);
+    expect(caixas().length).toBe(2);
     expect(caixas().every((c) => c.checked)).toBe(true);
     expect(el.textContent).not.toContain('Davi');
-    const texto = (el.textContent ?? '').replace(/\s/g, ' ');
-    expect(texto).toContain('R$ 250,00');
-    expect(texto).toContain('R$ 30,00');
+    expect(el.textContent).not.toContain('Bia');
+    const texto = norm(el.textContent);
+    expect(texto).toContain('Saldo do caixa agora (servidor)');
     expect(texto).toContain('R$ 320,00');
-    expect(texto).toContain('Diárias marcadas: 3');
+    expect(texto).toContain('− R$ 160,00 (2)');
+    expect(texto).toContain('O resumo final vem do servidor ao confirmar.');
   });
 
-  it('mostra a diária de cada um e marca "sem diária" quem tem 0, ainda marcável', async () => {
-    const { el, caixas } = await montar();
+  it('cada linha mostra nome, cargo e "R$ diária"', async () => {
+    const { el } = await montar();
     const itens = Array.from(el.querySelectorAll('ce-checkbox')).map((c) =>
-      (c.textContent ?? '').replace(/\s+/g, ' ').trim(),
+      norm(c.textContent).trim(),
     );
-    expect(itens[0]).toContain('Ana — R$ 80,00');
-    expect(itens[1]).toContain('Bia — sem diária');
-    expect(itens[2]).toContain('Caio — R$ 80,00');
-    expect(caixas()[1].checked).toBe(true);
+    expect(itens[0]).toContain('Ana · Entregador · R$ 80,00 diária');
   });
 
-  it('desmarcar um e confirmar envia só os marcados e fecha com a resposta', async () => {
+  it('clicar numa caixa atualiza total e contagem; confirmar envia só os marcados e avisa', async () => {
     const { fixture, el, http, close, caixas, confirmar } = await montar();
     caixas()[1].click();
     await fixture.whenStable();
-    expect(el.textContent).toContain('Diárias marcadas: 2');
+    expect(norm(el.textContent)).toContain('− R$ 80,00 (1)');
     confirmar().click();
     const req = http.expectOne(URL);
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({
-      diarias: [{ funcionarioId: 'f-1' }, { funcionarioId: 'f-3' }],
-    });
-    const resposta = { caixaId: 'cx-1', diariasLancadas: 2 };
+    expect(req.request.body).toEqual({ diarias: [{ funcionarioId: 'f-1' }] });
+    const resposta = { caixaId: 'cx-1', diariasLancadas: 1, saldoFinal: 240 };
     req.flush(resposta);
     await fixture.whenStable();
     expect(close).toHaveBeenCalledWith(resposta);
+    expect(
+      TestBed.inject(ToastService)
+        .toasts()
+        .map((t) => norm(t.message)),
+    ).toContain('Caixa fechado. Saldo final R$ 240,00');
+  });
+
+  it('400 FUNCIONARIO_DUPLICADO mostra role=alert com Tentar de novo e Voltar ao caixa', async () => {
+    const { fixture, el, http, close, confirmar } = await montar();
+    confirmar().click();
+    http
+      .expectOne(URL)
+      .flush(
+        { code: 'FUNCIONARIO_DUPLICADO', message: 'x', traceId: 't' },
+        { status: 400, statusText: 'Bad Request' },
+      );
+    await fixture.whenStable();
+    expect(el.querySelector('p[role="alert"]')).toBeTruthy();
+    const textos = Array.from(el.querySelectorAll('button')).map((b) => b.textContent?.trim());
+    expect(textos).toContain('Tentar de novo');
+    expect(textos).toContain('Voltar ao caixa');
+    expect(close).not.toHaveBeenCalled();
   });
 
   it('409 CAIXA_JA_FECHADO mostra o bloco de alerta e "Voltar ao caixa" fecha', async () => {

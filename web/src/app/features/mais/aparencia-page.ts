@@ -1,7 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { BreakpointObserver } from '@angular/cdk/layout';
+import { NgTemplateOutlet } from '@angular/common';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { Router } from '@angular/router';
+import { map } from 'rxjs';
 
-import { ColorSchemeService } from '../../core/platform/color-scheme-service';
-import { TemaEscolha, TemaSlug, ThemeStore, resolverTema } from '../../core/theme/theme-store';
+import { TemaEscolha, ThemeStore } from '../../core/theme/theme-store';
+import { AppHeader } from '../../ui/organisms/app-header';
 
 interface Opcao {
   readonly valor: TemaEscolha;
@@ -13,7 +18,7 @@ const OPCOES: readonly Opcao[] = [
   {
     valor: 'automatico',
     nome: 'Automático',
-    descricao: 'Oceano no modo claro, Noite no modo escuro do aparelho',
+    descricao: 'Oceano; Noite se o aparelho estiver em modo escuro',
   },
   { valor: 'oceano', nome: 'Oceano' },
   { valor: 'uva', nome: 'Uva' },
@@ -24,24 +29,26 @@ const OPCOES: readonly Opcao[] = [
 @Component({
   selector: 'ce-aparencia-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [AppHeader, NgTemplateOutlet],
   templateUrl: './aparencia-page.html',
   styleUrl: './aparencia-page.scss',
 })
 export class AparenciaPage {
   private readonly theme = inject(ThemeStore);
-  private readonly colorScheme = inject(ColorSchemeService);
+  private readonly router = inject(Router);
 
+  protected readonly desktop = toSignal(
+    inject(BreakpointObserver)
+      .observe('(min-width: 960px)')
+      .pipe(map((r) => r.matches)),
+    { initialValue: false },
+  );
   protected readonly opcoes = OPCOES;
   protected readonly escolha = this.theme.escolha;
 
-  /** Slug mostrado na miniatura de cada opção; o Automático mostra o que vale agora. */
-  protected readonly previas = computed<Record<TemaEscolha, TemaSlug>>(() => {
-    const automatico =
-      this.theme.escolha() === 'automatico'
-        ? this.theme.aplicado()
-        : resolverTema('automatico', this.colorScheme.prefersDark());
-    return { automatico, oceano: 'oceano', uva: 'uva', carvao: 'carvao', noite: 'noite' };
-  });
+  protected voltar(): void {
+    void this.router.navigate(['/mais']);
+  }
 
   protected escolher(valor: TemaEscolha): void {
     this.theme.escolher(valor);

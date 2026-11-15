@@ -1,4 +1,7 @@
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
+import { BehaviorSubject } from 'rxjs';
 
 import { FakeStorage } from '../../core/permissions/testing';
 import { ColorSchemeService } from '../../core/platform/color-scheme-service';
@@ -10,14 +13,23 @@ import { AparenciaPage } from './aparencia-page';
 describe('AparenciaPage', () => {
   let storage: FakeStorage;
   let cor: FakeColorScheme;
+  let navigate: ReturnType<typeof vi.fn>;
+  let desktop: boolean;
 
   beforeEach(() => {
     storage = new FakeStorage();
     cor = new FakeColorScheme();
+    navigate = vi.fn();
+    desktop = false;
     TestBed.configureTestingModule({
       providers: [
         { provide: StorageService, useValue: storage },
         { provide: ColorSchemeService, useValue: cor },
+        { provide: Router, useValue: { navigate } },
+        {
+          provide: BreakpointObserver,
+          useValue: { observe: () => new BehaviorSubject({ matches: desktop }) },
+        },
       ],
     });
   });
@@ -62,48 +74,99 @@ describe('AparenciaPage', () => {
     const { fixture, radios } = await montar();
     const tabindex = () => radios().map((r) => r.getAttribute('tabindex'));
     expect(tabindex()).toEqual(['0', '-1', '-1', '-1', '-1']);
+    const confere = (i: number, valor: string, aplicado: string) => {
+      expect(
+        marcados(radios())
+          .map((m, j) => m === (j === i))
+          .every(Boolean),
+      ).toBe(true);
+      expect(storage.get('ce.tema')).toBe(valor);
+      expect(cor.aplicado).toBe(aplicado);
+      expect(document.activeElement).toBe(radios()[i]);
+    };
 
     radios()[0].focus();
     tecla(radios()[0], 'ArrowRight');
     await fixture.whenStable();
-    expect(storage.get('ce.tema')).toBe('oceano');
-    expect(document.activeElement).toBe(radios()[1]);
+    confere(1, 'oceano', 'oceano');
     expect(tabindex()).toEqual(['-1', '0', '-1', '-1', '-1']);
 
     tecla(radios()[1], 'ArrowLeft');
+    await fixture.whenStable();
+    confere(0, 'automatico', 'oceano');
     tecla(radios()[0], 'ArrowLeft');
     await fixture.whenStable();
-    expect(storage.get('ce.tema')).toBe('noite');
-    expect(document.activeElement).toBe(radios()[4]);
+    confere(4, 'noite', 'noite');
 
     tecla(radios()[4], 'ArrowDown');
     await fixture.whenStable();
-    expect(storage.get('ce.tema')).toBe('automatico');
+    confere(0, 'automatico', 'oceano');
 
     tecla(radios()[0], 'End');
     await fixture.whenStable();
-    expect(storage.get('ce.tema')).toBe('noite');
+    confere(4, 'noite', 'noite');
     tecla(radios()[4], 'Home');
     await fixture.whenStable();
-    expect(storage.get('ce.tema')).toBe('automatico');
-    expect(document.activeElement).toBe(radios()[0]);
+    confere(0, 'automatico', 'oceano');
   });
 
-  it('miniaturas têm o data-tema da opção; a do Automático segue o dublê', async () => {
+  it.each([
+    [0, 'automatico', 'oceano'],
+    [1, 'oceano', 'oceano'],
+    [2, 'uva', 'uva'],
+    [3, 'carvao', 'carvao'],
+    [4, 'noite', 'noite'],
+  ])('clique na opção %i (%s) marca só ela e grava', async (i, valor, aplicado) => {
+    const { fixture, radios } = await montar();
+    if (i === 0) radios()[1].click();
+    radios()[i].click();
+    await fixture.whenStable();
+    expect(marcados(radios()).filter(Boolean)).toHaveLength(1);
+    expect(marcados(radios())[i]).toBe(true);
+    expect(storage.get('ce.tema')).toBe(valor);
+    expect(cor.aplicado).toBe(aplicado);
+  });
+
+  it('Automático: escuro aplica noite, claro oceano, emitir troca sem nova escolha', async () => {
     cor.escuro = true;
     TestBed.inject(ThemeStore).iniciar();
-    const { fixture, radios } = await montar();
-    const previas = () =>
-      radios().map((r) => r.querySelector('.aparencia__previa')?.getAttribute('data-tema'));
-    expect(previas()).toEqual(['noite', 'oceano', 'uva', 'carvao', 'noite']);
-
+    const { fixture } = await montar();
+    expect(cor.aplicado).toBe('noite');
     cor.emitir(false);
     await fixture.whenStable();
-    expect(previas()[0]).toBe('oceano');
-
+    expect(cor.aplicado).toBe('oceano');
     cor.emitir(true);
-    radios()[2].click(); // escolha fixa: o Automático ainda mostra o do aparelho
-    await fixture.whenStable();
-    expect(previas()[0]).toBe('noite');
+    expect(cor.aplicado).toBe('noite');
+  });
+
+  it('miniatura do Automático tem duas metades; cada tema fixo tem o próprio slug', async () => {
+    const { radios } = await montar();
+    const previas = () =>
+      radios().map((r) =>
+        Array.from(r.querySelectorAll('.aparencia__metade')).map((m) =>
+          m.getAttribute('data-tema'),
+        ),
+      );
+    expect(previas()).toEqual([['oceano', 'noite'], ['oceano'], ['uva'], ['carvao'], ['noite']]);
+  });
+
+  it('cabeçalho do protótipo, voltar para /mais e texto explicativo', async () => {
+    const { el } = await montar();
+    const cab = el.querySelector('ce-app-header');
+    expect(cab?.textContent).toContain('Aparência');
+    expect(cab?.textContent).toContain('Guardado neste aparelho');
+    el.querySelector<HTMLElement>('[aria-label="Voltar"]')?.click();
+    expect(navigate).toHaveBeenCalledWith(['/mais']);
+    expect(el.textContent).toContain('O tema troca só o topo, a ação e as superfícies.');
+    expect(el.querySelector('ce-page-placeholder')).toBeNull();
+  });
+
+  it.each([
+    [false, true],
+    [true, false],
+  ])('desktop=%s: voltar visível=%s', async (ehDesktop, visivel) => {
+    desktop = ehDesktop;
+    const { el } = await montar();
+    expect(!!el.querySelector('[aria-label="Voltar"]')).toBe(visivel);
   });
 });

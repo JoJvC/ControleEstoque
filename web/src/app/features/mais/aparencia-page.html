@@ -1,6 +1,11 @@
+<ce-app-header
+  titulo="Aparência"
+  [onda]="true"
+  rotulo="Guardado neste aparelho"
+  [mostrarVoltar]="!desktop()"
+  (voltar)="voltar()"
+/>
 <section class="aparencia">
-  <h1 class="aparencia__titulo">Aparência</h1>
-
   <div class="aparencia__lista" role="radiogroup" aria-label="Tema">
     @for (opcao of opcoes; track opcao.valor; let i = $index) {
       <button
@@ -13,16 +18,19 @@
         (click)="escolher(opcao.valor)"
         (keydown)="teclado($event, i)"
       >
-        <span
-          class="aparencia__previa"
-          aria-hidden="true"
-          [attr.data-tema]="previas()[opcao.valor]"
-        >
-          <span class="aparencia__previa-topo"></span>
-          <span class="aparencia__previa-corpo">
-            <span class="aparencia__previa-cartao"></span>
-            <span class="aparencia__previa-acao">Aa</span>
-          </span>
+        <span class="aparencia__previa" aria-hidden="true">
+          @if (opcao.valor === 'automatico') {
+            <span class="aparencia__metade" data-tema="oceano">
+              <ng-container *ngTemplateOutlet="blocos" />
+            </span>
+            <span class="aparencia__metade" data-tema="noite">
+              <ng-container *ngTemplateOutlet="blocos" />
+            </span>
+          } @else {
+            <span class="aparencia__metade" [attr.data-tema]="opcao.valor">
+              <ng-container *ngTemplateOutlet="blocos" />
+            </span>
+          }
         </span>
         <span class="aparencia__texto">
           <span class="aparencia__nome">{{ opcao.nome }}</span>
@@ -33,4 +41,17 @@
       </button>
     }
   </div>
+
+  <p class="aparencia__nota">
+    O tema troca só o topo, a ação e as superfícies. As cores de casco, sucata, fiado e pago são as
+    mesmas em todos.
+  </p>
 </section>
+
+<ng-template #blocos>
+  <span class="aparencia__previa-topo"></span>
+  <span class="aparencia__previa-corpo">
+    <span class="aparencia__previa-acao">Aa</span>
+    <span class="aparencia__previa-cartao"></span>
+  </span>
+</ng-template>

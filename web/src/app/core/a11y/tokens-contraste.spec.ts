@@ -434,3 +434,49 @@ describe('Cadastros, seleção de operador e telas restantes no design Depósito
     },
   );
 });
+
+// Gráfico de Vendas por período (vendas-por-periodo-page.ts), sobre o cartão do gráfico (--ce-surface)
+// [frente, fundo, limiar, onde ocorre]
+const PARES_GRAFICO: [Chave, Chave, number, string][] = [
+  [
+    'textMuted',
+    'surface',
+    TEXTO,
+    'rótulos do eixo Y e dos dias (vendas-por-periodo-page.ts:.eixo), legenda e caption da tabela',
+  ],
+  [
+    'text',
+    'surface',
+    TEXTO,
+    'legenda, painel de detalhe aria-live e tabela (vendas-por-periodo-page.ts:.detalhe)',
+  ],
+  ['pago', 'surface', TEXTO, 'série recebido, preenchimento sólido (.barra__recebido)'],
+  ['fiado', 'surface', TEXTO, 'série fiado gerado, listras e contorno (.barra__fiado)'],
+  ['focusRing', 'surface', NAO_TEXTUAL, 'anel de foco da barra (.barra__foco)'],
+];
+
+describe('Gráfico de Vendas por período', () => {
+  const casos = NOMES.flatMap((tema) => PARES_GRAFICO.map((p) => [tema, ...p] as const));
+
+  it.each(casos)('[%s] %s sobre %s ≥ %s (%s)', (tema, frente, fundo, limiar) => {
+    const p: Paleta = TEMAS[tema];
+    expect(razaoContraste(p[frente], p[fundo])).toBeGreaterThanOrEqual(limiar);
+  });
+
+  it.each([
+    [false, 'oceano'],
+    [true, 'noite'],
+  ] as const)(
+    'Automático com prefereEscuro=%s resolve %s e os pares passam',
+    (escuro, esperado) => {
+      const tema = resolverTema('automatico', escuro);
+      expect(tema).toBe(esperado);
+      const p: Paleta = TEMAS[tema];
+      for (const [frente, fundo, limiar] of PARES_GRAFICO) {
+        expect(razaoContraste(p[frente], p[fundo]), `${frente}/${fundo}`).toBeGreaterThanOrEqual(
+          limiar,
+        );
+      }
+    },
+  );
+});

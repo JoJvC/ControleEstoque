@@ -82,6 +82,7 @@ test('navegação pelas telas no design Depósito', async ({ page, request }) =>
     ['/financeiro/caixa', 'Caixa do dia'],
     ['/vendas', 'Vendas'],
     ['/relatorios', 'Relatórios'],
+    ['/relatorios/vendas-por-periodo', 'Vendas por período'],
     ['/mais', 'Mais'],
   ];
   for (const [rota, titulo, botao] of telas) {

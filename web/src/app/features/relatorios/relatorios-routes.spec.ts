@@ -5,6 +5,10 @@ import { PERMISSOES } from '../../core/permissions/permissoes';
 import { rodarGuardDaRota } from '../../core/permissions/testing';
 import { RELATORIOS_ROUTES } from './relatorios-routes';
 
+// O hub é a rota pai ('') e os 9 relatórios são os filhos dela.
+const PAI = RELATORIOS_ROUTES[0];
+const TODAS = [PAI, ...(PAI.children ?? [])];
+
 const GUARDADAS: Record<string, string> = {
   '': 'relatorios.ver',
   faturamento: 'relatorios.ver',
@@ -15,6 +19,7 @@ const GUARDADAS: Record<string, string> = {
   sucata: 'relatorios.ver',
   estoque: 'relatorios.ver',
   'conta-funcionarios': 'relatorios.ver',
+  'vendas-por-periodo': 'relatorios.ver',
 };
 
 const COMPONENTES: Record<string, string> = {
@@ -27,11 +32,20 @@ const COMPONENTES: Record<string, string> = {
   sucata: 'SucataPage',
   estoque: 'EstoqueRelatorioPage',
   'conta-funcionarios': 'ContaFuncionariosPage',
+  'vendas-por-periodo': 'VendasPorPeriodoPage',
 };
 
 describe('RELATORIOS_ROUTES', () => {
+  it('o hub é a única rota de topo e tem os 9 relatórios como filhos', () => {
+    expect(RELATORIOS_ROUTES).toHaveLength(1);
+    expect(PAI.path).toBe('');
+    expect(PAI.children?.map((r) => r.path)).toEqual(
+      Object.keys(GUARDADAS).filter((p) => p !== ''),
+    );
+  });
+
   it.each(Object.entries(GUARDADAS))('rota "%s" exige %s', (path, chave) => {
-    const rota = RELATORIOS_ROUTES.find((r) => r.path === path)!;
+    const rota = TODAS.find((r) => r.path === path)!;
     expect(rota.canActivate).toHaveLength(1);
     const negado = rodarGuardDaRota(rota, []);
     expect(negado).toBeInstanceOf(UrlTree);
@@ -42,15 +56,13 @@ describe('RELATORIOS_ROUTES', () => {
   });
 
   it.each(Object.entries(COMPONENTES))('rota "%s" carrega %s', async (path, nome) => {
-    const rota = RELATORIOS_ROUTES.find((r) => r.path === path)!;
+    const rota = TODAS.find((r) => r.path === path)!;
     const componente = await (rota.loadComponent as () => Promise<{ name: string }>)();
     expect(componente.name).toContain(nome);
   });
 
   it('rotas de consulta continuam sem guard', () => {
-    for (const r of RELATORIOS_ROUTES.filter(
-      (r) => !((r.path ?? '') in GUARDADAS) && !r.redirectTo,
-    )) {
+    for (const r of TODAS.filter((r) => !((r.path ?? '') in GUARDADAS) && !r.redirectTo)) {
       expect(r.canActivate).toBeUndefined();
     }
   });

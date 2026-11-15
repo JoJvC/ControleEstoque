@@ -1,4 +1,5 @@
 import { EstoqueItemResponse, ProdutoResponse } from '../../core/api/models/estoque';
+import { precoReferenciaDe } from '../../core/api/produto-leitura';
 import {
   CreateVendaRequest,
   FormaPagamento,
@@ -106,11 +107,11 @@ export function excedeSaldo(saldo: number, valor: number): boolean {
 }
 
 export function temAgua(itens: readonly ItemCarrinho[]): boolean {
-  return itens.some((i) => i.produto.tipo === 'AGUA');
+  return itens.some((i) => i.produto.tipo === 'RETORNAVEL');
 }
 
 export function quantidadeAgua(itens: readonly ItemCarrinho[]): number {
-  return itens.filter((i) => i.produto.tipo === 'AGUA').reduce((s, i) => s + i.quantidade, 0);
+  return itens.filter((i) => i.produto.tipo === 'RETORNAVEL').reduce((s, i) => s + i.quantidade, 0);
 }
 
 // Feedback local do passo Cascos (Regra 8.1): não é saldo guardado, o servidor continua dono dele.
@@ -142,16 +143,13 @@ export function valorDoAtalho(
   return (atalho === 'tudo' ? restante : Math.floor(restante / 2)) / 100;
 }
 
-/** Pílula do produto: AGUA e GALAO_COMPLETO sempre em "Água"; DESCARTAVEL usa a categoria; CASCO e SUCATA só em "Todas". */
+/** Pílula do produto: RETORNAVEL sempre em "Água"; DESCARTAVEL usa a categoria. */
 export function categoriaDoProduto(produto: ProdutoResponse): string | null {
   switch (produto.tipo) {
-    case 'AGUA':
-    case 'GALAO_COMPLETO':
+    case 'RETORNAVEL':
       return 'Água';
     case 'DESCARTAVEL':
       return produto.categoria || null;
-    default:
-      return null;
   }
 }
 
@@ -249,7 +247,7 @@ export function itensDaUltimaVenda(
       itens.push({
         produto,
         quantidade: i.quantidade,
-        precoUnitario: produto.precoReferencia,
+        precoUnitario: precoReferenciaDe(produto),
         desconto: null,
       });
     }

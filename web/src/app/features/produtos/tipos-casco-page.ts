@@ -42,7 +42,6 @@ import { TiposCascoStore } from './tipos-casco-store';
     <div class="pagina">
       @if (!formAberto()) {
         <section class="cartao">
-          <h2 class="secao">Tipos de casco</h2>
           <ce-data-list
             [itens]="store.tipos()"
             [status]="store.status()"
@@ -125,12 +124,6 @@ import { TiposCascoStore } from './tipos-casco-store';
       border: 1px solid var(--ce-border);
       border-radius: 20px;
       padding: var(--ce-space-4);
-    }
-
-    .secao {
-      margin: 0 0 var(--ce-space-2);
-      font-family: var(--ce-font-family-titulo);
-      font-size: var(--ce-font-lg);
     }
 
     :host ::ng-deep .item {

@@ -26,6 +26,6 @@ describe('ProdutoCard ícone sem foto', () => {
   });
 
   it('o tipo define o ícone', async () => {
-    expect(await dsDoCard({ tipo: 'CASCO', categoria: 'Gelo' })).toEqual([...ICONES.casco]);
+    expect(await dsDoCard({ tipo: 'RETORNAVEL', categoria: 'Gelo' })).toEqual([...ICONES.galao]);
   });
 });

@@ -8,6 +8,7 @@ import {
   CreateBaixaCascoRequest,
   CreateMarcaRequest,
   CreateMovimentoRequest,
+  CreateProdutoMarcaRequest,
   CreateProdutoRequest,
   CreatedResponse,
   EstoqueItemResponse,
@@ -81,15 +82,36 @@ export class EstoqueApi {
     return this.http.put<ProdutoResponse>(`${this.base}/produtos/${id}`, request);
   }
 
-  enviarFoto(produtoId: string, foto: File): Observable<FotoResponse> {
-    const form = new FormData();
-    form.append('foto', foto, foto.name);
-    return this.http.post<FotoResponse>(`${this.base}/produtos/${produtoId}/foto`, form);
+  adicionarMarca(
+    produtoId: string,
+    request: CreateProdutoMarcaRequest,
+  ): Observable<ProdutoResponse> {
+    return this.http.post<ProdutoResponse>(`${this.base}/produtos/${produtoId}/marcas`, request);
   }
 
-  /** URL da foto para usar direto em <img src>. */
-  urlFoto(produtoId: string): string {
-    return `${this.base}/produtos/${produtoId}/foto`;
+  atualizarMarca(
+    produtoId: string,
+    produtoMarcaId: string,
+    request: CreateProdutoMarcaRequest,
+  ): Observable<ProdutoResponse> {
+    return this.http.put<ProdutoResponse>(
+      `${this.base}/produtos/${produtoId}/marcas/${produtoMarcaId}`,
+      request,
+    );
+  }
+
+  enviarFotoMarca(produtoId: string, produtoMarcaId: string, foto: File): Observable<FotoResponse> {
+    const form = new FormData();
+    form.append('foto', foto, foto.name);
+    return this.http.post<FotoResponse>(
+      `${this.base}/produtos/${produtoId}/marcas/${produtoMarcaId}/foto`,
+      form,
+    );
+  }
+
+  /** URL da foto da associação produto+marca para usar direto em <img src>. */
+  urlFotoMarca(produtoId: string, produtoMarcaId: string): string {
+    return `${this.base}/produtos/${produtoId}/marcas/${produtoMarcaId}/foto`;
   }
 
   obterEstoque(): Observable<EstoqueItemResponse[]> {

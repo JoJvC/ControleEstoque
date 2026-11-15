@@ -1,4 +1,5 @@
 import { EstoqueItemResponse, ProdutoResponse } from '../../core/api/models/estoque';
+import { produtoResp } from '../../core/api/testing';
 import { VendaDetalheResponse } from '../../core/api/models/vendas';
 import {
   ItemCarrinho,
@@ -23,25 +24,14 @@ import {
 } from './carrinho';
 
 function produto(tipo: ProdutoResponse['tipo'], id = 'p-1'): ProdutoResponse {
-  return {
-    id,
-    tipo,
-    nome: 'Produto',
-    marcaId: null,
-    marca: null,
-    categoria: null,
-    tamanho: null,
-    fotoUrl: null,
-    precoReferencia: 50,
-    estoqueMinimo: 0,
-  };
+  return produtoResp({ id, tipo });
 }
 
 function item(
   quantidade: number,
   precoUnitario: number,
   desconto: ItemCarrinho['desconto'] = null,
-  tipo: ProdutoResponse['tipo'] = 'AGUA',
+  tipo: ProdutoResponse['tipo'] = 'RETORNAVEL',
 ): ItemCarrinho {
   return { produto: produto(tipo), quantidade, precoUnitario, desconto };
 }
@@ -165,7 +155,7 @@ describe('paraCreateVendaRequest', () => {
 });
 
 describe('rascunhoDeVenda', () => {
-  const agua = produto('AGUA', 'p-agua');
+  const agua = produto('RETORNAVEL', 'p-agua');
   const carvao = produto('DESCARTAVEL', 'p-carvao');
   const mapa = new Map([
     [agua.id, agua],
@@ -307,31 +297,27 @@ describe('categorias e filtro', () => {
   });
   const lista = [com('a', 'Gelo'), com('b', 'Copos'), com('c', 'Gelo'), com('d', null)];
 
-  it('categoriaDoProduto: Água para AGUA e GALAO_COMPLETO; categoria só em DESCARTAVEL; resto sem pílula', () => {
+  it('categoriaDoProduto: Água para RETORNAVEL; categoria só em DESCARTAVEL', () => {
     const tipo = (t: ProdutoResponse['tipo'], categoria: string | null) => ({
       ...produto(t),
       categoria,
     });
-    expect(categoriaDoProduto(tipo('AGUA', null))).toBe('Água');
-    expect(categoriaDoProduto(tipo('AGUA', 'Outra'))).toBe('Água');
-    expect(categoriaDoProduto(tipo('GALAO_COMPLETO', null))).toBe('Água');
+    expect(categoriaDoProduto(tipo('RETORNAVEL', null))).toBe('Água');
+    expect(categoriaDoProduto(tipo('RETORNAVEL', 'Outra'))).toBe('Água');
     expect(categoriaDoProduto(tipo('DESCARTAVEL', 'Gelo'))).toBe('Gelo');
     expect(categoriaDoProduto(tipo('DESCARTAVEL', null))).toBeNull();
-    expect(categoriaDoProduto(tipo('CASCO', 'Gelo'))).toBeNull();
-    expect(categoriaDoProduto(tipo('SUCATA', 'Gelo'))).toBeNull();
   });
 
   it('água sem categoria ganha a pílula Água e é filtrada por ela', () => {
     const mix = [
-      { ...produto('AGUA', 'x'), categoria: null },
-      { ...produto('GALAO_COMPLETO', 'y'), categoria: null },
-      { ...produto('CASCO', 'z'), categoria: 'Gelo' },
+      { ...produto('RETORNAVEL', 'x'), categoria: null },
+      { ...produto('RETORNAVEL', 'y'), categoria: 'Gelo' },
       com('g', 'Gelo'),
     ];
     expect(categoriasDe(mix)).toEqual(['Água', 'Gelo']);
     expect(filtrarPorCategoria(mix, 'Água').map((p) => p.id)).toEqual(['x', 'y']);
     expect(filtrarPorCategoria(mix, 'Gelo').map((p) => p.id)).toEqual(['g']);
-    expect(filtrarPorCategoria(mix, null)).toHaveLength(4);
+    expect(filtrarPorCategoria(mix, null)).toHaveLength(3);
   });
 
   it('categoriasDe: distintas, sem vazio, em ordem', () => {
@@ -348,15 +334,18 @@ describe('categorias e filtro', () => {
 describe('produtosComEstoque', () => {
   it('cruza pelo produtoId; ausente vira null', () => {
     const estoque = [{ produtoId: 'p-1', quantidade: 12 }] as EstoqueItemResponse[];
-    const r = produtosComEstoque([produto('AGUA', 'p-1'), produto('AGUA', 'p-2')], estoque);
+    const r = produtosComEstoque(
+      [produto('RETORNAVEL', 'p-1'), produto('RETORNAVEL', 'p-2')],
+      estoque,
+    );
     expect(r.map((x) => x.estoque)).toEqual([12, null]);
-    expect(produtosComEstoque([produto('AGUA', 'p-1')], [])[0].estoque).toBeNull();
+    expect(produtosComEstoque([produto('RETORNAVEL', 'p-1')], [])[0].estoque).toBeNull();
   });
 });
 
 describe('itensDaUltimaVenda', () => {
-  const agua = { ...produto('AGUA', 'p-agua'), precoReferencia: 14 };
-  const gelo = { ...produto('DESCARTAVEL', 'p-gelo'), precoReferencia: 8 };
+  const agua = produtoResp({ id: 'p-agua', preco: 14 });
+  const gelo = produtoResp({ id: 'p-gelo', tipo: 'DESCARTAVEL', preco: 8 });
   const catalogo = new Map([
     [agua.id, agua],
     [gelo.id, gelo],

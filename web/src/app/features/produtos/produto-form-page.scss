@@ -1,7 +1,11 @@
 @use 'mixins';
 
 .form {
-  padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
+  // espaço para a barra fixa + bottom-nav + safe-area; a barra real passa de 56px (botão de 44px + padding)
+  padding-bottom: calc(
+    var(--ce-barra-acao-height) + var(--ce-nav-height) + env(safe-area-inset-bottom, 0px) +
+      var(--ce-space-8)
+  );
 
   display: flex;
   flex-direction: column;
@@ -15,29 +19,69 @@
   }
 
   @include mixins.from-desktop {
-    padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
+    max-width: 720px;
+    padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-8));
   }
 }
 
-.form__foto {
-  align-self: center;
+.form__tipo {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  padding: 4px;
+  background: var(--ce-surface-muted);
+  border: 1px solid var(--ce-border);
+  border-radius: 14px;
+}
+
+.form__tipo-botao {
+  min-height: var(--ce-touch-target);
+  border-radius: 10px;
+  font-size: var(--ce-font-md);
+  font-weight: 600;
+
+  &[aria-pressed='true'] {
+    background: var(--ce-primary);
+    color: var(--ce-text-on-primary);
+  }
+}
+
+.form__secao {
+  margin: var(--ce-space-2) 0 0;
+  font-family: var(--ce-font-family-titulo);
+  font-size: var(--ce-font-lg);
+}
+
+.marca {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ce-space-1);
-  width: 112px;
-  height: 112px;
-  border: 1px dashed var(--ce-border);
-  border-radius: 20px;
+  gap: var(--ce-space-3);
+  padding: var(--ce-space-4);
   background: var(--ce-surface);
+  border: 1px solid var(--ce-border);
+  border-radius: 20px;
+}
+
+.marca__topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ce-space-3);
+}
+
+.marca__foto {
+  display: flex;
+  align-items: center;
+  gap: var(--ce-space-2);
+  min-height: var(--ce-touch-target);
   color: var(--ce-text-muted);
-  font-size: var(--ce-font-sm);
-  overflow: hidden;
+  font-size: var(--ce-font-md);
 
   img {
-    width: 100%;
-    height: 100%;
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
     object-fit: cover;
   }
 }

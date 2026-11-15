@@ -17,20 +17,13 @@ function item(p: Partial<EstoqueItemResponse>): EstoqueItemResponse {
 }
 
 describe('agruparEstoque', () => {
-  it('separa por tipo e mantém casco, sucata e galão completo em itens próprios', () => {
+  it('separa Retornável (grupo água) de Descartável; vasilhames ficam para a fatia 7', () => {
     const g = agruparEstoque([
-      item({ tipo: 'GALAO_COMPLETO', nome: 'gc', quantidade: 3 }),
-      item({ tipo: 'AGUA', nome: 'agua' }),
-      item({ tipo: 'SUCATA', nome: 'su', quantidade: 4 }),
-      item({ tipo: 'CASCO', nome: 'ca', quantidade: 5 }),
+      item({ tipo: 'RETORNAVEL', nome: 'agua' }),
       item({ tipo: 'DESCARTAVEL', nome: 'copo', categoria: 'Copos' }),
     ]);
     expect(g.agua.map((i) => i.nome)).toEqual(['agua']);
-    expect(g.vasilhames.map((i) => [i.nome, i.quantidade])).toEqual([
-      ['ca', 5],
-      ['su', 4],
-      ['gc', 3],
-    ]);
+    expect(g.vasilhames).toEqual([]);
     expect(g.descartaveis).toHaveLength(1);
   });
 

@@ -8,7 +8,7 @@ import { EstoqueStore } from './estoque-store';
 
 const ITEM: EstoqueItemResponse = {
   produtoId: 'p1',
-  tipo: 'CASCO',
+  tipo: 'RETORNAVEL',
   nome: 'Casco vazio',
   marca: null,
   categoria: null,

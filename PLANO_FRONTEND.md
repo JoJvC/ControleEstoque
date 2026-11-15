@@ -137,7 +137,7 @@ web/
 |---|---|
 | Átomos | `ce-button` (primary/ghost/danger, loading), `ce-icon`, `ce-input`, `ce-select`, `ce-checkbox`, `ce-badge` (status), `ce-spinner`, `ce-avatar`, `ce-divider`, `ce-skeleton` |
 | Moléculas | `ce-form-field` (label+controle+erro), `ce-money-input` (máscara BRL, centavos), `ce-quantity-stepper` (− n +, alvo de toque grande), `ce-search-box` (debounce), `ce-list-item` (linha tocável com slots), `ce-empty-state`, `ce-toast`, `ce-confirm-dialog`, `ce-saldo-chip` (rótulo+valor com cor semântica) |
-| Organismos | `ce-app-header` (título, voltar, ações), `ce-bottom-nav` (5 slots), `ce-data-list` (lista paginada com pull-state, empty, skeleton), `ce-sheet` (bottom sheet mobile / dialog desktop — via CDK overlay), `ce-produto-card` (foto, nome, marca, preço ref.), `ce-pagamento-lista` (N formas + soma + faltante), `ce-item-venda-card` (item do carrinho com desconto) |
+| Organismos | `ce-app-header` (título, voltar, ações), `ce-bottom-nav` (5 slots), `ce-data-list` (lista paginada com pull-state, empty, skeleton), `ce-sheet` (bottom sheet mobile / dialog desktop — via CDK overlay), `ce-produto-card` (foto da primeira marca com foto, nome, marcas, preço ref. da primeira marca), `ce-pagamento-lista` (N formas + soma + faltante), `ce-item-venda-card` (item do carrinho com desconto) |
 
 ### 4.3 Mobile-first (regras de layout)
 
@@ -181,8 +181,8 @@ web/
 
 ### 5.3 Foto de produto
 
-- Upload: `POST /v1/produtos/{id}/foto` multipart (jpg/png ≤ 5MB) — no front, sempre via `MediaService` (Seção 10), nunca `<input type="file">` direto no componente.
-- Exibição: `GET /v1/produtos/{id}/foto` como `src` da imagem (com fallback para placeholder no `ce-produto-card`).
+- Upload: `POST /v1/produtos/{id}/marcas/{produtoMarcaId}/foto` multipart (jpg/png ≤ 5MB) — no front, sempre via `MediaService` (Seção 10), nunca `<input type="file">` direto no componente.
+- Exibição: `GET /v1/produtos/{id}/marcas/{produtoMarcaId}/foto` como `src` da imagem (com fallback para placeholder no `ce-produto-card`).
 
 ---
 
@@ -203,7 +203,7 @@ web/
 - **Vendas**: `nova` (PDV), `lista` (filtros cliente/período, paginada), `detalhe/:id` (itens, pagamentos, saldos gerados, ações: editar, adicionar pagamento, emitir cupom), `editar/:id` (mesmo form do PDV pré-carregado; bloqueado com aviso se cupom já emitido — `VENDA_JA_FATURADA`).
 - **Clientes**: lista com busca; detalhe com **3 saldos independentes** (`GET /saldos`: cascos, sucata entregue, fiado) como `ce-saldo-chip`s distintos; endereços (N, um principal; a gestão — adicionar, editar, remover, marcar principal — fica no formulário de cadastro/edição, e o detalhe continua só permitindo adicionar); ações: **Pagar Casco** (sheet com 2 modos: devolução física / conversão em valor), **Entregar Sucata** (com conversão em crédito opcional), **Receber Fiado** (pagamento de dívida via API Financeiro).
 - **Estoque**: visão atual (`vw_estoque_atual` — destaque `AbaixoMinimo` com `--ce-warning`), abastecimento (form com N itens, tipo de frete, custo), ajuste manual, **baixa de casco por quebra** (quantidade, motivo, ≥1 responsável obrigatório).
-- **Cadastros**: tipos de casco (nome, preço do vasilhame, aceita sucata; genérico sem marca ou específico com marca), produtos (tipo, marca — obrigatória se AGUA/GALAO_COMPLETO —, categoria e tamanho livres, preço de referência, estoque mínimo, foto), marcas.
+- **Cadastros**: tipos de casco (nome, preço do vasilhame, aceita sucata; genérico sem marca ou específico com marca), produtos (tipo Retornável/Descartável; casco genérico quando Retornável; categoria e tamanho livres; lista de marcas, cada uma com preço de referência, estoque mínimo, foto e casco específico opcional, que vence o genérico; a opção 'Sem marca' grava na marca 'Genérica', criada pelo front se faltar, e aparece como 'sem marca' na lista e na edição), marcas.
 - **Financeiro**: caixa do dia (abrir com saldo inicial; 409 = já aberto → carregar existente), lançar despesa (tipo obrigatório), **fechamento** (checklist de funcionários que trabalharam → diárias; resumo entradas/saídas/saldo), tipos de despesa.
 - **RH**: funcionários (CRUD, diária), cargos (CRUD com permissões; **ADM travado na UI** — badge "nativo", sem editar/excluir), conta-corrente (extrato, saldo, lançar vale, lançar pagamento).
 - **Relatórios**: hub com cards → cada relatório com filtros de período/produto onde aplicável, resultado em cards no mobile / tabela no desktop.
@@ -212,7 +212,7 @@ web/
 
 ```
 [1. Cliente]    busca/seleção + endereço de entrega (se houver N, escolher)
-[2. Itens]      catálogo com ce-produto-card (foto + preço de referência)
+[2. Itens]      catálogo com ce-produto-card (foto + preço de referência da marca)
                 → ao tocar: sheet com quantidade (stepper), preço unitário
                   (PRÉ-PREENCHIDO com referência, LIVREMENTE editável),
                   desconto opcional (valor|percentual + MOTIVO obrigatório)
@@ -352,7 +352,7 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 
 2. **"Devolvidos na hora" é atalho, não trava.** O toggle preenche `cascosDevolvidos = quantidade de água vendida`, mas o campo **continua editável** (casos parciais). Desligar o toggle não zera o que o usuário digitou.
 
-3. **Preço de referência é sugestão.** O campo preço vem pré-preenchido e livremente editável; a UI **nunca** bloqueia venda por preço diferente da referência, nem recarrega o preço do servidor ao calcular exibição de total.
+3. **Preço de referência é sugestão.** O preço de referência é por produto+marca (associação). O campo preço vem pré-preenchido e livremente editável; a UI **nunca** bloqueia venda por preço diferente da referência, nem recarrega o preço do servidor ao calcular exibição de total.
 
 4. **Desconto por item, motivo obrigatório.** O desconto fica no item (não no total) e o form não submete sem motivo. Exibir total bruto, desconto e líquido separados.
 

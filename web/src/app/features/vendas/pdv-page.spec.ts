@@ -8,6 +8,7 @@ import { vi } from 'vitest';
 
 import { ClienteResponse, SaldosResponse } from '../../core/api/models/clientes';
 import { EstoqueItemResponse, ProdutoResponse } from '../../core/api/models/estoque';
+import { produtoResp } from '../../core/api/testing';
 import { VendaDetalheResponse, VendaResponse } from '../../core/api/models/vendas';
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
@@ -21,25 +22,14 @@ import { PdvPage } from './pdv-page';
 const URL_VENDAS = '/api/vendas/v1/vendas';
 
 function produto(id: string, nome: string, tipo: ProdutoResponse['tipo']): ProdutoResponse {
-  return {
-    id,
-    tipo,
-    nome,
-    marcaId: null,
-    marca: null,
-    categoria: null,
-    tamanho: null,
-    fotoUrl: null,
-    precoReferencia: 50,
-    estoqueMinimo: 0,
-  };
+  return produtoResp({ id, tipo, nome });
 }
 
-const AGUA = produto('p-agua', 'Água 20L', 'AGUA');
+const AGUA = produto('p-agua', 'Água 20L', 'RETORNAVEL');
 const GALAO = produto('p-galao', 'Galão vazio', 'DESCARTAVEL');
 const GELO = { ...produto('p-gelo', 'Gelo 5kg', 'DESCARTAVEL'), categoria: 'Gelo' };
+const OUTRA_AGUA = produto('p-agua2', 'Galão completo', 'RETORNAVEL');
 const COPO = { ...produto('p-copo', 'Copo 200ml', 'DESCARTAVEL'), categoria: 'Copos' };
-const GCOMPLETO = produto('p-gcomp', 'Galão completo', 'GALAO_COMPLETO');
 
 const ESTOQUE = [
   { produtoId: 'p-agua', quantidade: 12 },
@@ -139,7 +129,7 @@ async function montar(
       { status: 500, statusText: 'Server Error' },
     );
   } else {
-    produtosReq.flush([AGUA, GALAO, GELO, COPO, GCOMPLETO]);
+    produtosReq.flush([AGUA, GALAO, GELO, COPO, OUTRA_AGUA]);
   }
   http.expectOne('/api/estoque/v1/estoque').flush(ESTOQUE);
   await assentar(fixture);
@@ -750,13 +740,13 @@ describe('PdvPage: cobrar no desktop (painel à direita)', () => {
     await t.depoisDoPost();
   });
 
-  it('galão completo não gera casco: a seção some e aparece a nota', async () => {
+  it('produto Retornável gera casco: a seção aparece e a nota de galão completo não (tipo deixou de existir)', async () => {
     const t = await montar(undefined, { desktop: true });
     await t.escolherCliente(cliente('c-1', 'Ana'));
-    await t.tocar(GCOMPLETO);
+    await t.tocar(AGUA);
 
-    expect(t.painel().querySelector('.casco')).toBeNull();
-    expect(t.texto(t.painel())).toContain('Galão completo não gera casco');
+    expect(t.painel().querySelector('.casco')).not.toBeNull();
+    expect(t.texto(t.painel())).not.toContain('Galão completo não gera casco');
   });
 
   it('formas, valor e atalhos Tudo, Metade e Tudo fiado sempre visíveis; "Vai para fiado: R$ X" muda ao digitar; acima do total bloqueia', async () => {

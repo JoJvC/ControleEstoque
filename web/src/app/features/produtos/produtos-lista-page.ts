@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 
 import { EstoqueApi } from '../../core/api/estoque-api';
 import { ProdutoResponse, TipoProduto } from '../../core/api/models/estoque';
+import { nomesDasMarcas, precoReferenciaDe } from '../../core/api/produto-leitura';
 import { CePermissao } from '../../core/permissions/ce-permissao';
 import { PermissionService } from '../../core/permissions/permission-service';
 import { Button } from '../../ui/atoms/button';
@@ -16,10 +17,7 @@ import { FormsModule } from '@angular/forms';
 import { ProdutosStore } from './produtos-store';
 
 const TIPO_LABEL: Record<TipoProduto, string> = {
-  AGUA: 'Água',
-  GALAO_COMPLETO: 'Galão completo',
-  CASCO: 'Casco',
-  SUCATA: 'Sucata',
+  RETORNAVEL: 'Retornável',
   DESCARTAVEL: 'Descartável',
 };
 
@@ -71,8 +69,8 @@ const TIPO_LABEL: Record<TipoProduto, string> = {
           <ce-produto-card
             [nome]="produto.nome"
             [detalhe]="detalheDe(produto)"
-            [precoReferencia]="produto.precoReferencia"
-            [fotoSrc]="produto.fotoUrl ? api.urlFoto(produto.id) : null"
+            [precoReferencia]="precoDe(produto)"
+            [fotoSrc]="fotoDe(produto)"
             [tipo]="produto.tipo"
             [categoria]="produto.categoria"
             (click)="editar(produto)"
@@ -116,7 +114,9 @@ export class ProdutosListaPage {
       .filter((p) => (tipo ? p.tipo === tipo : true))
       .filter((p) =>
         termo
-          ? `${p.nome} ${p.marca ?? ''} ${p.categoria ?? ''}`.toLowerCase().includes(termo)
+          ? `${p.nome} ${nomesDasMarcas(p).join(' ')} ${p.categoria ?? ''}`
+              .toLowerCase()
+              .includes(termo)
           : true,
       );
   });
@@ -126,9 +126,22 @@ export class ProdutosListaPage {
   }
 
   protected detalheDe(produto: ProdutoResponse): string {
-    return [TIPO_LABEL[produto.tipo], produto.marca, produto.tamanho, produto.categoria]
+    return [
+      TIPO_LABEL[produto.tipo],
+      nomesDasMarcas(produto).join(', '),
+      produto.tamanho,
+      produto.categoria,
+    ]
       .filter((parte): parte is string => !!parte)
       .join(' · ');
+  }
+
+  protected precoDe = precoReferenciaDe;
+
+  /** Foto da primeira marca que tem uma. */
+  protected fotoDe(produto: ProdutoResponse): string | null {
+    const marca = produto.marcas.find((m) => m.fotoUrl);
+    return marca ? this.api.urlFotoMarca(produto.id, marca.id) : null;
   }
 
   protected novo(): void {

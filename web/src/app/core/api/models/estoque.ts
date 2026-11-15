@@ -1,7 +1,7 @@
 // Espelho manual de src/estoque/ControleEstoque.Estoque.Contracts — não inventar campos.
 // Enums serializam como string (JsonStringEnumConverter).
 
-export type TipoProduto = 'AGUA' | 'GALAO_COMPLETO' | 'CASCO' | 'SUCATA' | 'DESCARTAVEL';
+export type TipoProduto = 'RETORNAVEL' | 'DESCARTAVEL';
 
 export type TipoFrete = 'TERCEIRIZADO' | 'PROPRIO';
 
@@ -33,24 +33,42 @@ export interface TipoCascoRequest {
 export interface CreateProdutoRequest {
   tipo: TipoProduto;
   nome: string;
-  marcaId: string | null;
   categoria: string | null;
   tamanho: string | null;
+  /** Casco genérico (tipo de casco sem marca); só em RETORNAVEL. */
+  tipoCascoId: string | null;
+}
+
+export interface CreateProdutoMarcaRequest {
+  marcaId: string;
   precoReferencia: number;
   estoqueMinimo: number;
+  /** Casco específico da marca; vence o genérico do produto. */
+  tipoCascoId: string | null;
+}
+
+export interface ProdutoMarcaResponse {
+  id: string;
+  marcaId: string;
+  marcaNome: string;
+  precoReferencia: number;
+  estoqueMinimo: number;
+  quantidade: number;
+  abaixoMinimo: boolean;
+  fotoUrl: string | null;
+  tipoCascoId: string | null;
+  tipoCascoResolvidoId: string | null;
 }
 
 export interface ProdutoResponse {
   id: string;
   tipo: TipoProduto;
   nome: string;
-  marcaId: string | null;
-  marca: string | null;
   categoria: string | null;
   tamanho: string | null;
-  fotoUrl: string | null;
-  precoReferencia: number;
-  estoqueMinimo: number;
+  tipoCascoId: string | null;
+  estoqueGeral: number;
+  marcas: ProdutoMarcaResponse[];
 }
 
 export interface EstoqueItemResponse {

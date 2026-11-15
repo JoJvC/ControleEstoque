@@ -8,7 +8,7 @@ import { CePermissao } from '../../core/permissions/ce-permissao';
 import { PermissionService } from '../../core/permissions/permission-service';
 import { ToastService } from '../../core/toast/toast-service';
 import { Button } from '../../ui/atoms/button';
-import { Chip, ChipTom } from '../../ui/atoms/chip';
+import { Chip } from '../../ui/atoms/chip';
 import { Icon, IconeNome } from '../../ui/atoms/icon';
 import { iconeDoProduto } from '../../ui/atoms/icone-do-produto';
 import { Skeleton } from '../../ui/atoms/skeleton';
@@ -88,7 +88,7 @@ import { EstoqueStore } from './estoque-store';
                         [attr.data-abaixo-minimo]="item.abaixoMinimo ? '' : null"
                         (click)="ajustar(item)"
                       >
-                        <ce-chip [tom]="tomDe(item)" [icone]="iconeDe(item)">
+                        <ce-chip tom="agua" [icone]="iconeDe(item)">
                           {{ rotuloDe(item) }}: {{ item.quantidade }}
                           @if (item.abaixoMinimo) {
                             · abaixo do mínimo ({{ item.estoqueMinimo }})
@@ -252,10 +252,6 @@ export class EstoquePage {
 
   protected maiorDe(itens: readonly EstoqueItemResponse[]): number {
     return maiorEstoque(itens);
-  }
-
-  protected tomDe(item: EstoqueItemResponse): ChipTom {
-    return item.tipo === 'CASCO' ? 'casco' : item.tipo === 'SUCATA' ? 'sucata' : 'agua';
   }
 
   protected iconeDe(item: EstoqueItemResponse): IconeNome {

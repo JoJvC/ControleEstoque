@@ -4,62 +4,144 @@
   (voltar)="voltar()"
 />
 
-<form class="form" (submit)="$event.preventDefault(); salvar()">
-  <button type="button" class="form__foto" (click)="escolherFoto()">
-    @if (fotoPreview(); as preview) {
-      <img [src]="preview" alt="Foto do produto" />
-    } @else {
-      <ce-icon nome="camera" [tamanho]="32" />
-      <span>Adicionar foto</span>
+<form class="form" ngNoForm (submit)="$event.preventDefault(); salvar()">
+  <ce-form-field rotulo="Nome" [obrigatorio]="true" [erro]="erros()?.nome ?? null">
+    <ce-input
+      placeholder="Ex.: Água Mineral 20L"
+      [ngModel]="form().nome"
+      (ngModelChange)="definir('nome', $event)"
+    />
+  </ce-form-field>
+
+  <div class="form__tipo" role="group" aria-label="Tipo do produto">
+    @for (t of tipos; track t.value) {
+      <button
+        type="button"
+        class="form__tipo-botao"
+        [attr.aria-pressed]="form().tipo === t.value"
+        (click)="escolherTipo(t.value)"
+      >
+        {{ t.label }}
+      </button>
     }
-  </button>
+  </div>
 
-  <ce-form-field rotulo="Nome" [obrigatorio]="true">
-    <ce-input placeholder="Ex.: Água Mineral 20L" [formControl]="nome" />
-  </ce-form-field>
-
-  <ce-form-field
-    rotulo="Tipo"
-    [obrigatorio]="true"
-    dica="Produtos sem regra de casco entram como descartável."
-  >
-    <ce-select [opcoes]="tipos" placeholder="Selecione…" [formControl]="tipo" />
-  </ce-form-field>
-
-  <ce-form-field
-    rotulo="Marca"
-    [obrigatorio]="marcaObrigatoria()"
-    [dica]="marcaObrigatoria() ? 'Obrigatória para água e galão completo.' : 'Opcional.'"
-  >
-    <ce-select [opcoes]="marcasOpcoes()" placeholder="Selecione…" [formControl]="marcaId" />
-  </ce-form-field>
+  @if (form().tipo === 'RETORNAVEL') {
+    <ce-form-field
+      rotulo="Casco genérico"
+      [obrigatorio]="true"
+      [erro]="erros()?.casco ?? null"
+      dica="Casco sem marca; cada marca pode ter um específico, que vence este."
+    >
+      <ce-select
+        [opcoes]="cascosGenericos()"
+        placeholder="Selecione…"
+        [ngModel]="form().tipoCascoId"
+        (ngModelChange)="definirCascoGenerico($event)"
+      />
+    </ce-form-field>
+  }
 
   <div class="form__linha">
     <ce-form-field rotulo="Tamanho" dica="Livre: 20L, 500ml, 5kg…">
-      <ce-input placeholder="20L" [formControl]="tamanho" />
+      <ce-input
+        placeholder="20L"
+        [ngModel]="form().tamanho"
+        (ngModelChange)="definir('tamanho', $event)"
+      />
     </ce-form-field>
     <ce-form-field rotulo="Categoria" dica="Agrupamento livre.">
-      <ce-input placeholder="Bebidas" [formControl]="categoria" />
+      <ce-input
+        placeholder="Bebidas"
+        [ngModel]="form().categoria"
+        (ngModelChange)="definir('categoria', $event)"
+      />
     </ce-form-field>
   </div>
 
-  <ce-form-field
-    rotulo="Preço de referência"
-    dica="Sugestão de tela — o preço real é definido na venda."
-  >
-    <ce-money-input [formControl]="precoReferencia" />
-  </ce-form-field>
+  <h2 class="form__secao">Marcas</h2>
 
-  <ce-form-field rotulo="Estoque mínimo" dica="Alerta quando o estoque ficar abaixo.">
-    <ce-quantity-stepper [formControl]="estoqueMinimo" [min]="0" />
-  </ce-form-field>
+  @for (linha of form().linhas; track linha.chave; let i = $index) {
+    <section class="marca" [attr.aria-label]="'Marca ' + (i + 1)">
+      <div class="marca__topo">
+        <button type="button" class="marca__foto" (click)="escolherFoto(linha)">
+          @if (linha.fotoSrc; as src) {
+            <img [src]="src" alt="Foto da marca" />
+          } @else {
+            <ce-icon nome="camera" [tamanho]="24" />
+          }
+          <span>Escolher foto</span>
+        </button>
+        @if (linha.produtoMarcaId === null) {
+          <ce-button variante="ghost" (click)="remover(linha.chave)">
+            <ce-icon nome="lixeira" [tamanho]="18" /> Remover
+          </ce-button>
+        }
+      </div>
+
+      <ce-form-field
+        rotulo="Marca"
+        [obrigatorio]="true"
+        [erro]="erros()?.linhas?.[i]?.marca ?? null"
+      >
+        <ce-select
+          [opcoes]="opcoesMarca()"
+          placeholder="Selecione…"
+          [ngModel]="linha.marcaId"
+          (ngModelChange)="trocarMarca(linha, $event)"
+        />
+      </ce-form-field>
+
+      <div class="form__linha">
+        <ce-form-field
+          rotulo="Preço de referência"
+          [obrigatorio]="true"
+          [erro]="erros()?.linhas?.[i]?.preco ?? null"
+        >
+          <ce-money-input
+            [ngModel]="linha.preco"
+            (ngModelChange)="atualizarLinha(linha.chave, { preco: $event })"
+          />
+        </ce-form-field>
+        <ce-form-field
+          rotulo="Estoque mínimo"
+          [obrigatorio]="true"
+          [erro]="erros()?.linhas?.[i]?.minimo ?? null"
+        >
+          <ce-input
+            inputmode="numeric"
+            [ngModel]="linha.minimo"
+            (ngModelChange)="atualizarLinha(linha.chave, { minimo: $event })"
+          />
+        </ce-form-field>
+      </div>
+
+      @if (erros()?.linhas?.[i]?.foto; as erroFoto) {
+        <p class="form__erro" role="alert">{{ erroFoto }}</p>
+      }
+
+      @if (form().tipo === 'RETORNAVEL') {
+        <ce-form-field rotulo="Casco específico" [dica]="dicaDeCasco(linha)">
+          <ce-select
+            [opcoes]="opcoesCascoDaLinha(linha)"
+            [ngModel]="linha.tipoCascoId ?? usaGenerico"
+            (ngModelChange)="definirCascoEspecifico(linha, $event)"
+          />
+        </ce-form-field>
+      }
+    </section>
+  }
+
+  <ce-button variante="ghost" [block]="true" (click)="adicionarMarca()">
+    <ce-icon nome="mais" [tamanho]="18" /> Adicionar marca
+  </ce-button>
 
   @if (erroForm(); as erro) {
     <p class="form__erro" role="alert">{{ erro }}</p>
   }
 
   <ce-barra-acao rotulo="Salvar produto">
-    <ce-button tipo="submit" [block]="true" [disabled]="formInvalido()" [loading]="salvando()">
+    <ce-button tipo="submit" [block]="true" [loading]="salvando()">
       {{ id() === null ? 'Cadastrar produto' : 'Salvar alterações' }}
     </ce-button>
   </ce-barra-acao>

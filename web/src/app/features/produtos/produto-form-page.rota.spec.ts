@@ -6,6 +6,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
+import { produtoResp } from '../../core/api/testing';
 import { MediaService } from '../../core/platform/media-service';
 import { ProdutoFormPage } from './produto-form-page';
 
@@ -34,6 +35,7 @@ async function navegar(url: string) {
   harness.detectChanges();
   await harness.fixture.whenStable();
   http.expectOne(`${BASE}/marcas`).flush([]);
+  http.expectOne(`${BASE}/tipos-casco`).flush([]);
   return { harness, http, el: harness.routeNativeElement as HTMLElement };
 }
 
@@ -41,9 +43,13 @@ function preencher(el: HTMLElement, nome: string) {
   const campo = el.querySelector('ce-input input') as HTMLInputElement;
   campo.value = nome;
   campo.dispatchEvent(new Event('input'));
-  const tipo = el.querySelector('ce-select select') as HTMLSelectElement;
-  tipo.value = 'DESCARTAVEL';
-  tipo.dispatchEvent(new Event('change'));
+  // produto novo abre Descartável com a linha "Sem marca"; só falta preço e mínimo
+  const preco = el.querySelector('section.marca ce-money-input input') as HTMLInputElement;
+  preco.value = '500';
+  preco.dispatchEvent(new Event('input'));
+  const minimo = el.querySelector('section.marca ce-input input') as HTMLInputElement;
+  minimo.value = '1';
+  minimo.dispatchEvent(new Event('input'));
 }
 
 describe('ProdutoFormPage com a rota (withComponentInputBinding)', () => {
@@ -60,35 +66,32 @@ describe('ProdutoFormPage com a rota (withComponentInputBinding)', () => {
     t.harness.detectChanges();
     t.el.querySelector<HTMLButtonElement>('ce-barra-acao button')!.click();
 
+    // sem a Genérica na lista, a store a cria antes do produto
+    t.http.expectOne(`${BASE}/marcas`).flush({ id: 'g1', nome: 'Genérica' });
+    await new Promise((r) => setTimeout(r));
     const req = t.http.expectOne(`${BASE}/produtos`);
     expect(req.request.method).toBe('POST');
-    req.flush({ id: 'p1' });
-    await t.harness.fixture.whenStable();
+    req.flush(produtoResp({ id: 'p1', marcas: [] }));
+    await new Promise((r) => setTimeout(r));
+    t.http.expectOne(`${BASE}/produtos/p1/marcas`).flush(produtoResp({ id: 'p1' }));
+    await new Promise((r) => setTimeout(r));
     t.http.match((r) => r.method === 'GET').forEach((r) => r.flush([]));
   });
 
   it('/produtos/p7/editar: carrega o produto e salvar chama atualizar', async () => {
     const t = await navegar('/produtos/p7/editar');
     const get = t.http.expectOne(`${BASE}/produtos/p7`);
-    get.flush({
-      id: 'p7',
-      tipo: 'DESCARTAVEL',
-      nome: 'Copo',
-      marcaId: null,
-      categoria: null,
-      tamanho: null,
-      precoReferencia: 0,
-      estoqueMinimo: 0,
-    });
+    get.flush(produtoResp({ id: 'p7', tipo: 'DESCARTAVEL', nome: 'Copo' }));
     await t.harness.fixture.whenStable();
     t.harness.detectChanges();
     expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Editar produto');
 
     t.el.querySelector<HTMLButtonElement>('ce-barra-acao button')!.click();
+    await new Promise((r) => setTimeout(r));
     const req = t.http.expectOne(`${BASE}/produtos/p7`);
     expect(req.request.method).toBe('PUT');
     req.flush({ id: 'p7' });
-    await t.harness.fixture.whenStable();
+    await new Promise((r) => setTimeout(r));
     t.http.match((r) => r.method === 'GET').forEach((r) => r.flush([]));
   });
 });

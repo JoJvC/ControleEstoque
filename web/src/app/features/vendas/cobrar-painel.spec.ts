@@ -2,27 +2,17 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { ProdutoResponse } from '../../core/api/models/estoque';
+import { produtoResp } from '../../core/api/testing';
 import { CobrarAcao, CobrarEstado, CobrarPainel } from './cobrar-painel';
 
 function produto(tipo: ProdutoResponse['tipo'], nome: string): ProdutoResponse {
-  return {
-    id: `p-${nome}`,
-    tipo,
-    nome,
-    marcaId: null,
-    marca: null,
-    categoria: null,
-    tamanho: null,
-    fotoUrl: null,
-    precoReferencia: 50,
-    estoqueMinimo: 0,
-  };
+  return produtoResp({ id: `p-${nome}`, tipo, nome });
 }
 
 const ESTADO: CobrarEstado = {
   itens: [
     {
-      produto: produto('AGUA', 'Água 20L'),
+      produto: produto('RETORNAVEL', 'Água 20L'),
       quantidade: 5,
       precoUnitario: 50,
       desconto: { tipo: 'VALOR', valor: 10, motivo: 'cliente antigo' },

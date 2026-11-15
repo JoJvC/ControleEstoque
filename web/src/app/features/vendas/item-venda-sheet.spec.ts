@@ -3,21 +3,11 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { ProdutoResponse } from '../../core/api/models/estoque';
+import { produtoResp } from '../../core/api/testing';
 import { ItemCarrinho } from './carrinho';
 import { ItemVendaSheet, ItemVendaSheetDados } from './item-venda-sheet';
 
-const PRODUTO: ProdutoResponse = {
-  id: 'p-1',
-  tipo: 'AGUA',
-  nome: 'Água 20L',
-  marcaId: null,
-  marca: null,
-  categoria: null,
-  tamanho: null,
-  fotoUrl: null,
-  precoReferencia: 50,
-  estoqueMinimo: 0,
-};
+const PRODUTO: ProdutoResponse = produtoResp({ nome: 'Água 20L' });
 
 async function montar(existente: ItemCarrinho | null) {
   const close = vi.fn();

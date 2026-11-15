@@ -1,36 +1,65 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  computed,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
 import { EstoqueApi } from '../../core/api/estoque-api';
-import { CreateProdutoRequest, TipoProduto } from '../../core/api/models/estoque';
+import { TipoProduto } from '../../core/api/models/estoque';
 import { ApiError } from '../../core/http/api-error';
 import { MediaService } from '../../core/platform/media-service';
 import { ToastService } from '../../core/toast/toast-service';
 import { Button } from '../../ui/atoms/button';
 import { Icon } from '../../ui/atoms/icon';
-import { Select } from '../../ui/atoms/select';
+import { Select, SelectOpcao } from '../../ui/atoms/select';
 import { TextInput } from '../../ui/atoms/text-input';
 import { FormField } from '../../ui/molecules/form-field';
 import { MoneyInput } from '../../ui/molecules/money-input';
-import { QuantityStepper } from '../../ui/molecules/quantity-stepper';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { MarcasStore } from './marcas-store';
+import {
+  ErrosProduto,
+  FormProduto,
+  LinhaMarca,
+  SEM_MARCA,
+  aoTrocarTipo,
+  cascoEfetivo,
+  cascosDaMarca,
+  cascosGenericos,
+  formDe,
+  marcaGenericaDe,
+  marcaIdDaLinha,
+  novaLinha,
+  novoForm,
+  opcoesDeMarca,
+  temErros,
+  validarProduto,
+} from './produto-form-modelo';
 import { ProdutosStore } from './produtos-store';
+import { TiposCascoStore } from './tipos-casco-store';
 
-/** Tipos criáveis pela tela — CASCO e SUCATA são produtos estruturais (seed do banco). */
-const TIPOS_CRIAVEIS: { value: TipoProduto; label: string }[] = [
-  { value: 'AGUA', label: 'Água (empresta casco)' },
-  { value: 'GALAO_COMPLETO', label: 'Galão completo (casco + água)' },
-  { value: 'DESCARTAVEL', label: 'Descartável / outros' },
+const TIPOS: { value: TipoProduto; label: string }[] = [
+  { value: 'RETORNAVEL', label: 'Retornável' },
+  { value: 'DESCARTAVEL', label: 'Descartável' },
 ];
+
+/** Valor da opção "sem casco específico" no select da linha (vira null). */
+const USA_GENERICO = '__usa-generico__';
 
 @Component({
   selector: 'ce-produto-form-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    ReactiveFormsModule,
+    FormsModule,
     AppHeader,
     BarraAcao,
     Button,
@@ -39,7 +68,6 @@ const TIPOS_CRIAVEIS: { value: TipoProduto; label: string }[] = [
     TextInput,
     FormField,
     MoneyInput,
-    QuantityStepper,
   ],
   templateUrl: './produto-form-page.html',
   styleUrl: './produto-form-page.scss',
@@ -52,43 +80,38 @@ export class ProdutoFormPage {
   });
 
   protected readonly marcasStore = inject(MarcasStore);
+  private readonly tiposCasco = inject(TiposCascoStore);
   private readonly produtosStore = inject(ProdutosStore);
   private readonly api = inject(EstoqueApi);
   private readonly media = inject(MediaService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
 
-  protected readonly tipos = TIPOS_CRIAVEIS;
-
-  protected readonly nome = new FormControl('', {
-    nonNullable: true,
-    validators: [Validators.required],
-  });
-  protected readonly tipo = new FormControl<TipoProduto | null>(null, Validators.required);
-  protected readonly marcaId = new FormControl<string | null>(null);
-  protected readonly categoria = new FormControl('', { nonNullable: true });
-  protected readonly tamanho = new FormControl('', { nonNullable: true });
-  protected readonly precoReferencia = new FormControl<number | null>(null);
-  protected readonly estoqueMinimo = new FormControl(0, { nonNullable: true });
-
+  protected readonly tipos = TIPOS;
+  protected readonly usaGenerico = USA_GENERICO;
+  protected readonly form = signal<FormProduto>(novoForm());
+  /** Erros de validação local; só aparecem depois da primeira tentativa de salvar. */
+  protected readonly erros = signal<ErrosProduto | null>(null);
   protected readonly salvando = signal(false);
   protected readonly erroForm = signal<string | null>(null);
-  protected readonly foto = signal<File | null>(null);
-  protected readonly fotoPreview = signal<string | null>(null);
-  protected readonly tipoSelecionado = signal<TipoProduto | null>(null);
 
-  protected readonly marcaObrigatoria = computed(() => {
-    const tipo = this.tipoSelecionado();
-    return tipo === 'AGUA' || tipo === 'GALAO_COMPLETO';
-  });
-
-  protected readonly marcasOpcoes = computed(() =>
-    this.marcasStore.marcas().map((m) => ({ value: m.id, label: m.nome })),
+  protected readonly opcoesMarca = computed(() => opcoesDeMarca(this.marcasStore.marcas()));
+  protected readonly genericaId = computed(
+    () => marcaGenericaDe(this.marcasStore.marcas())?.id ?? null,
+  );
+  protected readonly cascosGenericos = computed(() =>
+    this.opcoesDeCasco(cascosGenericos(this.tiposCasco.tipos())),
+  );
+  private readonly nomesDeCasco = computed(
+    () => new Map(this.tiposCasco.tipos().map((t) => [t.id, t.nome])),
   );
 
   constructor() {
+    this.produtosStore.reiniciar();
     this.marcasStore.carregar();
-    this.tipo.valueChanges.subscribe((tipo) => this.tipoSelecionado.set(tipo));
+    void this.tiposCasco.carregar();
     queueMicrotask(() => this.carregarExistente());
   }
 
@@ -98,62 +121,94 @@ export class ProdutoFormPage {
       return;
     }
     this.api.obterProduto(id).subscribe({
-      next: (produto) => {
-        this.nome.setValue(produto.nome);
-        this.tipo.setValue(produto.tipo);
-        this.marcaId.setValue(produto.marcaId);
-        this.categoria.setValue(produto.categoria ?? '');
-        this.tamanho.setValue(produto.tamanho ?? '');
-        this.precoReferencia.setValue(produto.precoReferencia);
-        this.estoqueMinimo.setValue(produto.estoqueMinimo);
-        if (produto.fotoUrl) {
-          this.fotoPreview.set(this.api.urlFoto(produto.id));
-        }
-      },
+      next: (produto) =>
+        this.form.set(formDe(produto, (pmId) => this.api.urlFotoMarca(produto.id, pmId))),
       error: () => this.toast.error('Não foi possível carregar o produto.'),
     });
   }
 
-  protected async escolherFoto(): Promise<void> {
+  private opcoesDeCasco(tipos: { id: string; nome: string }[]): SelectOpcao[] {
+    return tipos.map((t) => ({ value: t.id, label: t.nome }));
+  }
+
+  protected opcoesCascoDaLinha(linha: LinhaMarca): SelectOpcao[] {
+    const especificos = cascosDaMarca(
+      this.tiposCasco.tipos(),
+      marcaIdDaLinha(linha, this.genericaId()),
+    );
+    return [
+      { value: USA_GENERICO, label: 'Usa o casco genérico' },
+      ...this.opcoesDeCasco(especificos),
+    ];
+  }
+
+  /** Dica da linha: qual casco vale ('específico vence'). */
+  protected dicaDeCasco(linha: LinhaMarca): string {
+    const efetivo = cascoEfetivo(linha, this.form().tipoCascoId);
+    const nome = efetivo === null ? null : this.nomesDeCasco().get(efetivo);
+    return nome ? `Usa o casco ${nome}.` : 'Escolha o casco genérico do produto.';
+  }
+
+  protected escolherTipo(tipo: TipoProduto): void {
+    this.form.update((f) => aoTrocarTipo(f, tipo));
+  }
+
+  protected definir(campo: 'nome' | 'categoria' | 'tamanho', valor: string | null): void {
+    this.form.update((f) => ({ ...f, [campo]: valor ?? '' }));
+  }
+
+  protected definirCascoGenerico(id: string | null): void {
+    this.form.update((f) => ({ ...f, tipoCascoId: id }));
+  }
+
+  protected adicionarMarca(): void {
+    this.form.update((f) => ({ ...f, linhas: [...f.linhas, novaLinha()] }));
+  }
+
+  protected remover(chave: number): void {
+    this.form.update((f) => ({ ...f, linhas: f.linhas.filter((l) => l.chave !== chave) }));
+  }
+
+  protected atualizarLinha(chave: number, parcial: Partial<LinhaMarca>): void {
+    this.form.update((f) => ({
+      ...f,
+      linhas: f.linhas.map((l) => (l.chave === chave ? { ...l, ...parcial } : l)),
+    }));
+  }
+
+  protected trocarMarca(linha: LinhaMarca, marcaId: string | null): void {
+    // o casco específico é da marca anterior: não vale para a nova
+    this.atualizarLinha(linha.chave, { marcaId, tipoCascoId: null });
+  }
+
+  protected definirCascoEspecifico(linha: LinhaMarca, valor: string | null): void {
+    this.atualizarLinha(linha.chave, { tipoCascoId: valor === USA_GENERICO ? null : valor });
+  }
+
+  protected async escolherFoto(linha: LinhaMarca): Promise<void> {
     const arquivo = await this.media.pickImage();
     if (arquivo !== null) {
-      this.foto.set(arquivo);
-      this.fotoPreview.set(this.media.previewUrl(arquivo));
+      this.atualizarLinha(linha.chave, { foto: arquivo, fotoSrc: this.media.previewUrl(arquivo) });
     }
   }
 
-  protected formInvalido(): boolean {
-    return (
-      this.nome.invalid ||
-      this.tipo.invalid ||
-      (this.marcaObrigatoria() && this.marcaId.value === null)
-    );
+  protected semMarca(linha: LinhaMarca): boolean {
+    return linha.marcaId === SEM_MARCA;
   }
 
   protected async salvar(): Promise<void> {
     this.erroForm.set(null);
-    if (this.nome.invalid || this.tipo.value === null) {
-      this.erroForm.set('Preencha nome e tipo do produto.');
+    const erros = validarProduto(this.form());
+    this.erros.set(erros);
+    if (temErros(erros)) {
+      this.erroForm.set('Corrija os campos destacados.');
+      afterNextRender(() => this.irAoPrimeiroInvalido(), { injector: this.injector });
       return;
     }
-    if (this.marcaObrigatoria() && this.marcaId.value === null) {
-      this.erroForm.set('Marca é obrigatória para água e galão completo.');
-      return;
-    }
-
-    const request: CreateProdutoRequest = {
-      tipo: this.tipo.value,
-      nome: this.nome.value.trim(),
-      marcaId: this.marcaId.value,
-      categoria: this.categoria.value.trim() || null,
-      tamanho: this.tamanho.value.trim() || null,
-      precoReferencia: this.precoReferencia.value ?? 0,
-      estoqueMinimo: this.estoqueMinimo.value,
-    };
 
     this.salvando.set(true);
     try {
-      await this.produtosStore.salvar(request, this.id(), this.foto());
+      await this.produtosStore.salvar(this.form());
       this.toast.success(this.id() === null ? 'Produto cadastrado!' : 'Produto atualizado!');
       this.router.navigateByUrl('/produtos');
     } catch (erro: unknown) {
@@ -161,6 +216,16 @@ export class ProdutoFormPage {
     } finally {
       this.salvando.set(false);
     }
+  }
+
+  /** Rola até o primeiro campo com erro (ordem do DOM) e o foca; a barra fixa não o cobre. */
+  private irAoPrimeiroInvalido(): void {
+    const erro = this.host.nativeElement.querySelector('.campo__erro, .marca .form__erro');
+    const alvo =
+      erro?.closest('label')?.querySelector<HTMLElement>('input, select') ??
+      erro?.closest('.marca')?.querySelector<HTMLElement>('.marca__foto');
+    alvo?.scrollIntoView({ block: 'center' });
+    alvo?.focus({ preventScroll: true });
   }
 
   protected voltar(): void {

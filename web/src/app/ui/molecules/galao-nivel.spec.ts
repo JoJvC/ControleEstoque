@@ -5,7 +5,7 @@ import { GalaoNivel } from './galao-nivel';
 
 const BASE: EstoqueItemResponse = {
   produtoId: 'a1',
-  tipo: 'AGUA',
+  tipo: 'RETORNAVEL',
   nome: 'Água 20L',
   marca: 'Cristal',
   categoria: null,

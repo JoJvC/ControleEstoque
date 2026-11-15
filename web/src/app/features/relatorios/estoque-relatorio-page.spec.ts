@@ -44,7 +44,7 @@ describe('EstoqueRelatorioPage', () => {
     const { fixture, http, el } = montar();
     const item = (id: string, nome: string, quantidade: number, estoqueMinimo: number) => ({
       produtoId: id,
-      tipo: 'AGUA',
+      tipo: 'RETORNAVEL',
       nome,
       marca: null,
       categoria: null,

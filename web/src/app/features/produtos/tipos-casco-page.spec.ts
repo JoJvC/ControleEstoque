@@ -98,6 +98,12 @@ describe('TiposCascoPage', () => {
     expect(t.el.querySelector('ce-page-placeholder')).toBeNull();
   });
 
+  it('o título "Tipos de casco" aparece só no cabeçalho, não no cartão', async () => {
+    const t = await montar();
+    expect(t.el.querySelector('.cartao h2')).toBeNull();
+    expect(t.el.textContent?.split('Tipos de casco').length).toBe(2);
+  });
+
   it('lista vazia mostra o estado vazio', async () => {
     const t = await montar([]);
     expect(t.el.textContent).toContain('Nenhum tipo de casco');

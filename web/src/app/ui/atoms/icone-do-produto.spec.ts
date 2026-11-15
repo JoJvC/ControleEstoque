@@ -19,16 +19,10 @@ describe('iconeDaCategoria', () => {
 });
 
 describe('iconeDoProduto', () => {
-  it('tipos de galão têm ícone próprio', () => {
-    expect(iconeDoProduto({ tipo: 'GALAO_COMPLETO', categoria: null })).toBe('galao-completo');
-    expect(iconeDoProduto({ tipo: 'CASCO', categoria: 'Água' })).toBe('casco');
-    expect(iconeDoProduto({ tipo: 'SUCATA', categoria: null })).toBe('sucata');
-  });
-
-  it('AGUA ignora a categoria', () => {
-    expect(iconeDoProduto({ tipo: 'AGUA', categoria: null })).toBe('galao');
-    expect(iconeDoProduto({ tipo: 'AGUA', categoria: 'Bebidas' })).toBe('galao');
-    expect(iconeDoProduto({ tipo: 'AGUA', categoria: 'Gelo' })).toBe('galao');
+  it('RETORNAVEL ignora a categoria', () => {
+    expect(iconeDoProduto({ tipo: 'RETORNAVEL', categoria: null })).toBe('galao');
+    expect(iconeDoProduto({ tipo: 'RETORNAVEL', categoria: 'Bebidas' })).toBe('galao');
+    expect(iconeDoProduto({ tipo: 'RETORNAVEL', categoria: 'Gelo' })).toBe('galao');
   });
 
   it('DESCARTAVEL segue a categoria', () => {

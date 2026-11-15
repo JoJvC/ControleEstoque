@@ -19,8 +19,8 @@ import { EstoqueStore } from './estoque-store';
 
 const ITEM = {
   produtoId: 'p1',
-  tipo: 'CASCO',
-  nome: 'Casco vazio',
+  tipo: 'RETORNAVEL',
+  nome: 'Água base',
   marca: null,
   categoria: null,
   tamanho: '20L',
@@ -32,7 +32,7 @@ const ITEM = {
 const AGUA = {
   ...ITEM,
   produtoId: 'a1',
-  tipo: 'AGUA',
+  tipo: 'RETORNAVEL',
   nome: 'Água 20L',
   marca: 'Cristal',
   quantidade: 8,
@@ -49,17 +49,7 @@ const COPO = {
   abaixoMinimo: true,
 };
 
-const SUCATA = {
-  ...ITEM,
-  produtoId: 's1',
-  tipo: 'SUCATA',
-  nome: 'Sucata de casco',
-  quantidade: 9,
-  estoqueMinimo: 5,
-  abaixoMinimo: true,
-};
-
-async function montar(permissoes: string[], resposta: object[] = [ITEM, AGUA, COPO, SUCATA]) {
+async function montar(permissoes: string[], resposta: object[] = [AGUA, COPO]) {
   const abrir = vi.fn().mockReturnValue({ closed: of(false) });
   TestBed.configureTestingModule({
     providers: [
@@ -85,7 +75,7 @@ async function montar(permissoes: string[], resposta: object[] = [ITEM, AGUA, CO
     navegar,
     botao: (t: string) =>
       Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes(t)),
-    linha: () => el.querySelector('ce-chip')!.closest('button') as HTMLElement,
+    linha: () => el.querySelector('.galoes .alvo') as HTMLElement,
   };
 }
 
@@ -94,7 +84,7 @@ describe('EstoquePage — permissão estoque.editar', () => {
     const t = await montar([]);
     expect(t.botao('Chegou mercadoria')).toBeUndefined();
     expect(t.botao('Baixa de casco')).toBeUndefined();
-    expect(t.el.textContent).toContain('Casco vazio');
+    expect(t.el.textContent).toContain('Água 20L');
     t.linha().click();
     expect(t.abrir).not.toHaveBeenCalled();
   });
@@ -104,17 +94,17 @@ describe('EstoquePage — permissão estoque.editar', () => {
     t.botao('Baixa de casco')!.click();
     expect(t.abrir).toHaveBeenCalledWith(BaixaCascoSheet);
     t.linha().click();
-    expect(t.abrir).toHaveBeenCalledWith(AjusteSheet, { item: ITEM });
+    expect(t.abrir).toHaveBeenCalledWith(AjusteSheet, { item: AGUA });
     t.botao('Chegou mercadoria')!.click();
     expect(t.navegar).toHaveBeenCalledWith('/estoque/abastecimento');
   });
 });
 
 describe('EstoquePage — seções', () => {
-  it('renderiza água, vasilhames e descartáveis, com destaque só do servidor', async () => {
+  it('renderiza água e descartáveis (vasilhames só na fatia 7), com destaque só do servidor', async () => {
     const t = await montar([]);
     expect(t.el.querySelector('ce-galao-nivel')).not.toBeNull();
-    expect(t.el.querySelector('ce-chip')?.textContent).toContain('Casco');
+    expect(t.el.querySelector('#sec-vasilhames')).toBeNull();
     expect(t.el.querySelector('ce-barra-estoque')).not.toBeNull();
     expect(t.el.textContent).toContain('Sem categoria');
     expect(t.el.querySelector('ce-galao-nivel [data-abaixo-minimo]')).toBeNull();
@@ -123,16 +113,10 @@ describe('EstoquePage — seções', () => {
 });
 
 describe('EstoquePage — chip e status', () => {
-  it('chip de vasilhame mostra o nome e destaca só com abaixoMinimo do servidor', async () => {
+  it('produto Retornável vai para o grupo Água; não há chips de vasilhame até a fatia 7', async () => {
     const t = await montar([]);
-    const chips = Array.from(t.el.querySelectorAll('.chips button'));
-    expect(chips.map((c) => c.textContent)).toEqual([
-      expect.stringContaining('Casco vazio'),
-      expect.stringContaining('Sucata de casco'),
-    ]);
-    expect(chips[0].hasAttribute('data-abaixo-minimo')).toBe(false);
-    expect(chips[1].hasAttribute('data-abaixo-minimo')).toBe(true);
-    expect(chips[1].textContent).toContain('abaixo do mínimo');
+    expect(t.el.querySelectorAll('.galoes .alvo')).toHaveLength(1);
+    expect(t.el.querySelector('.chips')).toBeNull();
   });
 
   it('estado de erro: "Tentar novamente" recarrega o estoque', async () => {

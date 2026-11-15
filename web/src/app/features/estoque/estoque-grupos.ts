@@ -12,7 +12,8 @@ export interface EstoqueAgrupado {
 }
 
 const SEM_CATEGORIA = 'Sem categoria';
-const ORDEM_VASILHAME: TipoProduto[] = ['CASCO', 'SUCATA', 'GALAO_COMPLETO'];
+// ponytail: o estoque de cascos vem de GET /v1/estoque/cascos na fatia 7; até lá não há vasilhame por produto.
+const ORDEM_VASILHAME: TipoProduto[] = [];
 
 /** Casco, sucata e galão completo ficam em itens separados: nunca se somam (DESIGN.md §1). */
 export function agruparEstoque(itens: readonly EstoqueItemResponse[]): EstoqueAgrupado {
@@ -22,7 +23,7 @@ export function agruparEstoque(itens: readonly EstoqueItemResponse[]): EstoqueAg
     porCategoria.set(categoria, [...(porCategoria.get(categoria) ?? []), item]);
   }
   return {
-    agua: itens.filter((i) => i.tipo === 'AGUA'),
+    agua: itens.filter((i) => i.tipo === 'RETORNAVEL'),
     vasilhames: ORDEM_VASILHAME.flatMap((tipo) => itens.filter((i) => i.tipo === tipo)),
     descartaveis: Array.from(porCategoria, ([categoria, grupo]) => ({ categoria, itens: grupo })),
   };

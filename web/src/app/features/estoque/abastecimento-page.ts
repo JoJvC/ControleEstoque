@@ -10,6 +10,7 @@ import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { TipoFrete } from '../../core/api/models/estoque';
+import { estoqueMinimoTotal } from '../../core/api/produto-leitura';
 import { ApiError } from '../../core/http/api-error';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { ToastService } from '../../core/toast/toast-service';
@@ -261,7 +262,7 @@ export class AbastecimentoPage {
         id: p.id,
         nome: [p.nome, p.tamanho].filter(Boolean).join(' '),
         estoque: saldos.get(p.id)?.quantidade ?? 0,
-        minimo: saldos.get(p.id)?.estoqueMinimo ?? p.estoqueMinimo,
+        minimo: saldos.get(p.id)?.estoqueMinimo ?? estoqueMinimoTotal(p),
         abaixo: saldos.get(p.id)?.abaixoMinimo ?? false,
       }))
       .sort((a, b) => Number(b.abaixo) - Number(a.abaixo));

@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 
 import { ProdutoResponse } from '../../core/api/models/estoque';
+import { precoReferenciaDe } from '../../core/api/produto-leitura';
 import { TipoDesconto } from '../../core/api/models/vendas';
 import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
@@ -45,7 +46,7 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
           </ce-form-field>
           <ce-form-field
             rotulo="Preço unitário"
-            dica="Sugestão: {{ dados.produto.precoReferencia | cePreco }} — edite à vontade."
+            dica="Sugestão: {{ precoSugerido | cePreco }} — edite à vontade."
           >
             <ce-money-input [formControl]="preco" />
           </ce-form-field>
@@ -219,12 +220,13 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
 export class ItemVendaSheet {
   protected readonly ref = inject(DialogRef<ItemVendaSheetResultado>);
   protected readonly dados = inject<ItemVendaSheetDados>(DIALOG_DATA);
+  protected readonly precoSugerido = precoReferenciaDe(this.dados.produto);
 
   protected readonly quantidade = new FormControl(this.dados.existente?.quantidade ?? 1, {
     nonNullable: true,
   });
   protected readonly preco = new FormControl<number | null>(
-    this.dados.existente?.precoUnitario ?? this.dados.produto.precoReferencia,
+    this.dados.existente?.precoUnitario ?? this.precoSugerido,
   );
   protected readonly comDesconto = new FormControl(
     this.dados.existente?.desconto !== null && this.dados.existente !== null,

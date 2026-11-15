@@ -22,6 +22,7 @@ import { EstoqueApi } from '../../core/api/estoque-api';
 import { ClienteResponse, EnderecoResponse } from '../../core/api/models/clientes';
 import { SaldosResponse } from '../../core/api/models/clientes';
 import { EstoqueItemResponse, ProdutoResponse } from '../../core/api/models/estoque';
+import { nomesDasMarcas, precoReferenciaDe } from '../../core/api/produto-leitura';
 import { StatusPagamento, VendaDetalheResponse, VendaResponse } from '../../core/api/models/vendas';
 import { VendasApi } from '../../core/api/vendas-api';
 import { ApiError } from '../../core/http/api-error';
@@ -352,7 +353,7 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
                 </button>
                 @if (item.desconto) {
                   <span class="dica">desc. {{ descontoDe(item) | cePreco }}</span>
-                } @else if (item.precoUnitario !== p.precoReferencia) {
+                } @else if (item.precoUnitario !== precoSugerido(p)) {
                   <span class="dica">preço editado</span>
                 }
                 <span class="prod__total">{{ totalDe(item) | cePreco }}</span>
@@ -776,7 +777,7 @@ export class PdvPage implements OnInit {
     itens: this.itens(),
     totais: this.totais(),
     comCascos: this.comCascos(),
-    comGalaoCompleto: this.itens().some((i) => i.produto.tipo === 'GALAO_COMPLETO'),
+    comGalaoCompleto: false,
     cascosDevolvidos: this.cascosDevolvidos(),
     cascosNaHora: this.cascosNaHora(),
     cascoNaRua: this.cascoNaRua(),
@@ -890,7 +891,7 @@ export class PdvPage implements OnInit {
   }
 
   protected detalheDe(p: ProdutoResponse): string {
-    return [p.marca, p.tamanho].filter((parte) => !!parte).join(' · ');
+    return [nomesDasMarcas(p).join(', '), p.tamanho].filter((parte) => !!parte).join(' · ');
   }
 
   // Cliente
@@ -1048,11 +1049,13 @@ export class PdvPage implements OnInit {
     }
   }
 
+  protected readonly precoSugerido = precoReferenciaDe;
+
   /** Preço vivo: o do item no carrinho (editável) ou a sugestão do produto. */
   protected precoDe(produto: ProdutoResponse): number {
     return (
       this.itens().find((i) => i.produto.id === produto.id)?.precoUnitario ??
-      produto.precoReferencia
+      precoReferenciaDe(produto)
     );
   }
 
@@ -1068,7 +1071,7 @@ export class PdvPage implements OnInit {
       const novo: ItemCarrinho = {
         produto,
         quantidade,
-        precoUnitario: produto.precoReferencia,
+        precoUnitario: precoReferenciaDe(produto),
         desconto: null,
       };
       this.mudarItens((atual) => [...atual, novo]);

@@ -45,10 +45,10 @@ describe('EstoqueApi', () => {
   });
 
   it('listarProdutos: envia tipo, marcaId e categoria', () => {
-    api.listarProdutos({ tipo: 'CASCO', marcaId: 'm1', categoria: 'agua' }).subscribe();
+    api.listarProdutos({ tipo: 'RETORNAVEL', marcaId: 'm1', categoria: 'agua' }).subscribe();
     const req = http.expectOne((r) => r.url === `${BASE}/produtos`);
     expect(req.request.method).toBe('GET');
-    expect(req.request.params.get('tipo')).toBe('CASCO');
+    expect(req.request.params.get('tipo')).toBe('RETORNAVEL');
     expect(req.request.params.get('marcaId')).toBe('m1');
     expect(req.request.params.get('categoria')).toBe('agua');
     req.flush([]);
@@ -84,21 +84,37 @@ describe('EstoqueApi', () => {
     req.flush({});
   });
 
-  it('enviarFoto: POST /produtos/{id}/foto com FormData no campo foto', () => {
+  it('adicionarMarca: POST /produtos/{id}/marcas com o corpo', () => {
+    api.adicionarMarca(ID, body).subscribe();
+    const req = http.expectOne(`${BASE}/produtos/${ID}/marcas`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(body);
+    req.flush({});
+  });
+
+  it('atualizarMarca: PUT /produtos/{id}/marcas/{pmId} com o corpo', () => {
+    api.atualizarMarca(ID, 'pm-1', body).subscribe();
+    const req = http.expectOne(`${BASE}/produtos/${ID}/marcas/pm-1`);
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual(body);
+    req.flush({});
+  });
+
+  it('enviarFotoMarca: POST na associação com FormData no campo foto', () => {
     const file = new File(['x'], 'foto.png', { type: 'image/png' });
     let resp: unknown;
-    api.enviarFoto(ID, file).subscribe((r) => (resp = r));
-    const req = http.expectOne(`${BASE}/produtos/${ID}/foto`);
+    api.enviarFotoMarca(ID, 'pm-1', file).subscribe((r) => (resp = r));
+    const req = http.expectOne(`${BASE}/produtos/${ID}/marcas/pm-1/foto`);
     expect(req.request.method).toBe('POST');
     expect(req.request.body instanceof FormData).toBe(true);
     const enviado = (req.request.body as FormData).get('foto') as File;
     expect(enviado.name).toBe('foto.png');
-    req.flush({ url: 'u' });
-    expect(resp).toEqual({ url: 'u' });
+    req.flush({ fotoUrl: 'u' });
+    expect(resp).toEqual({ fotoUrl: 'u' });
   });
 
-  it('urlFoto: mesma rota da foto', () => {
-    expect(api.urlFoto(ID)).toBe(`${BASE}/produtos/${ID}/foto`);
+  it('urlFotoMarca: mesma rota da foto da associação', () => {
+    expect(api.urlFotoMarca(ID, 'pm-1')).toBe(`${BASE}/produtos/${ID}/marcas/pm-1/foto`);
   });
 
   it('obterEstoque: GET /estoque', () => {

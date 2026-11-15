@@ -21,13 +21,7 @@ export function iconeDaCategoria(categoria: string | null): IconeNome {
 /** O tipo define o ícone; só DESCARTAVEL depende da categoria (DESIGN.md §1, §4). */
 export function iconeDoProduto(p: { tipo: TipoProduto; categoria: string | null }): IconeNome {
   switch (p.tipo) {
-    case 'GALAO_COMPLETO':
-      return 'galao-completo';
-    case 'CASCO':
-      return 'casco';
-    case 'SUCATA':
-      return 'sucata';
-    case 'AGUA':
+    case 'RETORNAVEL':
       return 'galao';
     case 'DESCARTAVEL':
       return iconeDaCategoria(p.categoria);

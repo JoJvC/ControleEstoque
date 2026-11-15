@@ -49,6 +49,21 @@ describe('correlationIdInterceptor', () => {
     b.flush({});
   });
 
+  it('sem crypto.randomUUID (http fora de localhost) ainda gera uuid v4', () => {
+    const original = crypto.randomUUID;
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true });
+    try {
+      client.get('/api/x').subscribe();
+      const req = http.expectOne('/api/x');
+      expect(req.request.headers.get('X-Correlation-Id')).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      req.flush({});
+    } finally {
+      Object.defineProperty(crypto, 'randomUUID', { value: original, configurable: true });
+    }
+  });
+
   it('substitui um X-Correlation-Id já presente (comportamento atual)', () => {
     vi.spyOn(crypto, 'randomUUID').mockReturnValue('22222222-2222-4222-8222-222222222222');
     client.get('/api/x', { headers: { 'X-Correlation-Id': 'antigo' } }).subscribe();

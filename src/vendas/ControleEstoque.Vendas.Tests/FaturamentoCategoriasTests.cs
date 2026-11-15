@@ -61,7 +61,7 @@ public sealed class FaturamentoCategoriasTests
     [Fact]
     public void Serializacao_UsaChavesCamelCase()
     {
-        var rel = new RelatorioFaturamento(0, 0, 0, [], [], [new FaturamentoPorCategoria("Água", 6, 90m)]);
+        var rel = new RelatorioFaturamento(0, 0, 0, [], [], [new FaturamentoPorCategoria("Água", 6, 90m)], 0, 0);
         var json = JsonSerializer.Serialize(rel, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         using var doc = JsonDocument.Parse(json);
         var item = doc.RootElement.GetProperty("porCategoria")[0];

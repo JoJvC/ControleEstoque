@@ -38,17 +38,27 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
             }
         }
 
-        var porDia = new List<FaturamentoPorDia>();
+        var liquidoPorDia = new Dictionary<DateOnly, decimal>();
         await using (var command = new NpgsqlCommand(Sql.PorDia, connection))
         {
             AddFiltros(command, inicio, fim, produtoId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                porDia.Add(new FaturamentoPorDia(
-                    reader.GetFieldValue<DateOnly>(0), reader.GetDecimal(1)));
+                liquidoPorDia[reader.GetFieldValue<DateOnly>(0)] = reader.GetDecimal(1);
             }
         }
+
+        // Pagamento e fiado não se repartem por produto: com produtoId ficam em 0.
+        var recebidoPorDia = new Dictionary<DateOnly, decimal>();
+        var fiadoPorDia = new Dictionary<DateOnly, decimal>();
+        if (produtoId is null)
+        {
+            await LerPorDiaAsync(connection, Sql.RecebidoPorDia, inicio, fim, recebidoPorDia, cancellationToken);
+            await LerPorDiaAsync(connection, Sql.FiadoGeradoPorDia, inicio, fim, fiadoPorDia, cancellationToken);
+        }
+
+        var porDia = SerieDiariaFaturamento.Montar(liquidoPorDia, recebidoPorDia, fiadoPorDia);
 
         var linhasCategoria = new List<(TipoProduto Tipo, string? Categoria, long Quantidade, decimal Total)>();
         await using (var command = new NpgsqlCommand(Sql.PorCategoria, connection))
@@ -67,7 +77,8 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
 
         return new RelatorioFaturamento(
             totalBruto, totalDesconto, totalLiquido, porProduto, porDia,
-            FaturamentoCategorias.Consolidar(linhasCategoria));
+            FaturamentoCategorias.Consolidar(linhasCategoria),
+            recebidoPorDia.Values.Sum(), fiadoPorDia.Values.Sum());
     }
 
     public async Task<IReadOnlyList<VendasPorFuncionario>> VendasPorFuncionarioAsync(
@@ -85,6 +96,19 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
         }
 
         return results;
+    }
+
+    private static async Task LerPorDiaAsync(
+        NpgsqlConnection connection, string sql, DateOnly? inicio, DateOnly? fim,
+        Dictionary<DateOnly, decimal> destino, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(sql, connection);
+        AddFiltros(command, inicio, fim, null);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            destino[reader.GetFieldValue<DateOnly>(0)] = reader.GetDecimal(1);
+        }
     }
 
     private static void AddFiltros(NpgsqlCommand command, DateOnly? inicio, DateOnly? fim, Guid? produtoId)
@@ -152,6 +176,35 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
             SELECT v.data::date, SUM(i.total_item)
             """ + FiltroBase + """
 
+            GROUP BY v.data::date
+            ORDER BY v.data::date
+            """;
+
+        // Mesma regra das entradas do caixa: pagamentos de venda ativa + recebimento de fiado avulso.
+        public const string RecebidoPorDia = """
+            SELECT dia, SUM(valor) FROM (
+                SELECT p.data::date AS dia, p.valor
+                FROM venda_pagamentos p
+                JOIN vendas v ON v.id = p.venda_id
+                WHERE p.deleted_at IS NULL AND v.deleted_at IS NULL
+                UNION ALL
+                SELECT l.created_at::date, l.valor
+                FROM lancamentos_fiado l
+                WHERE l.deleted_at IS NULL AND l.tipo = 'PAGAMENTO' AND l.venda_id IS NULL
+            ) r
+            WHERE (@inicio IS NULL OR dia >= @inicio)
+              AND (@fim IS NULL OR dia <= @fim)
+            GROUP BY dia
+            ORDER BY dia
+            """;
+
+        public const string FiadoGeradoPorDia = """
+            SELECT v.data::date, SUM(l.valor)
+            FROM lancamentos_fiado l
+            JOIN vendas v ON v.id = l.venda_id
+            WHERE l.deleted_at IS NULL AND v.deleted_at IS NULL AND l.tipo = 'DEBITO_VENDA'
+              AND (@inicio IS NULL OR v.data::date >= @inicio)
+              AND (@fim IS NULL OR v.data::date <= @fim)
             GROUP BY v.data::date
             ORDER BY v.data::date
             """;

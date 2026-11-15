@@ -104,7 +104,7 @@ public sealed record InfoPagamentoVenda(
 
 public sealed record FaturamentoPorProduto(Guid ProdutoId, string Nome, long Quantidade, decimal TotalLiquido);
 
-public sealed record FaturamentoPorDia(DateOnly Dia, decimal TotalLiquido);
+public sealed record FaturamentoPorDia(DateOnly Dia, decimal TotalLiquido, decimal Recebido, decimal FiadoGerado);
 
 public sealed record FaturamentoPorCategoria(string Categoria, long Quantidade, decimal TotalLiquido);
 
@@ -114,6 +114,8 @@ public sealed record RelatorioFaturamento(
     decimal TotalLiquido,
     IReadOnlyList<FaturamentoPorProduto> PorProduto,
     IReadOnlyList<FaturamentoPorDia> PorDia,
-    IReadOnlyList<FaturamentoPorCategoria> PorCategoria);
+    IReadOnlyList<FaturamentoPorCategoria> PorCategoria,
+    decimal Recebido,
+    decimal FiadoGerado);
 
 public sealed record VendasPorFuncionario(Guid FuncionarioId, string Nome, long QuantidadeVendas, decimal TotalLiquido);

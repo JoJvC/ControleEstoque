@@ -49,7 +49,7 @@ internal sealed class FakeVendaLookup : IVendaLookup
 /// Compartilha os saldos com o lookup e cumpre o contrato C0: checagem de saldo e gravação atômicas,
 /// sob trava. O atraso entre ler e gravar faz a corrida aparecer se a trava for retirada.
 /// </summary>
-internal sealed class FakeVendaRepository : IVendaRepository
+public sealed class FakeVendaRepository : IVendaRepository
 {
     private readonly Dictionary<Guid, long> saldos;
     private readonly Dictionary<Guid, Dictionary<Guid, long>> saidasPorVenda = new();
@@ -62,6 +62,7 @@ internal sealed class FakeVendaRepository : IVendaRepository
 
     public VendaGravacao? UltimaGravacao { get; private set; }
     public VendaGravacao? UltimaEdicao { get; private set; }
+    public (Guid? ClienteId, int PageSize)? UltimaListagem { get; private set; }
     public HashSet<Guid> VendasExistentes { get; } = new();
     public long SaldoCascoRetorno { get; set; }
     public InfoPagamentoVenda? InfoPagamento { get; set; }
@@ -168,8 +169,11 @@ internal sealed class FakeVendaRepository : IVendaRepository
 
     public Task<IReadOnlyList<Venda>> ListAsync(
         Guid? clienteId, DateOnly? inicio, DateOnly? fim, int page, int pageSize,
-        CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Venda>>([]);
+        CancellationToken cancellationToken)
+    {
+        UltimaListagem = (clienteId, pageSize);
+        return Task.FromResult<IReadOnlyList<Venda>>([]);
+    }
 
     public Task<InfoPagamentoVenda?> GetInfoPagamentoAsync(Guid vendaId, CancellationToken cancellationToken) =>
         Task.FromResult(VendasExistentes.Contains(vendaId) ? InfoPagamento : null);

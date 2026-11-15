@@ -10,13 +10,13 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 - **Tipos de casco**: Cadastro próprio de vasilhames, com **nome**, **preço do vasilhame** e se **aceita sucata**. Casco **genérico** não tem marca; casco **específico** é de uma marca. Cada tipo tem estoque próprio de **vazios** e de **sucata** (sucata só nos tipos que aceitam).
 - **Estoque**: Quantidades por produto+marca (razão de lançamentos) e, separado, o estoque de cascos por tipo de casco (vazios e sucata). O estoque geral do produto é a soma das marcas.
 - **Vendas**: Registro de cada venda, podendo conter N itens (produtos diferentes e/ou marcas diferentes de galão na mesma venda), vinculada a cliente, funcionário responsável, formas de pagamento e entrega. Pode ser editada após o registro (itens, pagamentos, desconto, devolução) e permite emissão de cupom fiscal.
-- **Pagamentos**: Uma venda pode ter N formas de pagamento simultâneas (pix, cartão de crédito, cartão de débito, dinheiro, etc.), cada uma com valor próprio lançado. A soma dos valores define quanto da venda já foi pago; o que faltar compõe o fiado do cliente.
+- **Pagamentos**: Uma venda pode ter N formas de pagamento simultâneas (pix, cartão de crédito, cartão de débito, dinheiro, etc.), cada uma com valor próprio lançado. A soma dos valores define quanto da venda já foi pago; o que faltar compõe o fiado do cliente. Uma das formas é o **crédito do cliente** (saldo positivo na conta corrente), limitado ao crédito disponível.
 - **Caixa**: Controle de entradas e saídas (despesas do dia categorizadas por tipo) e lançamento da diária de funcionários no fechamento diário; a diária credita a conta corrente do funcionário e não sai do caixa.
 - **Funcionários**: Cadastro dos funcionários, vinculação às vendas, diária fixa.
 - **Conta Corrente do Funcionário**: Controle de remuneração — diárias lançadas, vales (adiantamentos) tirados, pagamentos realizados (normalmente semanais) e saldo.
 - **Conta Corrente de Casco do Cliente**: Saldo de cascos (vasilhames) que o cliente está devendo à loja, decorrente exclusivamente de vendas de produtos retornáveis (o descartável não gera retorno e a venda nunca empresta sucata).
 - **Registro de Sucata do Cliente**: Quantidade de vasilhames sucata (quebrados) entregues pelo cliente à loja ao longo do tempo. **Não é um débito** — é um recebimento independente, que não abate o saldo de casco do cliente.
-- **Conta Corrente do Cliente (Fiado)**: Saldo devedor financeiro do cliente, incluindo débitos de casco convertidos em valor, eventual conversão em valor de sucata entregue, e o saldo pendente de vendas ainda não totalmente pagas.
+- **Conta Corrente do Cliente (Fiado)**: Saldo único em dinheiro do cliente, calculado no servidor a partir dos lançamentos: **negativo = fiado** (o cliente deve) e **positivo = crédito** (a loja deve ao cliente). Reúne os débitos de casco convertidos em valor, a conversão em valor de sucata entregue, o saldo pendente de vendas ainda não totalmente pagas, os pagamentos do cliente e o uso de crédito em vendas.
 
 ## 3. Fluxos de Negócio
 ### 3.1 Cadastro de Clientes
@@ -42,6 +42,7 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 - **Edição pós-registro**: a venda pode ser editada depois de registrada (itens, pagamentos, desconto, devoluções de casco/sucata).
 - **Cupom fiscal**: o sistema permite emitir cupom fiscal referente à venda.
 - **Formas de pagamento**: uma venda pode ter N formas de pagamento simultâneas (pix, cartão de crédito, cartão de débito, dinheiro, etc.), cada uma com valor lançado individualmente. O que não for coberto pela soma dos pagamentos vira pendência (fiado) na conta corrente do cliente.
+- **Crédito do cliente como forma de pagamento**: a forma "Crédito do cliente" conta como valor pago da venda, mas **não é dinheiro recebido**: não entra nas entradas do caixa, no recebido do dia nem no recebido do faturamento. A soma dessa forma não pode passar do **crédito disponível** do cliente (o saldo, quando positivo); acima disso a venda é recusada (`CREDITO_INSUFICIENTE`) e nada é gravado. O uso gera um lançamento de débito (`DEBITO_USO_CREDITO`) na conta do cliente. Na edição da venda, o uso de crédito da própria venda não conta contra o limite. Com a venda já registrada, o pagamento posterior não aceita essa forma (`FORMA_NAO_PERMITIDA`): o crédito já abate o fiado no saldo.
 - **Desconto**: pode ser inserido no ato da venda ou em uma edição posterior, sempre com um motivo. O desconto é aplicado por item (produto), digitado manualmente (valor ou percentual); o sistema recalcula o total da venda automaticamente.
 - **Casco do item**: o tipo de casco de cada linha retornável é resolvido pelo sistema (o específico da associação vence o genérico do produto); descartável não tem casco e não movimenta casco. A linha retornável é, por padrão, uma **troca**: a quantidade vendida é emprestada no tipo da linha e gera débito de casco do cliente nesse tipo.
 - **Pagou o vasilhame**: a linha retornável pode ser marcada como "pagou o vasilhame" (em descartável, a venda é recusada). O valor bruto do item passa a ser quantidade × preço unitário + quantidade × preço do vasilhame do tipo de casco resolvido; o preço do vasilhame vem do cadastro do tipo (relido a cada edição), nunca da requisição, e fica gravado no item. Desconto e total do item seguem a regra normal, aplicados sobre esse bruto. A linha não gera débito de casco.
@@ -70,7 +71,7 @@ Controles envolvidos:
 - **Pagar Casco**: funcionalidade para quitar o débito de casco do cliente, de duas formas possíveis:
   - **Devolução física**: cliente devolve o(s) casco(s) vazio(s) de um tipo (no ato da venda ou avulsa, sem compra associada), abatendo o débito daquele tipo e dando entrada no estoque físico de vazios do mesmo tipo.
   - **Conversão em valor**: ao invés de devolver fisicamente, o débito de casco de um tipo é convertido em cobrança em dinheiro, lançando a venda do casco vazio pelo **preço do vasilhame do tipo** (quantidade × preço; tipo sem preço de vasilhame não converte), que migra a pendência para a conta corrente financeira (fiado) do cliente. A quantidade convertida é limitada ao saldo do cliente naquele tipo.
-- **Entrega de Sucata**: cliente entrega vasilhame(s) quebrado(s) de um tipo de casco à loja (avulso ou junto de uma venda), dando entrada no estoque físico de sucata do tipo e no registro de sucata do cliente. Só é aceita em tipo que aceita sucata. A loja pode, a seu critério, converter essa entrega em valor (crédito ao cliente na conta corrente/fiado).
+- **Entrega de Sucata**: cliente entrega vasilhame(s) quebrado(s) de um tipo de casco à loja (avulso ou junto de uma venda), dando entrada no estoque físico de sucata do tipo e no registro de sucata do cliente. Só é aceita em tipo que aceita sucata. A loja pode, a seu critério, converter essa entrega em valor (crédito ao cliente na conta corrente/fiado); a conversão soma ao saldo e, se não houver fiado a abater, vira crédito.
 
 ### 3.7 Abastecimento
 - Registro de abastecimento do estoque da loja, que pode ser feito via frete terceirizado ou com caminhão/funcionário próprio da loja.
@@ -88,8 +89,10 @@ Controles envolvidos:
 
 ### 3.9 Conta Corrente de Clientes (Fiado)
 - Vendas cujo total de pagamentos não cobre o valor integral (ver 3.4) e conversões de débito de casco normal em valor geram lançamentos de débito na conta corrente do cliente. Entregas de sucata, se a loja optar por convertê-las em valor, geram lançamento de crédito.
-- Pagamentos do cliente (à vista de dívida antiga, parcelas) são lançados como baixa na conta corrente.
-- Saldo da conta corrente = débitos (vendas não totalmente pagas + conversões de casco em valor) − créditos (conversões de sucata em valor) − pagamentos realizados.
+- Pagamentos do cliente (à vista de dívida antiga, parcelas) são lançados como baixa na conta corrente. O pagamento pode ser **maior que o devido** (ou feito sem dívida): o valor inteiro é lançado e o excedente vira **crédito** do cliente. O pagamento avulso é dinheiro recebido e entra nas entradas do caixa.
+- **Saldo** (único, em dinheiro) = −(débitos − créditos − pagamentos), com débitos = vendas não totalmente pagas + conversões de casco em valor + uso de crédito em vendas; créditos = conversões de sucata em valor. **Negativo = fiado; positivo = crédito.** O servidor calcula o saldo; a tela não soma saldos guardados. O saldo devedor (o inverso) segue exposto ao lado, com o mesmo sentido de antes.
+- **Crédito disponível** = o saldo quando positivo, senão zero. Origens do crédito: pagamento acima do devido e sucata convertida em valor.
+- **Fiado a receber** (agregado da tela Hoje) soma só os saldos negativos (em valor absoluto); créditos de outros clientes não abatem.
 - Esta conta é independente do saldo físico de casco normal e do registro de sucata (ver 3.6) — só recebe lançamento quando há conversão explícita em valor.
 
 ## 4. Casos de Uso
@@ -121,7 +124,7 @@ Controles envolvidos:
 - Cliente entrega vasilhame(s) quebrado(s) à loja, avulso ou junto de uma venda, dando entrada no estoque de sucata do tipo (que deve aceitar sucata) e no registro de sucata do cliente por tipo — sem abater o débito de casco normal. A loja pode, a seu critério, converter a entrega em valor (crédito na conta corrente/fiado).
 
 ### 4.10 Venda a Prazo / Fiado
-- Venda registrada com pagamento a prazo, gerando débito na conta corrente do cliente; pagamentos futuros baixam esse saldo.
+- Venda registrada com pagamento a prazo, gerando débito na conta corrente do cliente; pagamentos futuros baixam esse saldo. Pagamento acima do devido gera crédito, que pode pagar parte (ou todo) de uma venda futura na forma "Crédito do cliente", até o crédito disponível (`CREDITO_INSUFICIENTE` acima disso).
 
 ### 4.11 Fechamento de Caixa
 - Ao final do dia, lançamento das diárias dos funcionários que trabalharam (creditando a conta corrente de cada um; o valor de cada diária pode ser ajustado só naquele fechamento, sem alterar o cadastro; valor 0 não lança e negativo é recusado), total de vendas, despesas do dia e saldo final.
@@ -155,7 +158,7 @@ Controles envolvidos:
 - **Pagamento**: uma venda pode ter N formas de pagamento simultâneas (pix, cartão de crédito, cartão de débito, dinheiro, etc.), cada uma com valor lançado individualmente.
 - **Status de pagamento**: a venda só é considerada **paga** quando a soma dos pagamentos cobre integralmente o valor total (já com desconto aplicado); enquanto não cobrir, fica parcial/pendente e a diferença compõe o fiado do cliente.
 - **Desconto**: aplicado por item (produto), digitado manualmente (valor ou percentual) no ato ou na edição da venda, sempre com motivo obrigatório; o sistema recalcula o total automaticamente.
-- **Fiado**: é uma pendência financeira separada do débito físico de casco normal e do registro de sucata; só há lançamento em fiado quando a venda não é totalmente paga, quando um débito de casco normal é explicitamente convertido em valor, ou quando uma entrega de sucata é convertida em crédito. Não há limite de crédito/fiado por cliente — fica a critério de quem lança a venda.
+- **Fiado**: é uma pendência financeira separada do débito físico de casco normal e do registro de sucata; só há lançamento em fiado quando a venda não é totalmente paga, quando um débito de casco normal é explicitamente convertido em valor, ou quando uma entrega de sucata é convertida em crédito (que soma ao saldo do cliente). Não há limite de fiado por cliente — fica a critério de quem lança a venda. O uso de crédito, ao contrário, tem limite: o crédito disponível do cliente.
 - **Tipo de produto**: todo produto é **RETORNÁVEL** (vendido em vasilhame que volta, com tipo de casco) ou **DESCARTÁVEL** (sem casco). Retornável exige um tipo de casco genérico; descartável não pode ter casco, nem genérico nem específico.
 - **Descartáveis**: controle de estoque simples (entrada/saída) por produto+marca, sem casco, sem retorno e sem débito de casco; tamanhos livres. Qualquer produto novo sem regra de casco (ex: carvão, gelo) é cadastrado e tratado como descartável, com categoria livre para agrupamento.
 - **Marca**: cadastro próprio. Cada produto tem N marcas (associação produto+marca); a marca é obrigatória e única dentro do produto. Não existe associação sem marca: produto sem marca própria usa uma marca cadastrada (ex: 'Genérica').

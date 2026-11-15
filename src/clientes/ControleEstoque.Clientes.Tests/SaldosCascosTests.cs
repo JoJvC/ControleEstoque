@@ -48,6 +48,25 @@ public sealed class SaldosCascosTests
     }
 
     [Fact]
+    public void Montar_QuandoFiado_SaldoNegativoECreditoZero()
+    {
+        var saldos = SaldosCascos.Montar([], [], 30m);
+
+        Assert.Equal(-30m, saldos.Saldo);
+        Assert.Equal(0m, saldos.CreditoDisponivel);
+    }
+
+    [Fact]
+    public void Montar_QuandoCredito_SaldoPositivoECreditoDisponivelIgual()
+    {
+        var saldos = SaldosCascos.Montar([], [], -50m);
+
+        Assert.Equal(50m, saldos.Saldo);
+        Assert.Equal(50m, saldos.CreditoDisponivel);
+        Assert.Equal(-50m, saldos.SaldoFiado);
+    }
+
+    [Fact]
     public void Montar_QuandoSemLinhas_DaZeroEListasVazias()
     {
         var saldos = SaldosCascos.Montar([], [], 0m);

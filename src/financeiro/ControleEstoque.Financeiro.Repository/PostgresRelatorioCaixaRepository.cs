@@ -67,6 +67,7 @@ public sealed class PostgresRelatorioCaixaRepository : IRelatorioCaixaRepository
                                  FROM venda_pagamentos p
                                  JOIN vendas v ON v.id = p.venda_id
                                  WHERE p.deleted_at IS NULL AND v.deleted_at IS NULL
+                                   AND p.forma <> 'CREDITO_CLIENTE'
                                    AND p.data::date = c.data), 0)
                      + COALESCE((SELECT SUM(l.valor)
                                  FROM lancamentos_fiado l

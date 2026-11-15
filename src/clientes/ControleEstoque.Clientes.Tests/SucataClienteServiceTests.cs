@@ -43,6 +43,16 @@ public sealed class SucataClienteServiceTests
     }
 
     [Fact]
+    public async Task EntregarAsync_QuandoConverteDeSaldoZero_DeixaNovoSaldoPositivo()
+    {
+        var cliente = clientes.Add("Cliente X");
+
+        var resultado = await sut.EntregarAsync(cliente.Id, tipo.Id, 4, 40m, CancellationToken.None);
+
+        Assert.Equal(40m, resultado.NovoSaldo);
+    }
+
+    [Fact]
     public async Task EntregarAsync_QuandoQuantidadeInvalida_LancaValidacao()
     {
         var cliente = clientes.Add("Cliente X");

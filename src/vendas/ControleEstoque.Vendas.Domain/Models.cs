@@ -88,7 +88,8 @@ public sealed record VendaGravacao(
     IReadOnlyList<CascoQuantidade> CascosEmprestados,
     IReadOnlyList<CascoQuantidade> CascosDevolvidos,
     IReadOnlyList<CascoQuantidade> SucataEntregue,
-    decimal DebitoFiado);
+    decimal DebitoFiado,
+    decimal UsoCredito);
 
 /// <summary>
 /// Resultado da gravação: saldo de casco do cliente por tipo, ou a falta de estoque que causou o rollback

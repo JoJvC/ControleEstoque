@@ -38,7 +38,8 @@ public sealed record ResultadoFechamento(
     decimal SaldoFinal,
     int DiariasLancadas);
 
-public sealed record SaldoFiadoCliente(Guid ClienteId, string Nome, decimal SaldoDevedor);
+/// <summary>SaldoDevedor positivo = deve; Saldo é o inverso (negativo = fiado, positivo = crédito).</summary>
+public sealed record SaldoFiadoCliente(Guid ClienteId, string Nome, decimal SaldoDevedor, decimal Saldo);
 
 public sealed record TotalFiadoResponse(decimal TotalAReceber);
 

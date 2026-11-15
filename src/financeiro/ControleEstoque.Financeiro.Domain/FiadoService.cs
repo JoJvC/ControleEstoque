@@ -27,14 +27,6 @@ public sealed class FiadoService : IFiadoService
             throw new EntityNotFoundException("CLIENTE_NAO_ENCONTRADO", $"Cliente {clienteId} não encontrado.");
         }
 
-        var saldo = await fiado.GetSaldoAsync(clienteId, cancellationToken);
-        if (valor > saldo)
-        {
-            throw new BusinessRuleException(
-                "PAGAMENTO_EXCEDE_SALDO",
-                $"Pagamento de {valor:F2} excede o saldo devedor de {saldo:F2}.");
-        }
-
         var observacao = string.IsNullOrWhiteSpace(forma)
             ? "Pagamento de fiado"
             : $"Pagamento de fiado ({forma})";

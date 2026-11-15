@@ -11,32 +11,29 @@ public sealed class FiadoServiceTests
     public FiadoServiceTests() => sut = new FiadoService(fiado);
 
     [Fact]
-    public async Task PagarAsync_QuandoExcedeSaldo_LancaPagamentoExcedeSaldo()
+    public async Task PagarAsync_QuandoPagaAcimaDoDevido_AceitaEGeraCredito()
     {
+        // Saldo −30 (deve 30), paga 50: saldo devedor −20 = crédito de 20 (NovoSaldo +20).
         var cliente = Guid.NewGuid();
         fiado.Clientes.Add(cliente);
         fiado.Saldos[cliente] = 30m;
 
-        var e = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => sut.PagarAsync(cliente, 50m, "PIX", CancellationToken.None));
+        var novoSaldoDevedor = await sut.PagarAsync(cliente, 50m, "PIX", CancellationToken.None);
 
-        Assert.Equal("PAGAMENTO_EXCEDE_SALDO", e.Code);
+        Assert.Equal(-20m, novoSaldoDevedor);
+        Assert.Equal(20m, 0m - novoSaldoDevedor);
+        Assert.Equal(50m, fiado.PagamentosLancados.Sum());
     }
 
     [Fact]
-    public async Task PagarAsync_QuandoRepositorioRecusaPorExcesso_LancaPagamentoExcedeSaldo()
+    public async Task PagarAsync_QuandoSemDivida_GeraCredito()
     {
-        // A pré-checagem passa (saldo 50), mas outro pagamento esgota o saldo antes da trava do cliente.
         var cliente = Guid.NewGuid();
         fiado.Clientes.Add(cliente);
-        fiado.Saldos[cliente] = 50m;
-        fiado.RecusarPorExcesso = true;
 
-        var e = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => sut.PagarAsync(cliente, 50m, "PIX", CancellationToken.None));
+        var novoSaldoDevedor = await sut.PagarAsync(cliente, 40m, "DINHEIRO", CancellationToken.None);
 
-        Assert.Equal("PAGAMENTO_EXCEDE_SALDO", e.Code);
-        Assert.Equal(50m, fiado.Saldos[cliente]);
+        Assert.Equal(-40m, novoSaldoDevedor);
     }
 
     [Fact]

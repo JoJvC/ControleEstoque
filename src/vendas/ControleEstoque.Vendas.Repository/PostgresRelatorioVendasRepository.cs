@@ -190,6 +190,7 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
                 FROM venda_pagamentos p
                 JOIN vendas v ON v.id = p.venda_id
                 WHERE p.deleted_at IS NULL AND v.deleted_at IS NULL
+                  AND p.forma <> 'CREDITO_CLIENTE' -- crédito usado não é dinheiro recebido
                 UNION ALL
                 SELECT l.created_at::date, l.valor
                 FROM lancamentos_fiado l

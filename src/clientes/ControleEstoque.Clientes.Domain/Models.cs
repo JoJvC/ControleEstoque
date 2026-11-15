@@ -21,12 +21,15 @@ public sealed record Cliente(
 /// Os três saldos do cliente são independentes entre si:
 /// casco normal (unidades devidas), sucata (unidades entregues — não é débito)
 /// e fiado (valor devedor em reais). Casco e sucata são por tipo de casco;
-/// os totais são a soma das listas.
+/// os totais são a soma das listas. Saldo é o inverso de SaldoFiado (negativo = fiado,
+/// positivo = crédito); CreditoDisponivel = max(0, Saldo).
 /// </summary>
 public sealed record SaldosCliente(
     long SaldoCascos,
     long SucataEntregue,
     decimal SaldoFiado,
+    decimal Saldo,
+    decimal CreditoDisponivel,
     IReadOnlyList<SaldoCascoPorTipo> CascosPorTipo,
     IReadOnlyList<SucataPorTipo> SucataPorTipo);
 
@@ -39,9 +42,17 @@ public sealed record TipoCascoCliente(Guid Id, string Nome, bool AceitaSucata, d
 
 public sealed record ResultadoDevolucaoCasco(long NovoSaldoCascos);
 
-public sealed record ResultadoConversaoCasco(long NovoSaldoCascos, decimal NovoSaldoFiado);
+public sealed record ResultadoConversaoCasco(long NovoSaldoCascos, decimal NovoSaldoFiado)
+{
+    /// <summary>Saldo único do cliente (negativo = fiado, positivo = crédito).</summary>
+    public decimal NovoSaldo => 0m - NovoSaldoFiado;
+}
 
-public sealed record ResultadoEntregaSucata(long TotalSucataEntregue, decimal NovoSaldoFiado);
+public sealed record ResultadoEntregaSucata(long TotalSucataEntregue, decimal NovoSaldoFiado)
+{
+    /// <summary>Saldo único do cliente (negativo = fiado, positivo = crédito).</summary>
+    public decimal NovoSaldo => 0m - NovoSaldoFiado;
+}
 
 public sealed record SaldoCascoRelatorio(Guid ClienteId, string Nome, long SaldoCascos);
 

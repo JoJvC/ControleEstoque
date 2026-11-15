@@ -22,6 +22,8 @@ public sealed class PostgresVendaRepository : IVendaRepository
             await GarantirCaixaHojeAbertoAsync(connection, transaction, cancellationToken);
         }
 
+        await TravarClienteParaCreditoAsync(connection, transaction, gravacao, cancellationToken);
+
         if (await ChecarSaldoAsync(connection, transaction, gravacao, cancellationToken) is { } falta)
         {
             return new ResultadoGravacao([], falta); // sem Commit: o Dispose da transação faz rollback.
@@ -60,6 +62,8 @@ public sealed class PostgresVendaRepository : IVendaRepository
             command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
+
+        await TravarClienteParaCreditoAsync(connection, transaction, gravacao, cancellationToken);
 
         if (await ChecarSaldoAsync(connection, transaction, gravacao, cancellationToken) is { } falta)
         {
@@ -352,6 +356,36 @@ public sealed class PostgresVendaRepository : IVendaRepository
         }
     }
 
+    /// <summary>
+    /// Só com uso de crédito: trava o cliente (ordem caixa, venda, cliente, produtos) e relê o saldo sob a trava;
+    /// recusa com CREDITO_INSUFICIENTE (sem commit) se o uso passa de max(0, saldo). Na edição roda depois do
+    /// soft-delete dos efeitos, então o uso anterior da própria venda não conta.
+    /// </summary>
+    private static async Task TravarClienteParaCreditoAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, VendaGravacao gravacao,
+        CancellationToken cancellationToken)
+    {
+        if (gravacao.UsoCredito <= 0)
+        {
+            return;
+        }
+
+        await using (var command = new NpgsqlCommand(Sql.TravaCliente, connection, transaction))
+        {
+            command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
+            await command.ExecuteScalarAsync(cancellationToken);
+        }
+
+        decimal saldo;
+        await using (var command = new NpgsqlCommand(Sql.SaldoCliente, connection, transaction))
+        {
+            command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
+            saldo = (decimal?)await command.ExecuteScalarAsync(cancellationToken) ?? 0m;
+        }
+
+        VendaCalculos.ValidarUsoCredito(gravacao.UsoCredito, Math.Max(0m, saldo));
+    }
+
     private static async Task InserirEfeitosAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, VendaGravacao gravacao,
         CancellationToken cancellationToken)
@@ -447,6 +481,15 @@ public sealed class PostgresVendaRepository : IVendaRepository
             command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
             command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
             command.Parameters.AddWithValue("valor", gravacao.DebitoFiado);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        if (gravacao.UsoCredito > 0)
+        {
+            await using var command = new NpgsqlCommand(Sql.InsertUsoCredito, connection, transaction);
+            command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
+            command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
+            command.Parameters.AddWithValue("valor", gravacao.UsoCredito);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
@@ -674,6 +717,17 @@ public sealed class PostgresVendaRepository : IVendaRepository
             INSERT INTO lancamentos_fiado (cliente_id, venda_id, tipo, valor)
             VALUES (@clienteId, @vendaId, 'DEBITO_VENDA', @valor)
             """;
+
+        public const string InsertUsoCredito = """
+            INSERT INTO lancamentos_fiado (cliente_id, venda_id, tipo, valor, observacao)
+            VALUES (@clienteId, @vendaId, 'DEBITO_USO_CREDITO', @valor, 'Uso de crédito na venda')
+            """;
+
+        public const string TravaCliente =
+            "SELECT id FROM clientes WHERE id = @clienteId AND deleted_at IS NULL FOR UPDATE";
+
+        public const string SaldoCliente =
+            "SELECT saldo FROM vw_saldo_fiado_cliente WHERE cliente_id = @clienteId";
 
         public const string InsertAbatimentoFiado = """
             INSERT INTO lancamentos_fiado (cliente_id, venda_id, tipo, valor, observacao)

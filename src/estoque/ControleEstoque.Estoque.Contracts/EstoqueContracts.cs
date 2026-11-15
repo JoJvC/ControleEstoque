@@ -90,14 +90,61 @@ public sealed record CreateMovimentoRequest(Guid ProdutoMarcaId, int Quantidade,
 public sealed record CreateMovimentoCascoRequest(
     Guid TipoCascoId, SituacaoCasco Situacao, int Quantidade, string? Motivo);
 
-public sealed record AbastecimentoItemRequest(Guid ProdutoMarcaId, int Quantidade, decimal CustoUnitario);
+public sealed record AbastecimentoItemRequest(Guid ProdutoMarcaId, int Quantidade);
+
+public sealed record AbastecimentoCascoRequest(Guid TipoCascoId, int Quantidade);
 
 public sealed record CreateAbastecimentoRequest(
     TipoFrete TipoFrete,
-    decimal CustoTotal,
     Guid? FuncionarioId,
     string? Observacao,
-    List<AbastecimentoItemRequest>? Itens);
+    List<AbastecimentoItemRequest>? Itens,
+    List<AbastecimentoCascoRequest>? Cascos);
+
+public sealed record CustoLinhaRequest(Guid Id, decimal CustoUnitario);
+
+public sealed record LancarCustosAbastecimentoRequest(
+    Guid FuncionarioId, decimal? Frete, List<CustoLinhaRequest>? Itens, List<CustoLinhaRequest>? Cascos);
+
+public sealed record AbastecimentoItemResponse(
+    Guid Id, Guid ProdutoMarcaId, int Quantidade, decimal? CustoUnitario, decimal? CustoDaUnidade);
+
+public sealed record AbastecimentoCascoResponse(
+    Guid Id, Guid TipoCascoId, int Quantidade, decimal? CustoUnitario, decimal? CustoDaUnidade);
+
+public sealed record AbastecimentoDetalheResponse(
+    Guid Id,
+    DateOnly Data,
+    TipoFrete TipoFrete,
+    Guid? FuncionarioId,
+    string? Observacao,
+    decimal? Frete,
+    bool CustoPendente,
+    decimal? CustoTotal,
+    int TotalUnidades,
+    List<AbastecimentoItemResponse> Itens,
+    List<AbastecimentoCascoResponse> Cascos)
+{
+    public static AbastecimentoDetalheResponse From(AbastecimentoDetalhe d)
+    {
+        decimal? Unidade(Guid id) => d.Custo.CustoDaUnidade.TryGetValue(id, out var v) ? v : null;
+
+        return new AbastecimentoDetalheResponse(
+            d.Carga.Id, d.Carga.Data, d.Carga.TipoFrete, d.Carga.FuncionarioId, d.Carga.Observacao,
+            d.Carga.Frete, d.Custo.Pendente, d.Custo.CustoTotal, d.Custo.TotalUnidades,
+            d.Carga.Itens.Select(l => new AbastecimentoItemResponse(
+                l.Id, l.ReferenciaId, l.Quantidade, l.CustoUnitario, Unidade(l.Id))).ToList(),
+            d.Carga.Cascos.Select(l => new AbastecimentoCascoResponse(
+                l.Id, l.ReferenciaId, l.Quantidade, l.CustoUnitario, Unidade(l.Id))).ToList());
+    }
+}
+
+public sealed record AbastecimentoPendenteResponse(
+    Guid Id, DateOnly Data, TipoFrete TipoFrete, int TotalUnidades, int LinhasSemCusto, bool FreteFaltando)
+{
+    public static AbastecimentoPendenteResponse From(AbastecimentoPendente p) => new(
+        p.Id, p.Data, p.TipoFrete, p.TotalUnidades, p.LinhasSemCusto, p.FreteFaltando);
+}
 
 public sealed record CreateBaixaCascoRequest(
     Guid TipoCascoId, int Quantidade, string? Motivo, List<Guid>? ResponsaveisIds);

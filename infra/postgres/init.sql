@@ -236,7 +236,8 @@ CREATE TABLE abastecimentos (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     data            DATE NOT NULL DEFAULT CURRENT_DATE,
     tipo_frete      tipo_frete NOT NULL,
-    custo_total     NUMERIC(19,2) NOT NULL DEFAULT 0, -- vinculado ao caixa como despesa
+    custo_total     NUMERIC(19,2) NOT NULL DEFAULT 0, -- legado: sem escrita nem leitura (custo vem de itens, cascos e frete)
+    frete           NUMERIC(19,2), -- NULL = custo pendente; lançado no momento 2
     funcionario_id  UUID REFERENCES funcionarios(id), -- motorista quando frete PROPRIO
     observacao      TEXT,
     created_by      UUID REFERENCES funcionarios(id),
@@ -252,10 +253,26 @@ CREATE TABLE abastecimento_itens (
     abastecimento_id UUID NOT NULL REFERENCES abastecimentos(id),
     produto_marca_id UUID NOT NULL REFERENCES produto_marcas(id),
     quantidade       INT NOT NULL CHECK (quantidade > 0),
-    custo_unitario   NUMERIC(19,2) NOT NULL DEFAULT 0
+    custo_unitario   NUMERIC(19,2) -- NULL = custo pendente; lançado no momento 2
 );
 
 CREATE INDEX idx_abast_itens_abastecimento ON abastecimento_itens(abastecimento_id);
+
+-- Cascos vazios da carga, por tipo de casco (custo opcional, conta como unidade no rateio do frete).
+CREATE TABLE IF NOT EXISTS abastecimento_cascos (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    abastecimento_id UUID NOT NULL REFERENCES abastecimentos(id),
+    tipo_casco_id    UUID NOT NULL REFERENCES tipos_casco(id),
+    quantidade       INT NOT NULL CHECK (quantidade > 0),
+    custo_unitario   NUMERIC(19,2) CHECK (custo_unitario >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_abast_cascos_abastecimento ON abastecimento_cascos(abastecimento_id);
+
+-- Abastecimento em dois momentos: o frete e o custo unitário passam a ser opcionais (bancos já existentes).
+ALTER TABLE abastecimentos ADD COLUMN IF NOT EXISTS frete NUMERIC(19,2);
+ALTER TABLE abastecimento_itens ALTER COLUMN custo_unitario DROP NOT NULL;
+ALTER TABLE abastecimento_itens ALTER COLUMN custo_unitario DROP DEFAULT;
 
 ALTER TABLE movimentos_estoque
     ADD CONSTRAINT fk_mov_estoque_abastecimento
@@ -269,6 +286,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_abastecimento_itens_custo_unitario_nao_negativo') THEN
         ALTER TABLE abastecimento_itens ADD CONSTRAINT chk_abastecimento_itens_custo_unitario_nao_negativo CHECK (custo_unitario >= 0);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_abastecimentos_frete_nao_negativo') THEN
+        ALTER TABLE abastecimentos ADD CONSTRAINT chk_abastecimentos_frete_nao_negativo CHECK (frete >= 0);
     END IF;
 END
 $$;
@@ -362,14 +382,16 @@ ALTER TABLE movimentos_estoque
     FOREIGN KEY (venda_id) REFERENCES vendas(id);
 
 -- ----------------------------------------------------------------------------
--- CASCO NORMAL — LEDGER POR CLIENTE
--- (sucata NUNCA entra aqui; venda de água só empresta casco normal)
+-- CASCO NORMAL — LEDGER POR CLIENTE E TIPO DE CASCO
+-- (o saldo de casco é por cliente e tipo de casco; sucata NUNCA entra aqui, vai para
+-- entregas_sucata_cliente, na seção abaixo; venda de água só empresta casco normal)
 -- ----------------------------------------------------------------------------
 
 CREATE TABLE movimentos_casco_cliente (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     cliente_id  UUID NOT NULL REFERENCES clientes(id),
     venda_id    UUID REFERENCES vendas(id), -- NULL = movimentação avulsa
+    tipo_casco_id UUID NOT NULL REFERENCES tipos_casco(id),
     tipo        tipo_movimento_casco NOT NULL,
     quantidade  INT NOT NULL CHECK (quantidade > 0),
     created_by  UUID REFERENCES funcionarios(id),
@@ -377,7 +399,7 @@ CREATE TABLE movimentos_casco_cliente (
     deleted_at  TIMESTAMPTZ
 );
 
-CREATE INDEX idx_mov_casco_cliente ON movimentos_casco_cliente(cliente_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_mov_casco_cliente ON movimentos_casco_cliente(cliente_id, tipo_casco_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_mov_casco_venda   ON movimentos_casco_cliente(venda_id)   WHERE venda_id IS NOT NULL;
 
 -- ----------------------------------------------------------------------------
@@ -389,6 +411,7 @@ CREATE TABLE entregas_sucata_cliente (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     cliente_id       UUID NOT NULL REFERENCES clientes(id),
     venda_id         UUID REFERENCES vendas(id), -- NULL = entrega avulsa
+    tipo_casco_id    UUID NOT NULL REFERENCES tipos_casco(id),
     quantidade       INT NOT NULL CHECK (quantidade > 0),
     valor_conversao  NUMERIC(19,2), -- NULL = não convertida em crédito no fiado
     created_by       UUID REFERENCES funcionarios(id),
@@ -396,7 +419,7 @@ CREATE TABLE entregas_sucata_cliente (
     deleted_at       TIMESTAMPTZ
 );
 
-CREATE INDEX idx_sucata_cliente ON entregas_sucata_cliente(cliente_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sucata_cliente ON entregas_sucata_cliente(cliente_id, tipo_casco_id) WHERE deleted_at IS NULL;
 
 -- ----------------------------------------------------------------------------
 -- BAIXA DE CASCO POR QUEBRA (estoque físico → sucata)
@@ -428,11 +451,14 @@ CREATE TABLE IF NOT EXISTS movimentos_estoque_casco (
     tipo            tipo_movimento_estoque NOT NULL,
     quantidade      INT NOT NULL CHECK (quantidade <> 0),
     baixa_casco_id  UUID REFERENCES baixas_casco(id),
+    abastecimento_id UUID REFERENCES abastecimentos(id),
     observacao      TEXT,
     created_by      UUID REFERENCES funcionarios(id),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at      TIMESTAMPTZ
 );
+
+ALTER TABLE movimentos_estoque_casco ADD COLUMN IF NOT EXISTS abastecimento_id UUID REFERENCES abastecimentos(id);
 
 CREATE INDEX IF NOT EXISTS idx_mov_estoque_casco_tipo
     ON movimentos_estoque_casco(tipo_casco_id, situacao) WHERE deleted_at IS NULL;
@@ -493,13 +519,15 @@ CREATE TABLE caixa_despesas (
     tipo_despesa_id  UUID NOT NULL REFERENCES tipos_despesa(id),
     valor            NUMERIC(19,2) NOT NULL CHECK (valor > 0),
     descricao        TEXT,
-    abastecimento_id UUID REFERENCES abastecimentos(id), -- custo de abastecimento
     created_by       UUID REFERENCES funcionarios(id),
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at       TIMESTAMPTZ
 );
 
 CREATE INDEX idx_caixa_despesas_caixa ON caixa_despesas(caixa_id) WHERE deleted_at IS NULL;
+
+-- Abastecimento não lança mais despesa no caixa (a FK sem nome cai junto com a coluna).
+ALTER TABLE caixa_despesas DROP COLUMN IF EXISTS abastecimento_id;
 
 -- ----------------------------------------------------------------------------
 -- RH — CONTA CORRENTE DO FUNCIONÁRIO
@@ -567,10 +595,12 @@ LEFT JOIN movimentos_estoque_casco m
 WHERE tc.deleted_at IS NULL
 GROUP BY tc.id, ma.nome;
 
--- Saldo de casco NORMAL por cliente (positivo = cliente deve cascos à loja).
+-- Saldo de casco NORMAL por cliente e tipo de casco (positivo = cliente deve cascos à loja).
+-- Cliente sem movimento aparece com tipo_casco_id NULL.
 CREATE VIEW vw_saldo_casco_cliente AS
 SELECT c.id AS cliente_id,
        c.nome,
+       m.tipo_casco_id,
        COALESCE(SUM(CASE m.tipo
            WHEN 'EMPRESTIMO'      THEN  m.quantidade
            WHEN 'DEVOLUCAO'       THEN -m.quantidade
@@ -580,18 +610,19 @@ FROM clientes c
 LEFT JOIN movimentos_casco_cliente m
        ON m.cliente_id = c.id AND m.deleted_at IS NULL
 WHERE c.deleted_at IS NULL
-GROUP BY c.id;
+GROUP BY c.id, m.tipo_casco_id;
 
--- Total de sucata entregue por cliente (registro, não débito).
+-- Total de sucata entregue por cliente e tipo de casco (registro, não débito).
 CREATE VIEW vw_sucata_entregue_cliente AS
 SELECT c.id AS cliente_id,
        c.nome,
+       e.tipo_casco_id,
        COALESCE(SUM(e.quantidade), 0) AS total_entregue
 FROM clientes c
 LEFT JOIN entregas_sucata_cliente e
        ON e.cliente_id = c.id AND e.deleted_at IS NULL
 WHERE c.deleted_at IS NULL
-GROUP BY c.id;
+GROUP BY c.id, e.tipo_casco_id;
 
 -- Saldo devedor de fiado por cliente
 -- (débitos − créditos de sucata − pagamentos; positivo = cliente deve).

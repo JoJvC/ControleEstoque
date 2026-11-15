@@ -55,6 +55,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/produtos/marcas-page').then((m) => m.MarcasPage),
       },
       {
+        path: 'tipos-casco',
+        loadComponent: () =>
+          import('./features/produtos/tipos-casco-page').then((m) => m.TiposCascoPage),
+      },
+      {
         path: 'financeiro',
         loadChildren: () =>
           import('./features/financeiro/financeiro-routes').then((m) => m.FINANCEIRO_ROUTES),

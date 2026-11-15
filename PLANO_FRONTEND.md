@@ -171,7 +171,7 @@ web/
 | Relatórios: faturamento, vendas-por-funcionario | `/api/vendas` | |
 | Clientes, endereços, saldos, cascos (devolução/conversão), sucatas | `/api/clientes` | |
 | Relatórios: cascos, sucata | `/api/clientes` | |
-| Marcas, produtos, foto, estoque, movimentos, abastecimentos, baixas de casco | `/api/estoque` | |
+| Marcas, tipos de casco, produtos, foto, estoque, movimentos, abastecimentos, baixas de casco | `/api/estoque` | |
 | Relatório: estoque | `/api/estoque` | |
 | Caixas, despesas, fechamento, tipos-despesa | `/api/financeiro` | |
 | **Pagamento de fiado** (`POST /v1/clientes/{id}/fiado/pagamentos`) | `/api/financeiro` | ⚠️ rota começa com `/clientes` mas é da API Financeiro |
@@ -203,7 +203,7 @@ web/
 - **Vendas**: `nova` (PDV), `lista` (filtros cliente/período, paginada), `detalhe/:id` (itens, pagamentos, saldos gerados, ações: editar, adicionar pagamento, emitir cupom), `editar/:id` (mesmo form do PDV pré-carregado; bloqueado com aviso se cupom já emitido — `VENDA_JA_FATURADA`).
 - **Clientes**: lista com busca; detalhe com **3 saldos independentes** (`GET /saldos`: cascos, sucata entregue, fiado) como `ce-saldo-chip`s distintos; endereços (N, um principal; a gestão — adicionar, editar, remover, marcar principal — fica no formulário de cadastro/edição, e o detalhe continua só permitindo adicionar); ações: **Pagar Casco** (sheet com 2 modos: devolução física / conversão em valor), **Entregar Sucata** (com conversão em crédito opcional), **Receber Fiado** (pagamento de dívida via API Financeiro).
 - **Estoque**: visão atual (`vw_estoque_atual` — destaque `AbaixoMinimo` com `--ce-warning`), abastecimento (form com N itens, tipo de frete, custo), ajuste manual, **baixa de casco por quebra** (quantidade, motivo, ≥1 responsável obrigatório).
-- **Cadastros**: produtos (tipo, marca — obrigatória se AGUA/GALAO_COMPLETO —, categoria e tamanho livres, preço de referência, estoque mínimo, foto), marcas.
+- **Cadastros**: tipos de casco (nome, preço do vasilhame, aceita sucata; genérico sem marca ou específico com marca), produtos (tipo, marca — obrigatória se AGUA/GALAO_COMPLETO —, categoria e tamanho livres, preço de referência, estoque mínimo, foto), marcas.
 - **Financeiro**: caixa do dia (abrir com saldo inicial; 409 = já aberto → carregar existente), lançar despesa (tipo obrigatório), **fechamento** (checklist de funcionários que trabalharam → diárias; resumo entradas/saídas/saldo), tipos de despesa.
 - **RH**: funcionários (CRUD, diária), cargos (CRUD com permissões; **ADM travado na UI** — badge "nativo", sem editar/excluir), conta-corrente (extrato, saldo, lançar vale, lançar pagamento).
 - **Relatórios**: hub com cards → cada relatório com filtros de período/produto onde aplicável, resultado em cards no mobile / tabela no desktop.

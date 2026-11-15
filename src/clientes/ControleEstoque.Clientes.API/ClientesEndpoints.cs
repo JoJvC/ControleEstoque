@@ -75,7 +75,11 @@ public static class ClientesEndpoints
             Guid id, IClienteService clientes, CancellationToken cancellationToken) =>
         {
             var saldos = await clientes.ObterSaldosAsync(id, cancellationToken);
-            return Results.Ok(new SaldosResponse(saldos.SaldoCascos, saldos.SucataEntregue, saldos.SaldoFiado));
+            return Results.Ok(new SaldosResponse(
+                saldos.SaldoCascos, saldos.SucataEntregue, saldos.SaldoFiado,
+                saldos.CascosPorTipo.Select(c => new CascoPorTipoResponse(c.TipoCascoId, c.Nome, c.Saldo)).ToList(),
+                saldos.SucataPorTipo.Select(s => new SucataPorTipoResponse(s.TipoCascoId, s.Nome, s.Quantidade))
+                    .ToList()));
         });
 
         // ---- Pagar Casco -----------------------------------------------------
@@ -83,7 +87,7 @@ public static class ClientesEndpoints
             Guid id, DevolucaoCascosRequest request, ICascoClienteService cascos,
             CancellationToken cancellationToken) =>
         {
-            var resultado = await cascos.DevolverAsync(id, request.Quantidade, cancellationToken);
+            var resultado = await cascos.DevolverAsync(id, request.TipoCascoId, request.Quantidade, cancellationToken);
             return Results.Ok(new DevolucaoCascosResponse(resultado.NovoSaldoCascos));
         });
 
@@ -92,7 +96,7 @@ public static class ClientesEndpoints
             CancellationToken cancellationToken) =>
         {
             var resultado = await cascos.ConverterAsync(
-                id, request.Quantidade, request.ValorUnitario, cancellationToken);
+                id, request.TipoCascoId, request.Quantidade, cancellationToken);
             return Results.Ok(new ConversaoCascosResponse(resultado.NovoSaldoCascos, resultado.NovoSaldoFiado));
         });
 
@@ -102,7 +106,7 @@ public static class ClientesEndpoints
             CancellationToken cancellationToken) =>
         {
             var resultado = await sucatas.EntregarAsync(
-                id, request.Quantidade, request.ValorConversao, cancellationToken);
+                id, request.TipoCascoId, request.Quantidade, request.ValorConversao, cancellationToken);
             return Results.Ok(new EntregaSucataResponse(
                 resultado.TotalSucataEntregue, resultado.NovoSaldoFiado));
         });

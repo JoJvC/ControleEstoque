@@ -36,28 +36,42 @@ public interface ISaldosRepository
     Task<IReadOnlyList<SucataEntregueRelatorio>> ListSucataEntregueAsync(CancellationToken cancellationToken);
 }
 
+/// <summary>Leitura do tipo de casco (tabela tipos_casco, do Estoque) sem referenciar o projeto do Estoque.</summary>
+public interface ITipoCascoLeituraRepository
+{
+    /// <summary>Null quando o tipo não existe ou foi apagado.</summary>
+    Task<TipoCascoCliente?> GetAsync(Guid tipoCascoId, CancellationToken cancellationToken);
+}
+
 public interface ICascoClienteRepository
 {
-    Task<long> GetSaldoAsync(Guid clienteId, CancellationToken cancellationToken);
+    /// <summary>Saldo do cliente no tipo de casco.</summary>
+    Task<long> GetSaldoAsync(Guid clienteId, Guid tipoCascoId, CancellationToken cancellationToken);
 
-    /// <summary>Devolução física avulsa: DEVOLUCAO no ledger + entrada no estoque de vazios.</summary>
-    Task<ResultadoDevolucaoCasco> DevolverAsync(Guid clienteId, int quantidade, CancellationToken cancellationToken);
+    /// <summary>
+    /// Devolução física avulsa: DEVOLUCAO do tipo no ledger + entrada de vazio do tipo no estoque de casco.
+    /// Retorna o total do cliente (todos os tipos).
+    /// </summary>
+    Task<ResultadoDevolucaoCasco> DevolverAsync(
+        Guid clienteId, Guid tipoCascoId, int quantidade, CancellationToken cancellationToken);
 
     /// <summary>
     /// Conversão em valor: CONVERSAO_VALOR no ledger + DEBITO_CONVERSAO_CASCO no fiado.
     /// NÃO dá entrada no estoque físico — o casco fica com o cliente, agora comprado.
     /// </summary>
     Task<ResultadoConversaoCasco> ConverterAsync(
-        Guid clienteId, int quantidade, decimal valorUnitario, CancellationToken cancellationToken);
+        Guid clienteId, Guid tipoCascoId, int quantidade, decimal valorUnitario,
+        CancellationToken cancellationToken);
 }
 
 public interface ISucataClienteRepository
 {
     /// <summary>
-    /// Entrega de sucata: registro do cliente + entrada no estoque de sucata.
+    /// Entrega de sucata: registro do cliente por tipo + entrada de sucata do tipo no estoque de casco.
     /// Nunca toca o ledger de casco normal. Se houver valor de conversão,
     /// lança CREDITO_CONVERSAO_SUCATA no fiado.
     /// </summary>
     Task<ResultadoEntregaSucata> EntregarAsync(
-        Guid clienteId, int quantidade, decimal? valorConversao, CancellationToken cancellationToken);
+        Guid clienteId, Guid tipoCascoId, int quantidade, decimal? valorConversao,
+        CancellationToken cancellationToken);
 }

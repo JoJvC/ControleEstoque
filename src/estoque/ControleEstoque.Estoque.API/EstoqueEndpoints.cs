@@ -147,13 +147,44 @@ public static class EstoqueEndpoints
             CancellationToken cancellationToken) =>
         {
             var itens = Validacao.SemNulos(request.Itens, "Itens")
-                .Select(i => new AbastecimentoItem(i.ProdutoMarcaId, i.Quantidade, i.CustoUnitario))
+                .Select(i => new AbastecimentoItem(i.ProdutoMarcaId, i.Quantidade))
+                .ToList();
+            var cascos = Validacao.SemNulos(request.Cascos, "Cascos")
+                .Select(c => new AbastecimentoCasco(c.TipoCascoId, c.Quantidade))
                 .ToList();
             var id = await abastecimentos.RegistrarAsync(
-                new NovoAbastecimento(
-                    request.TipoFrete, request.CustoTotal, request.FuncionarioId, request.Observacao, itens),
+                new NovoAbastecimento(request.TipoFrete, request.FuncionarioId, request.Observacao, itens, cascos),
                 cancellationToken);
             return Results.Created($"/v1/abastecimentos/{id}", new CreatedResponse(id));
+        });
+
+        // Rotas de custo exigem estoque.custos do funcionário informado (sem autenticação: query/corpo).
+        app.MapGet("/v1/abastecimentos/custos-pendentes", async (
+            Guid funcionarioId, IAbastecimentoService abastecimentos, CancellationToken cancellationToken) =>
+        {
+            var pendentes = await abastecimentos.ListarPendentesAsync(funcionarioId, cancellationToken);
+            return Results.Ok(pendentes.Select(AbastecimentoPendenteResponse.From));
+        });
+
+        app.MapGet("/v1/abastecimentos/{id:guid}", async (
+            Guid id, Guid funcionarioId, IAbastecimentoService abastecimentos,
+            CancellationToken cancellationToken) =>
+        {
+            var detalhe = await abastecimentos.ObterAsync(id, funcionarioId, cancellationToken);
+            return Results.Ok(AbastecimentoDetalheResponse.From(detalhe));
+        });
+
+        app.MapPut("/v1/abastecimentos/{id:guid}/custos", async (
+            Guid id, LancarCustosAbastecimentoRequest request, IAbastecimentoService abastecimentos,
+            CancellationToken cancellationToken) =>
+        {
+            var itens = Validacao.SemNulos(request.Itens, "Itens")
+                .Select(l => new CustoLinha(l.Id, l.CustoUnitario)).ToList();
+            var cascos = Validacao.SemNulos(request.Cascos, "Cascos")
+                .Select(l => new CustoLinha(l.Id, l.CustoUnitario)).ToList();
+            var detalhe = await abastecimentos.LancarCustosAsync(
+                id, new LancamentoCustos(request.FuncionarioId, request.Frete, itens, cascos), cancellationToken);
+            return Results.Ok(AbastecimentoDetalheResponse.From(detalhe));
         });
 
         // ---- Cascos: saldo, ajuste e baixa (quebra) por tipo -----------------

@@ -103,35 +103,57 @@ internal sealed class FakeClienteRepository : IClienteRepository
     }
 }
 
+internal sealed class FakeTipoCascoLeituraRepository : ITipoCascoLeituraRepository
+{
+    private readonly Dictionary<Guid, TipoCascoCliente> tipos = new();
+
+    /// <summary>Tipo apagado não é cadastrado aqui: a leitura devolve null, como o Postgres com deleted_at.</summary>
+    public TipoCascoCliente Add(string nome, decimal precoVasilhame = 0m, bool aceitaSucata = false)
+    {
+        var tipo = new TipoCascoCliente(Guid.NewGuid(), nome, aceitaSucata, precoVasilhame);
+        tipos[tipo.Id] = tipo;
+        return tipo;
+    }
+
+    public Task<TipoCascoCliente?> GetAsync(Guid tipoCascoId, CancellationToken cancellationToken) =>
+        Task.FromResult(tipos.GetValueOrDefault(tipoCascoId));
+}
+
 /// <summary>
-/// Ledger de casco em memória. Registra todas as chamadas para permitir
+/// Ledger de casco em memória, por cliente e tipo. Registra as escritas para permitir
 /// afirmar que a entrega de sucata NUNCA movimenta este ledger.
 /// </summary>
 internal sealed class FakeCascoClienteRepository : ICascoClienteRepository
 {
-    private readonly Dictionary<Guid, long> saldos = new();
+    private readonly Dictionary<(Guid Cliente, Guid Tipo), long> saldos = new();
 
     public int TotalChamadasDeEscrita { get; private set; }
 
-    public void SetSaldo(Guid clienteId, long saldo) => saldos[clienteId] = saldo;
+    public List<(Guid Tipo, int Quantidade, decimal ValorUnitario)> Conversoes { get; } = new();
 
-    public Task<long> GetSaldoAsync(Guid clienteId, CancellationToken cancellationToken) =>
-        Task.FromResult(saldos.GetValueOrDefault(clienteId));
+    public void SetSaldo(Guid clienteId, Guid tipoCascoId, long saldo) => saldos[(clienteId, tipoCascoId)] = saldo;
+
+    public Task<long> GetSaldoAsync(Guid clienteId, Guid tipoCascoId, CancellationToken cancellationToken) =>
+        Task.FromResult(saldos.GetValueOrDefault((clienteId, tipoCascoId)));
+
+    private long Total(Guid clienteId) => saldos.Where(kv => kv.Key.Cliente == clienteId).Sum(kv => kv.Value);
 
     public Task<ResultadoDevolucaoCasco> DevolverAsync(
-        Guid clienteId, int quantidade, CancellationToken cancellationToken)
+        Guid clienteId, Guid tipoCascoId, int quantidade, CancellationToken cancellationToken)
     {
         TotalChamadasDeEscrita++;
-        saldos[clienteId] = saldos.GetValueOrDefault(clienteId) - quantidade;
-        return Task.FromResult(new ResultadoDevolucaoCasco(saldos[clienteId]));
+        saldos[(clienteId, tipoCascoId)] = saldos.GetValueOrDefault((clienteId, tipoCascoId)) - quantidade;
+        return Task.FromResult(new ResultadoDevolucaoCasco(Total(clienteId)));
     }
 
     public Task<ResultadoConversaoCasco> ConverterAsync(
-        Guid clienteId, int quantidade, decimal valorUnitario, CancellationToken cancellationToken)
+        Guid clienteId, Guid tipoCascoId, int quantidade, decimal valorUnitario,
+        CancellationToken cancellationToken)
     {
         TotalChamadasDeEscrita++;
-        saldos[clienteId] = saldos.GetValueOrDefault(clienteId) - quantidade;
-        return Task.FromResult(new ResultadoConversaoCasco(saldos[clienteId], quantidade * valorUnitario));
+        Conversoes.Add((tipoCascoId, quantidade, valorUnitario));
+        saldos[(clienteId, tipoCascoId)] = saldos.GetValueOrDefault((clienteId, tipoCascoId)) - quantidade;
+        return Task.FromResult(new ResultadoConversaoCasco(Total(clienteId), quantidade * valorUnitario));
     }
 }
 
@@ -140,9 +162,13 @@ internal sealed class FakeSucataClienteRepository : ISucataClienteRepository
     private readonly Dictionary<Guid, long> totais = new();
     private readonly Dictionary<Guid, decimal> creditosFiado = new();
 
+    public List<(Guid Tipo, int Quantidade)> Entregas { get; } = new();
+
     public Task<ResultadoEntregaSucata> EntregarAsync(
-        Guid clienteId, int quantidade, decimal? valorConversao, CancellationToken cancellationToken)
+        Guid clienteId, Guid tipoCascoId, int quantidade, decimal? valorConversao,
+        CancellationToken cancellationToken)
     {
+        Entregas.Add((tipoCascoId, quantidade));
         totais[clienteId] = totais.GetValueOrDefault(clienteId) + quantidade;
         if (valorConversao is > 0)
         {

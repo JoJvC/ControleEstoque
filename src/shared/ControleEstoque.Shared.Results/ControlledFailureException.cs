@@ -56,3 +56,11 @@ public sealed class InsufficientStockException : ControlledFailureException
     {
     }
 }
+
+public sealed class ForbiddenException : ControlledFailureException
+{
+    public ForbiddenException(string message)
+        : base("PERMISSAO_NEGADA", 403, message)
+    {
+    }
+}

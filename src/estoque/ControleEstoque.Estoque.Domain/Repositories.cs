@@ -66,10 +66,26 @@ public interface IEstoqueRepository
 public interface IAbastecimentoRepository
 {
     /// <summary>
-    /// Insere abastecimento + itens + movimentos de entrada em uma transação.
-    /// Se houver caixa ABERTO na data e custo &gt; 0, lança a despesa tipada.
+    /// Momento 1: insere abastecimento + itens + cascos + movimentos de entrada (produto e casco vazio)
+    /// em uma transação, sem valor nenhum (frete e custos ficam nulos = custo pendente).
     /// </summary>
     Task<Guid> CreateAsync(NovoAbastecimento abastecimento, CancellationToken cancellationToken);
+
+    /// <summary>Carga com as linhas, ou nulo se não existe (ou foi excluída).</summary>
+    Task<Abastecimento?> GetAsync(Guid id, CancellationToken cancellationToken);
+
+    /// <summary>Momento 2: grava frete e custo unitário das linhas que vieram, em uma transação.</summary>
+    Task LancarCustosAsync(Guid id, LancamentoCustos custos, CancellationToken cancellationToken);
+
+    /// <summary>Cargas com frete nulo ou linha sem custo, da mais recente para a mais antiga.</summary>
+    Task<IReadOnlyList<AbastecimentoPendente>> ListPendentesAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Permissões do cargo de um funcionário (a autenticação ainda não existe: ele vem informado).</summary>
+public interface IPermissaoFuncionarioLookup
+{
+    /// <summary>Nulo se o funcionário não existe ou foi excluído; vazia se está inativo.</summary>
+    Task<IReadOnlyList<string>?> PermissoesAsync(Guid funcionarioId, CancellationToken cancellationToken);
 }
 
 public interface IBaixaCascoRepository

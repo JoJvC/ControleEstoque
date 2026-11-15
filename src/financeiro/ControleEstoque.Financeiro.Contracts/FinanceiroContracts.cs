@@ -34,7 +34,7 @@ public sealed record ResumoCaixaResponse(
 
 public sealed record CreateDespesaRequest(Guid TipoDespesaId, decimal Valor, string? Descricao);
 
-public sealed record DiariaFechamentoRequest(Guid FuncionarioId);
+public sealed record DiariaFechamentoRequest(Guid FuncionarioId, decimal? Valor = null);
 
 public sealed record FecharCaixaRequest(List<DiariaFechamentoRequest>? Diarias);
 

@@ -11,7 +11,7 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 - **Estoque**: Quantidades por produto+marca (razão de lançamentos) e, separado, o estoque de cascos por tipo de casco (vazios e sucata). O estoque geral do produto é a soma das marcas.
 - **Vendas**: Registro de cada venda, podendo conter N itens (produtos diferentes e/ou marcas diferentes de galão na mesma venda), vinculada a cliente, funcionário responsável, formas de pagamento e entrega. Pode ser editada após o registro (itens, pagamentos, desconto, devolução) e permite emissão de cupom fiscal.
 - **Pagamentos**: Uma venda pode ter N formas de pagamento simultâneas (pix, cartão de crédito, cartão de débito, dinheiro, etc.), cada uma com valor próprio lançado. A soma dos valores define quanto da venda já foi pago; o que faltar compõe o fiado do cliente.
-- **Caixa**: Controle de entradas e saídas, incluindo diária de funcionários lançada no fechamento diário e despesas do dia categorizadas por tipo.
+- **Caixa**: Controle de entradas e saídas (despesas do dia categorizadas por tipo) e lançamento da diária de funcionários no fechamento diário; a diária credita a conta corrente do funcionário e não sai do caixa.
 - **Funcionários**: Cadastro dos funcionários, vinculação às vendas, diária fixa.
 - **Conta Corrente do Funcionário**: Controle de remuneração — diárias lançadas, vales (adiantamentos) tirados, pagamentos realizados (normalmente semanais) e saldo.
 - **Conta Corrente de Casco do Cliente**: Saldo de cascos (vasilhames) que o cliente está devendo à loja, decorrente exclusivamente de vendas de produtos retornáveis (o descartável não gera retorno e a venda nunca empresta sucata).
@@ -47,9 +47,9 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 - **Status de pagamento**: a venda só é considerada **paga** quando a soma dos pagamentos lançados cobre integralmente o valor total da venda (já com desconto aplicado). Enquanto isso, permanece parcial/pendente, e a diferença compõe o saldo de fiado do cliente.
 
 ### 3.5 Controle de Caixa
-- No fechamento do caixa do dia, é lançada a diária de cada funcionário que trabalhou (não há controle de presença separado — a presença/falta é considerada diretamente no lançamento da diária no fechamento).
+- No fechamento do caixa do dia, é lançada a diária de cada funcionário que trabalhou (não há controle de presença separado — a presença/falta é considerada diretamente no lançamento da diária no fechamento). Entram na lista todos os funcionários ativos, inclusive os sem diária cadastrada. A diária de cada um vem pré-preenchida com a cadastrada e pode ser ajustada naquele fechamento (hora extra ou atraso), sem alterar o cadastro. Valor 0 não gera lançamento; valor negativo é recusado (`DIARIA_INVALIDA`).
 - Diária lançada não é paga imediatamente: ela alimenta a conta corrente do funcionário (ver 3.8), sendo o pagamento normalmente consolidado semanalmente.
-- Registro das vendas (entradas) e despesas (saídas, incluindo diárias de funcionários). O caixa **não** recebe custo de abastecimento automático: abastecimento pago com dinheiro do caixa é lançado como despesa comum, na categoria 'Abastecimento'.
+- Registro das vendas (entradas) e despesas (saídas; as diárias de funcionários não entram nas saídas do caixa). O caixa **não** recebe custo de abastecimento automático: abastecimento pago com dinheiro do caixa é lançado como despesa comum, na categoria 'Abastecimento'.
 - Cada despesa lançada no caixa deve ter um **tipo de despesa** associado, para permitir análise por categoria.
 - Fechamento do caixa no final do dia com saldo consolidado.
 
@@ -122,7 +122,7 @@ Controles envolvidos:
 - Venda registrada com pagamento a prazo, gerando débito na conta corrente do cliente; pagamentos futuros baixam esse saldo.
 
 ### 4.11 Fechamento de Caixa
-- Ao final do dia, lançamento das diárias dos funcionários que trabalharam (creditando a conta corrente de cada um), total de vendas, despesas do dia e saldo final.
+- Ao final do dia, lançamento das diárias dos funcionários que trabalharam (creditando a conta corrente de cada um; o valor de cada diária pode ser ajustado só naquele fechamento, sem alterar o cadastro; valor 0 não lança e negativo é recusado), total de vendas, despesas do dia e saldo final.
 
 ### 4.12 Vale e Pagamento de Funcionário
 - Funcionário solicita vale (adiantamento), debitado da conta corrente; pagamento semanal consolidado baixa o saldo acumulado de diárias.
@@ -168,7 +168,7 @@ Controles envolvidos:
 - **Pagar Casco**: função para quitar débito de casco do cliente, com duas formas: devolução física do vazio (no ato da venda ou avulsa) ou conversão em débito financeiro (lançando a venda do casco vazio, migrando a pendência para a conta corrente/fiado do cliente).
 - **Entrega de Sucata**: cliente entrega vasilhame(s) quebrado(s) à loja (avulso ou junto de uma venda), dando entrada no estoque de sucata e no registro de sucata do cliente, sem qualquer efeito sobre o débito de casco; a loja pode, a seu critério, converter a entrega em valor (crédito na conta corrente/fiado).
 - **Casco/sucata — estoque físico e quebra**: cada tipo de casco tem estoque de vazios e de sucata separados. Sucata só existe em tipo que **aceita sucata**: entrada ou ajuste de sucata em tipo que não aceita é recusado. Perdas por quebra são lançadas via função de baixa, por tipo de casco, atribuída a um ou mais funcionários responsáveis: o casco sai do estoque de vazios do tipo (sem vazio suficiente no tipo, a baixa é recusada) e **só entra na sucata do mesmo tipo se ele aceita sucata**; se não aceita, apenas sai do vazio.
-- **Caixa**: a diária dos funcionários é lançada no fechamento do caixa do dia, considerando quem trabalhou (falta = diária não lançada); vira crédito na conta corrente do funcionário, não é paga diretamente no caixa.
+- **Caixa**: a diária dos funcionários é lançada no fechamento do caixa do dia, considerando quem trabalhou (falta = diária não lançada); o valor é o cadastrado, ajustável por pessoa naquele fechamento (hora extra/atraso), sem mudar o cadastro, e vale 0 = sem lançamento, negativo = recusado; vira crédito na conta corrente do funcionário, não é paga diretamente no caixa.
 - **Caixa — despesas**: cada despesa (saída) lançada no caixa deve ter um tipo/categoria associado.
 - **Conta corrente de funcionário**: diárias creditadas, vales debitados; pagamento normalmente feito de uma vez por semana, baixando o saldo acumulado.
 - **Conta corrente de cliente (fiado)**: soma débitos de vendas não totalmente pagas e de conversões de casco normal em valor, menos créditos de conversões de sucata; pagamentos do cliente baixam o saldo.

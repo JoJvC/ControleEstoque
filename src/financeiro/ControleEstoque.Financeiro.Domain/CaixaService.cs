@@ -10,7 +10,7 @@ public interface ICaixaService
         Guid caixaId, Guid tipoDespesaId, decimal valor, string? descricao,
         CancellationToken cancellationToken);
     Task<ResultadoFechamento> FecharAsync(
-        Guid caixaId, IReadOnlyList<Guid> funcionariosPresentes, CancellationToken cancellationToken);
+        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionariosPresentes, CancellationToken cancellationToken);
 }
 
 public sealed class CaixaService : ICaixaService
@@ -73,18 +73,24 @@ public sealed class CaixaService : ICaixaService
     }
 
     public async Task<ResultadoFechamento> FecharAsync(
-        Guid caixaId, IReadOnlyList<Guid> funcionariosPresentes, CancellationToken cancellationToken)
+        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionariosPresentes, CancellationToken cancellationToken)
     {
-        foreach (var funcionarioId in funcionariosPresentes)
+        foreach (var diaria in funcionariosPresentes)
         {
-            Validacao.IdPreenchido(funcionarioId, "FuncionarioId");
+            Validacao.IdPreenchido(diaria.FuncionarioId, "FuncionarioId");
         }
 
-        // Falta = funcionário simplesmente não listado; diária usa o valor do cadastro.
-        if (funcionariosPresentes.Distinct().Count() != funcionariosPresentes.Count)
+        // Falta = funcionário simplesmente não listado; Valor nulo usa a diária do cadastro.
+        if (funcionariosPresentes.Select(d => d.FuncionarioId).Distinct().Count() != funcionariosPresentes.Count)
         {
             throw new RequestValidationException(
                 "FUNCIONARIO_DUPLICADO", "Funcionário repetido na lista de presentes.");
+        }
+
+        if (funcionariosPresentes.Any(d => d.Valor < 0))
+        {
+            throw new RequestValidationException(
+                "DIARIA_INVALIDA", "Valor da diária não pode ser negativo.");
         }
 
         // Estado, diárias, entradas e despesas são lidos pelo repositório, na transação do fechamento.

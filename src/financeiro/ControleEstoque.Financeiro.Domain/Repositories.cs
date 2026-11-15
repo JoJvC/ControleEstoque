@@ -28,7 +28,7 @@ public interface ICaixaRepository
     /// ConflictException CAIXA_JA_FECHADO (inclusive sob corrida).
     /// </summary>
     Task<ResultadoFechamento> FecharAsync(
-        Guid caixaId, IReadOnlyList<Guid> funcionarioIds, CancellationToken cancellationToken);
+        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionarioIds, CancellationToken cancellationToken);
 }
 
 public interface ITipoDespesaRepository

@@ -163,6 +163,56 @@ describe('FuncionariosPage', () => {
     expect(t.el.querySelector('li')!.textContent).toContain('Sem diária');
   });
 
+  it('Sem diária marcada antes de nome e cargo: Salvar habilita e POST leva 0', async () => {
+    const t = await montar(['rh.gerir'], []);
+    await abrirForm(t);
+    await t.marcar('Sem diária');
+    await t.nome('Dono');
+    await t.cargo('c1');
+    expect(t.botao('Salvar')!.disabled).toBe(false);
+    t.botao('Salvar')!.click();
+    expect(t.http.expectOne(URL).request.body.valorDiaria).toBe(0);
+  });
+
+  it('Sem diária depois de digitar uma diária: Salvar habilita e POST leva 0', async () => {
+    const t = await montar(['rh.gerir'], []);
+    await abrirForm(t);
+    await t.nome('Dono');
+    await t.cargo('c1');
+    await t.diaria('5000');
+    await t.marcar('Sem diária');
+    expect(t.botao('Salvar')!.disabled).toBe(false);
+    t.botao('Salvar')!.click();
+    expect(t.http.expectOne(URL).request.body.valorDiaria).toBe(0);
+  });
+
+  it('digitar 0 no campo da diária vale 0: Salvar habilita e POST leva 0', async () => {
+    const t = await montar(['rh.gerir'], []);
+    await abrirForm(t);
+    await t.nome('Dono');
+    await t.cargo('c1');
+    await t.diaria('0');
+    expect(t.inputDiaria().value).toBe('0,00');
+    expect(t.botao('Salvar')!.disabled).toBe(false);
+    t.botao('Salvar')!.click();
+    expect(t.http.expectOne(URL).request.body.valorDiaria).toBe(0);
+  });
+
+  it('digitar 0 e depois apagar tudo esvazia o campo e Salvar volta a ficar desabilitado', async () => {
+    const t = await montar(['rh.gerir'], []);
+    await abrirForm(t);
+    await t.nome('Dono');
+    await t.cargo('c1');
+    await t.diaria('0');
+    expect(t.botao('Salvar')!.disabled).toBe(false);
+    const campo = t.inputDiaria();
+    campo.value = '0,0'; // backspace sobre "0,00"
+    campo.dispatchEvent(new InputEvent('input', { inputType: 'deleteContentBackward' }));
+    await t.fixture.whenStable();
+    expect(campo.value).toBe('');
+    expect(t.botao('Salvar')!.disabled).toBe(true);
+  });
+
   it('desmarcar Sem diária esvazia o campo e Salvar volta a ficar desabilitado', async () => {
     const t = await montar(['rh.gerir'], []);
     await abrirForm(t);

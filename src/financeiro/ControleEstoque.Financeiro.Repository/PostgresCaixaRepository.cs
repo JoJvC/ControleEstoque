@@ -123,7 +123,7 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
     }
 
     public async Task<ResultadoFechamento> FecharAsync(
-        Guid caixaId, IReadOnlyList<Guid> funcionarioIds, CancellationToken cancellationToken)
+        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionarioIds, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -148,12 +148,13 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             saldoInicial = reader.GetDecimal(2);
         }
 
-        // Falta = funcionário simplesmente não listado; diária usa o valor do cadastro.
+        // Falta = funcionário simplesmente não listado; o valor informado vale só neste fechamento
+        // e, se nulo, vale o do cadastro (que também confirma a existência do funcionário).
         var valores = new Dictionary<Guid, decimal>();
         if (funcionarioIds.Count > 0)
         {
             await using var command = new NpgsqlCommand(Sql.GetValoresDiaria, connection, transaction);
-            command.Parameters.AddWithValue("ids", funcionarioIds.ToArray());
+            command.Parameters.AddWithValue("ids", funcionarioIds.Select(d => d.FuncionarioId).ToArray());
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
@@ -161,13 +162,16 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             }
         }
 
-        foreach (var funcionarioId in funcionarioIds)
+        var efetivos = new List<(Guid FuncionarioId, decimal Valor)>();
+        foreach (var (funcionarioId, valor) in funcionarioIds)
         {
-            if (!valores.ContainsKey(funcionarioId))
+            if (!valores.TryGetValue(funcionarioId, out var cadastro))
             {
                 throw new EntityNotFoundException(
                     "FUNCIONARIO_NAO_ENCONTRADO", $"Funcionário {funcionarioId} não encontrado.");
             }
+
+            efetivos.Add((funcionarioId, valor ?? cadastro));
         }
 
         var entradas = await GetEntradasAsync(connection, transaction, data, cancellationToken);
@@ -181,15 +185,15 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         var saldoFinal = saldoInicial + entradas - totalSaidas;
 
         // Diária credita a conta corrente do funcionário — não é saída de caixa.
-        // Diária 0 (permitida no cadastro) não gera lançamento: lancamentos_funcionario exige valor > 0.
+        // Valor efetivo 0 não gera lançamento: lancamentos_funcionario exige valor > 0.
         var diariasLancadas = 0;
-        foreach (var funcionarioId in funcionarioIds.Where(id => valores[id] > 0))
+        foreach (var (funcionarioId, valorEfetivo) in efetivos.Where(e => e.Valor > 0))
         {
             diariasLancadas++;
             await using var command = new NpgsqlCommand(Sql.InsertDiaria, connection, transaction);
             command.Parameters.AddWithValue("funcionarioId", funcionarioId);
             command.Parameters.AddWithValue("caixaId", caixaId);
-            command.Parameters.AddWithValue("valor", valores[funcionarioId]);
+            command.Parameters.AddWithValue("valor", valorEfetivo);
             try
             {
                 await command.ExecuteNonQueryAsync(cancellationToken);

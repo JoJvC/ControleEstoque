@@ -3,6 +3,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { FinanceiroApi } from '../../core/api/financeiro-api';
 import {
+  DiariaFechamentoRequest,
   FechamentoResponse,
   ResumoCaixaResponse,
   TipoDespesaResponse,
@@ -62,12 +63,8 @@ export class CaixaStore {
     return firstValueFrom(this.api.lancarDespesa(caixaId, { tipoDespesaId, valor, descricao }));
   }
 
-  fechar(caixaId: string, funcionarioIds: string[]): Promise<FechamentoResponse> {
-    return firstValueFrom(
-      this.api.fecharCaixa(caixaId, {
-        diarias: funcionarioIds.map((funcionarioId) => ({ funcionarioId })),
-      }),
-    );
+  fechar(caixaId: string, diarias: DiariaFechamentoRequest[]): Promise<FechamentoResponse> {
+    return firstValueFrom(this.api.fecharCaixa(caixaId, { diarias }));
   }
 
   listarTipos(): Promise<TipoDespesaResponse[]> {

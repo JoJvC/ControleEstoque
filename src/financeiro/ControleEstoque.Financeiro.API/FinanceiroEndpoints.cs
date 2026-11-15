@@ -31,7 +31,8 @@ public static class FinanceiroEndpoints
         app.MapPost("/v1/caixas/{id:guid}/fechamento", async (
             Guid id, FecharCaixaRequest request, ICaixaService caixas, CancellationToken cancellationToken) =>
         {
-            var funcionarios = Validacao.SemNulos(request.Diarias, "Diarias").Select(d => d.FuncionarioId).ToList();
+            var funcionarios = Validacao.SemNulos(request.Diarias, "Diarias")
+                .Select(d => new DiariaFechamento(d.FuncionarioId, d.Valor)).ToList();
             var resultado = await caixas.FecharAsync(id, funcionarios, cancellationToken);
             return Results.Ok(new FechamentoResponse(
                 resultado.CaixaId, resultado.Data, resultado.TotalEntradas,

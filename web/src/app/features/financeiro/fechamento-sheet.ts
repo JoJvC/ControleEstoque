@@ -10,6 +10,7 @@ import { ApiError } from '../../core/http/api-error';
 import { ToastService } from '../../core/toast/toast-service';
 import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
+import { MoneyInput } from '../../ui/molecules/money-input';
 import { SheetShell } from '../../ui/organisms/sheet-shell';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { CaixaStore } from './caixa-store';
@@ -27,36 +28,44 @@ const PRECO = new PrecoPipe();
 @Component({
   selector: 'ce-fechamento-sheet',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, SheetShell, Button, Checkbox, PrecoPipe],
+  imports: [FormsModule, SheetShell, Button, Checkbox, MoneyInput, PrecoPipe],
   template: `
     <ce-sheet-shell titulo="Fechar o caixa" (fechar)="ref.close()">
       <div class="corpo">
         <p class="texto">
-          Quem trabalhou hoje? A diária de cada um vira saída do caixa e crédito na conta-corrente.
+          Quem trabalhou hoje? A diária de cada um vira crédito na conta-corrente do funcionário;
+          não sai do caixa.
         </p>
         @for (f of funcionarios(); track f.id) {
-          <ce-checkbox
-            [ngModel]="!desmarcados().has(f.id)"
-            (ngModelChange)="alternar(f.id, $event)"
-          >
-            <b>{{ f.nome }}</b>
-            @if (f.cargo) {
-              <span class="cargo"> · {{ f.cargo }}</span>
-            }
-            · {{ f.valorDiaria | cePreco }} diária
-          </ce-checkbox>
+          <div class="linha">
+            <ce-checkbox
+              [ngModel]="marcadosIds().has(f.id)"
+              (ngModelChange)="alternar(f.id, $event)"
+            >
+              <b>{{ f.nome }}</b>
+              @if (f.cargo) {
+                <span class="cargo"> · {{ f.cargo }}</span>
+              }
+            </ce-checkbox>
+            <ce-money-input
+              [rotulo]="'Diária de ' + f.nome"
+              [zeroComoValor]="true"
+              [ngModel]="valores()[f.id]"
+              (ngModelChange)="definirValor(f.id, $event)"
+            />
+          </div>
         } @empty {
           @if (statusLista() === 'ok') {
-            <p class="vazio">Nenhum funcionário ativo com diária.</p>
+            <p class="vazio">Nenhum funcionário ativo.</p>
           }
         }
 
         <dl class="resumo">
           <dt>Saldo do caixa agora (servidor)</dt>
           <dd>{{ dados.resumo.saldoParcial | cePreco }}</dd>
-          <dt>Diárias marcadas</dt>
-          <dd class="saida">
-            − {{ totalMarcado() | cePreco }} <span class="cargo">({{ marcados().length }})</span>
+          <dt>Diárias a lançar</dt>
+          <dd>
+            {{ totalMarcado() | cePreco }} <span class="cargo">({{ qtdLancamentos() }})</span>
           </dd>
         </dl>
         <p class="vazio">O resumo final vem do servidor ao confirmar.</p>
@@ -97,6 +106,13 @@ const PRECO = new PrecoPipe();
       gap: var(--ce-space-3);
     }
 
+    .linha {
+      display: grid;
+      grid-template-columns: 1fr 10rem;
+      align-items: center;
+      gap: var(--ce-space-3);
+    }
+
     .resumo {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -111,10 +127,6 @@ const PRECO = new PrecoPipe();
     .texto {
       margin: 0;
       color: var(--ce-text-muted);
-    }
-
-    .saida {
-      color: var(--ce-fiado);
     }
 
     .cargo {
@@ -163,13 +175,19 @@ export class FechamentoSheet {
 
   protected readonly statusLista = signal<'loading' | 'ok' | 'error'>('loading');
   protected readonly funcionarios = signal<FuncionarioResponse[]>([]);
-  /** Todos começam marcados: desmarcar é a ausência da diária. */
-  protected readonly desmarcados = signal<ReadonlySet<string>>(new Set());
+  /** Começam marcados os que têm diária cadastrada; desmarcar é a ausência da diária. */
+  protected readonly marcadosIds = signal<ReadonlySet<string>>(new Set());
+  /** Valor da diária de cada um só neste fechamento; começa no cadastro. */
+  protected readonly valores = signal<Readonly<Record<string, number>>>({});
   protected readonly marcados = computed(() =>
-    this.funcionarios().filter((f) => !this.desmarcados().has(f.id)),
+    this.funcionarios().filter((f) => this.marcadosIds().has(f.id)),
   );
   protected readonly totalMarcado = computed(() =>
-    this.marcados().reduce((soma, f) => soma + f.valorDiaria, 0),
+    this.marcados().reduce((soma, f) => soma + (this.valores()[f.id] ?? 0), 0),
+  );
+  /** Só valor > 0 vira lançamento. */
+  protected readonly qtdLancamentos = computed(
+    () => this.marcados().filter((f) => (this.valores()[f.id] ?? 0) > 0).length,
   );
   protected readonly erro = signal<string | null>(null);
   protected readonly caixaFechado = signal<string | null>(null);
@@ -184,7 +202,10 @@ export class FechamentoSheet {
     this.statusLista.set('loading');
     try {
       const lista = await firstValueFrom(this.rhApi.listarFuncionarios());
-      this.funcionarios.set(lista.filter((f) => f.ativo && f.valorDiaria > 0));
+      const ativos = lista.filter((f) => f.ativo);
+      this.funcionarios.set(ativos);
+      this.valores.set(Object.fromEntries(ativos.map((f) => [f.id, f.valorDiaria])));
+      this.marcadosIds.set(new Set(ativos.filter((f) => f.valorDiaria > 0).map((f) => f.id)));
       this.statusLista.set('ok');
     } catch {
       // 0/5xx já viram toast no interceptor
@@ -193,15 +214,20 @@ export class FechamentoSheet {
   }
 
   protected alternar(id: string, marcado: boolean): void {
-    this.desmarcados.update((atual) => {
+    this.marcadosIds.update((atual) => {
       const novo = new Set(atual);
       if (marcado) {
-        novo.delete(id);
-      } else {
         novo.add(id);
+      } else {
+        novo.delete(id);
       }
       return novo;
     });
+  }
+
+  /** O ce-money-input emite null ao digitar só zeros: conta como 0. */
+  protected definirValor(id: string, valor: number | null): void {
+    this.valores.update((atual) => ({ ...atual, [id]: valor ?? 0 }));
   }
 
   protected async confirmar(): Promise<void> {
@@ -214,7 +240,7 @@ export class FechamentoSheet {
     try {
       const resposta = await this.store.fechar(
         this.dados.caixaId,
-        this.marcados().map((f) => f.id),
+        this.marcados().map((f) => ({ funcionarioId: f.id, valor: this.valores()[f.id] ?? 0 })),
       );
       this.toast.success(`Caixa fechado. Saldo final ${PRECO.transform(resposta.saldoFinal)}`);
       this.ref.close(resposta);

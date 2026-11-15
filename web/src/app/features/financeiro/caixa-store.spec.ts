@@ -110,11 +110,17 @@ describe('CaixaStore', () => {
     expect((e as ApiError).code).toBe('CAIXA_FECHADO');
   });
 
-  it('fechar envia só os ids dados', async () => {
-    const p = store.fechar('cx-1', ['f-1', 'f-3']);
+  it('fechar envia id e valor de cada diária', async () => {
+    const p = store.fechar('cx-1', [
+      { funcionarioId: 'f-1', valor: 100 },
+      { funcionarioId: 'f-3', valor: 0 },
+    ]);
     const req = http.expectOne(`${BASE}/caixas/cx-1/fechamento`);
     expect(req.request.body).toEqual({
-      diarias: [{ funcionarioId: 'f-1' }, { funcionarioId: 'f-3' }],
+      diarias: [
+        { funcionarioId: 'f-1', valor: 100 },
+        { funcionarioId: 'f-3', valor: 0 },
+      ],
     });
     req.flush({ diariasLancadas: 2 });
     await expect(p).resolves.toEqual({ diariasLancadas: 2 });

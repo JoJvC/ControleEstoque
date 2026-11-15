@@ -52,7 +52,7 @@ export function diariaValida(v: number | null): boolean {
         <ce-select formControlName="cargoId" [opcoes]="cargos()" placeholder="Selecione" />
       </ce-form-field>
       <ce-form-field rotulo="Valor da diária" [obrigatorio]="true">
-        <ce-money-input formControlName="valorDiaria" />
+        <ce-money-input formControlName="valorDiaria" [zeroComoValor]="true" />
       </ce-form-field>
       <ce-checkbox formControlName="semDiaria">Sem diária</ce-checkbox>
       <ce-checkbox formControlName="ativo">Ativo</ce-checkbox>
@@ -128,7 +128,7 @@ export class FuncionarioForm {
         error: () => this.erroCargos.set(true),
       });
 
-    // 'Sem diária' é o único caminho para o 0: o ce-money-input emite null ao digitar só zeros
+    // Diária 0 vem de 'Sem diária' ou de digitar 0 (zeroComoValor); campo vazio continua null e inválido
     this.form.controls.semDiaria.valueChanges.pipe(takeUntilDestroyed()).subscribe((marcado) => {
       const diaria = this.form.controls.valorDiaria;
       if (marcado) {

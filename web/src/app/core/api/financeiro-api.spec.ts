@@ -59,10 +59,10 @@ describe('FinanceiroApi', () => {
   });
 
   it('fecharCaixa: POST /caixas/{id}/fechamento com { diarias }', () => {
-    api.fecharCaixa('cx-1', { diarias: [{ funcionarioId: 'f-1' }] }).subscribe();
+    api.fecharCaixa('cx-1', { diarias: [{ funcionarioId: 'f-1', valor: 80 }] }).subscribe();
     const req = http.expectOne(`${BASE}/caixas/cx-1/fechamento`);
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ diarias: [{ funcionarioId: 'f-1' }] });
+    expect(req.request.body).toEqual({ diarias: [{ funcionarioId: 'f-1', valor: 80 }] });
     req.flush({});
   });
 

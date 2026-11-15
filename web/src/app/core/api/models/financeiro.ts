@@ -52,6 +52,7 @@ export interface CreateDespesaRequest {
 
 export interface DiariaFechamentoRequest {
   funcionarioId: string;
+  valor: number;
 }
 
 export interface FecharCaixaRequest {

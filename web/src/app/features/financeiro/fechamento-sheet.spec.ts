@@ -73,7 +73,14 @@ async function montar(lista: 'ok' | 'pendente' | 500 = 'ok') {
     Array.from(el.querySelectorAll('button')).find(
       (b) => b.textContent?.trim() === 'Fechar caixa',
     ) as HTMLButtonElement;
-  return { fixture, el, http, close, caixas, confirmar };
+  const valores = () =>
+    Array.from(el.querySelectorAll('ce-money-input input')) as HTMLInputElement[];
+  const digitar = async (campo: HTMLInputElement, digitos: string) => {
+    campo.value = digitos;
+    campo.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+  };
+  return { fixture, el, http, close, caixas, confirmar, valores, digitar };
 }
 
 describe('FechamentoSheet', () => {
@@ -81,36 +88,60 @@ describe('FechamentoSheet', () => {
 
   const norm = (t: string | null) => (t ?? '').replace(/\s+/g, ' ');
 
-  it('lista só ativos com diária, todos marcados, com o saldo do servidor', async () => {
-    const { el, caixas } = await montar();
-    expect(caixas().length).toBe(2);
-    expect(caixas().every((c) => c.checked)).toBe(true);
+  it('lista os ativos (inclusive diária 0), exclui o inativo; só quem tem diária começa marcado', async () => {
+    const { el, caixas, valores } = await montar();
+    expect(caixas().length).toBe(3);
+    expect(caixas().map((c) => c.checked)).toEqual([true, false, true]);
+    expect(valores().map((v) => v.value)).toEqual(['80,00', '0,00', '80,00']);
     expect(el.textContent).not.toContain('Davi');
-    expect(el.textContent).not.toContain('Bia');
     const texto = norm(el.textContent);
     expect(texto).toContain('Saldo do caixa agora (servidor)');
     expect(texto).toContain('R$ 320,00');
-    expect(texto).toContain('− R$ 160,00 (2)');
+    expect(texto).toContain('Diárias a lançar R$ 160,00 (2)');
+    expect(texto).toContain('não sai do caixa');
+    expect(texto).not.toContain('−');
     expect(texto).toContain('O resumo final vem do servidor ao confirmar.');
   });
 
-  it('cada linha mostra nome, cargo e "R$ diária"', async () => {
+  it('cada linha mostra nome e cargo, com o valor da diária num campo', async () => {
     const { el } = await montar();
     const itens = Array.from(el.querySelectorAll('ce-checkbox')).map((c) =>
       norm(c.textContent).trim(),
     );
-    expect(itens[0]).toContain('Ana · Entregador · R$ 80,00 diária');
+    expect(itens[0]).toContain('Ana · Entregador');
   });
 
-  it('clicar numa caixa atualiza total e contagem; confirmar envia só os marcados e avisa', async () => {
-    const { fixture, el, http, close, caixas, confirmar } = await montar();
+  it('digitar um novo valor numa linha marcada atualiza o total', async () => {
+    const { el, valores, digitar } = await montar();
+    await digitar(valores()[0], '10000');
+    expect(valores()[0].value).toBe('100,00');
+    expect(norm(el.textContent)).toContain('R$ 180,00 (2)');
+  });
+
+  it('marcar quem não tem diária e digitar 50 soma ao total e entra no POST', async () => {
+    const { fixture, el, http, caixas, valores, digitar, confirmar } = await montar();
     caixas()[1].click();
     await fixture.whenStable();
-    expect(norm(el.textContent)).toContain('− R$ 80,00 (1)');
+    expect(norm(el.textContent)).toContain('R$ 160,00 (2)');
+    await digitar(valores()[1], '5000');
+    expect(norm(el.textContent)).toContain('R$ 210,00 (3)');
+    confirmar().click();
+    const req = http.expectOne(URL);
+    expect(req.request.body.diarias).toContainEqual({ funcionarioId: 'f-2', valor: 50 });
+    req.flush({ caixaId: 'cx-1', diariasLancadas: 3, saldoFinal: 240 });
+    await fixture.whenStable();
+  });
+
+  it('clicar numa caixa atualiza total e contagem; confirmar envia id e valor editado dos marcados e avisa', async () => {
+    const { fixture, el, http, close, caixas, valores, digitar, confirmar } = await montar();
+    await digitar(valores()[0], '10000');
+    caixas()[2].click();
+    await fixture.whenStable();
+    expect(norm(el.textContent)).toContain('R$ 100,00 (1)');
     confirmar().click();
     const req = http.expectOne(URL);
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ diarias: [{ funcionarioId: 'f-1' }] });
+    expect(req.request.body).toEqual({ diarias: [{ funcionarioId: 'f-1', valor: 100 }] });
     const resposta = { caixaId: 'cx-1', diariasLancadas: 1, saldoFinal: 240 };
     req.flush(resposta);
     await fixture.whenStable();
@@ -120,6 +151,13 @@ describe('FechamentoSheet', () => {
         .toasts()
         .map((t) => norm(t.message)),
     ).toContain('Caixa fechado. Saldo final R$ 240,00');
+  });
+
+  it('valor zerado (null do campo) conta como 0 e não entra na contagem', async () => {
+    const { el, valores, digitar } = await montar();
+    await digitar(valores()[0], '000');
+    expect(valores()[0].value).toBe('0,00');
+    expect(norm(el.textContent)).toContain('R$ 80,00 (1)');
   });
 
   it('400 FUNCIONARIO_DUPLICADO mostra role=alert com Tentar de novo e Voltar ao caixa', async () => {

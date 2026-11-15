@@ -82,6 +82,8 @@ const FORMATADOR = new Intl.NumberFormat('pt-BR', {
 })
 export class MoneyInput implements ControlValueAccessor {
   readonly rotulo = input<string | null>(null);
+  /** Só zeros digitados viram 0 (e "0,00" na tela) em vez de null; vazio continua null. */
+  readonly zeroComoValor = input(false);
 
   protected readonly exibicao = signal('');
   protected readonly desabilitado = signal(false);
@@ -109,6 +111,15 @@ export class MoneyInput implements ControlValueAccessor {
   protected aoDigitar(evento: Event): void {
     const alvo = evento.target as HTMLInputElement;
     const digitos = alvo.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+
+    // Apagar (backspace/delete) até zerar esvazia o campo; só zeros digitados viram 0.
+    const apagando = evento instanceof InputEvent && evento.inputType.startsWith('delete');
+    if (digitos === '0' && this.zeroComoValor() && !apagando) {
+      this.exibicao.set(FORMATADOR.format(0));
+      alvo.value = FORMATADOR.format(0);
+      this.onChange(0);
+      return;
+    }
 
     if (digitos === '' || digitos === '0') {
       this.exibicao.set('');

@@ -46,7 +46,7 @@ public sealed class CaixaServiceTests
         caixas.DiariaDuplicadaNoBanco = true;
 
         var e = await Assert.ThrowsAsync<ConflictException>(
-            () => sut.FecharAsync(caixa.Id, [funcionario], CancellationToken.None));
+            () => sut.FecharAsync(caixa.Id, [Presente(funcionario)], CancellationToken.None));
 
         Assert.Equal("CAIXA_JA_FECHADO", e.Code);
         Assert.Empty(caixas.DiariasLancadas);
@@ -60,7 +60,7 @@ public sealed class CaixaServiceTests
         caixas.ValoresDiaria[funcionario] = 80m;
 
         var e = await Assert.ThrowsAsync<RequestValidationException>(
-            () => sut.FecharAsync(caixa.Id, [funcionario, funcionario], CancellationToken.None));
+            () => sut.FecharAsync(caixa.Id, [Presente(funcionario), Presente(funcionario)], CancellationToken.None));
 
         Assert.Equal("FUNCIONARIO_DUPLICADO", e.Code);
         Assert.Empty(caixas.DiariasLancadas);
@@ -91,13 +91,69 @@ public sealed class CaixaServiceTests
         caixas.Entradas = 500m;
         caixas.AddDespesa(caixa.Id, 120m);
 
-        var resultado = await sut.FecharAsync(caixa.Id, [funcionario], CancellationToken.None);
+        var resultado = await sut.FecharAsync(caixa.Id, [Presente(funcionario)], CancellationToken.None);
 
         Assert.Single(caixas.DiariasLancadas);
         Assert.Equal((funcionario, 80m), caixas.DiariasLancadas[0]);
         // Diária NÃO entra nas saídas do caixa (regra crítica 7).
         Assert.Equal(120m, resultado.TotalSaidas);
         Assert.Equal(100m + 500m - 120m, resultado.SaldoFinal);
+    }
+
+    private static DiariaFechamento Presente(Guid id, decimal? valor = null) => new(id, valor);
+
+    [Fact]
+    public async Task FecharAsync_ValorInformadoSubstituiCadastro()
+    {
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 0m);
+        var funcionario = Guid.NewGuid();
+        caixas.ValoresDiaria[funcionario] = 80m;
+
+        await sut.FecharAsync(caixa.Id, [Presente(funcionario, 100m)], CancellationToken.None);
+
+        Assert.Equal((funcionario, 100m), Assert.Single(caixas.DiariasLancadas));
+        Assert.Equal(80m, caixas.ValoresDiaria[funcionario]);
+    }
+
+    [Fact]
+    public async Task FecharAsync_CadastroZeroComValorInformado_LancaEContaNoResultado()
+    {
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 0m);
+        var funcionario = Guid.NewGuid();
+        caixas.ValoresDiaria[funcionario] = 0m;
+
+        var resultado = await sut.FecharAsync(caixa.Id, [Presente(funcionario, 50m)], CancellationToken.None);
+
+        Assert.Equal((funcionario, 50m), Assert.Single(caixas.DiariasLancadas));
+        Assert.Equal(1, resultado.DiariasLancadas);
+    }
+
+    [Fact]
+    public async Task FecharAsync_ValorInformadoZero_NaoLancaNemConta()
+    {
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 0m);
+        var funcionario = Guid.NewGuid();
+        caixas.ValoresDiaria[funcionario] = 80m;
+
+        var resultado = await sut.FecharAsync(caixa.Id, [Presente(funcionario, 0m)], CancellationToken.None);
+
+        Assert.Empty(caixas.DiariasLancadas);
+        Assert.Equal(0, resultado.DiariasLancadas);
+    }
+
+    [Fact]
+    public async Task FecharAsync_ValorNegativo_LancaDiariaInvalidaENaoFecha()
+    {
+        var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 0m);
+        var funcionario = Guid.NewGuid();
+        caixas.ValoresDiaria[funcionario] = 80m;
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.FecharAsync(caixa.Id, [Presente(funcionario, -10m)], CancellationToken.None));
+
+        Assert.Equal("DIARIA_INVALIDA", e.Code);
+        Assert.Empty(caixas.DiariasLancadas);
+        Assert.Null(caixas.Fechamento);
     }
 
     [Fact]
@@ -109,7 +165,7 @@ public sealed class CaixaServiceTests
         caixas.ValoresDiaria[comDiaria] = 80m;
         caixas.ValoresDiaria[semDiaria] = 0m;
 
-        var resultado = await sut.FecharAsync(caixa.Id, [comDiaria, semDiaria], CancellationToken.None);
+        var resultado = await sut.FecharAsync(caixa.Id, [Presente(comDiaria), Presente(semDiaria)], CancellationToken.None);
 
         Assert.Single(caixas.DiariasLancadas);
         Assert.Equal((comDiaria, 80m), caixas.DiariasLancadas[0]);
@@ -123,7 +179,7 @@ public sealed class CaixaServiceTests
         var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 0m);
 
         await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => sut.FecharAsync(caixa.Id, [Guid.NewGuid()], CancellationToken.None));
+            () => sut.FecharAsync(caixa.Id, [Presente(Guid.NewGuid())], CancellationToken.None));
     }
 
     [Fact]
@@ -173,7 +229,7 @@ public sealed class CaixaServiceTests
         var caixa = caixas.AddCaixa(new DateOnly(2026, 7, 7), 100m);
 
         var e = await Assert.ThrowsAsync<RequestValidationException>(
-            () => sut.FecharAsync(caixa.Id, [Guid.Empty], CancellationToken.None));
+            () => sut.FecharAsync(caixa.Id, [Presente(Guid.Empty)], CancellationToken.None));
 
         Assert.Equal("ID_INVALIDO", e.Code);
     }

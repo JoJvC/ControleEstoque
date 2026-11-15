@@ -27,6 +27,9 @@ public sealed record ResumoCaixa(
     decimal SaldoParcial,
     IReadOnlyList<Despesa> Despesas);
 
+/// <summary>Presença no fechamento; Valor nulo usa a diária do cadastro.</summary>
+public sealed record DiariaFechamento(Guid FuncionarioId, decimal? Valor);
+
 public sealed record ResultadoFechamento(
     Guid CaixaId,
     DateOnly Data,

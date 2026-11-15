@@ -97,7 +97,7 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
                 <p class="alerta__titulo">Caixa fechado</p>
                 <p>
                   Entradas {{ resumo.caixa.totalEntradas | cePreco }} · saídas
-                  {{ resumo.caixa.totalSaidas | cePreco }} (diárias incluídas) · saldo
+                  {{ resumo.caixa.totalSaidas | cePreco }} · saldo
                   <b>{{ resumo.caixa.saldoFinal | cePreco }}</b
                   >.
                 </p>

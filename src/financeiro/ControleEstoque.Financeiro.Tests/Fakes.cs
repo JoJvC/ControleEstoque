@@ -81,7 +81,7 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
 
     /// <summary>Cumpre o contrato C1: estado, diárias, entradas e despesas lidos no próprio fechamento.</summary>
     public Task<ResultadoFechamento> FecharAsync(
-        Guid caixaId, IReadOnlyList<Guid> funcionarioIds, CancellationToken cancellationToken)
+        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionarioIds, CancellationToken cancellationToken)
     {
         var caixa = caixas.GetValueOrDefault(caixaId)
             ?? throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", "Caixa não encontrado.");
@@ -91,14 +91,15 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
         }
 
         var diarias = new List<(Guid FuncionarioId, decimal Valor)>();
-        foreach (var funcionarioId in funcionarioIds)
+        foreach (var (funcionarioId, informado) in funcionarioIds)
         {
-            if (!ValoresDiaria.TryGetValue(funcionarioId, out var valor))
+            if (!ValoresDiaria.TryGetValue(funcionarioId, out var cadastro))
             {
                 throw new EntityNotFoundException(
                     "FUNCIONARIO_NAO_ENCONTRADO", $"Funcionário {funcionarioId} não encontrado.");
             }
 
+            var valor = informado ?? cadastro;
             if (valor > 0)
             {
                 diarias.Add((funcionarioId, valor));

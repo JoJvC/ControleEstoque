@@ -6,11 +6,15 @@ import { RhApi } from '../../core/api/rh-api';
 import { CargoResponse, FuncionarioResponse } from '../../core/api/models/rh';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { permissoesDoCargo } from '../../core/permissions/permissoes-do-cargo';
+import { Icon } from '../../ui/atoms/icon';
+import { AppHeader } from '../../ui/organisms/app-header';
+import { iniciais } from './iniciais';
 
 type Status = 'loading' | 'ok' | 'error';
 
 @Component({
   selector: 'ce-select-operator-page',
+  imports: [AppHeader, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './select-operator-page.html',
   styleUrl: './select-operator-page.scss',
@@ -22,6 +26,7 @@ export class SelectOperatorPage {
 
   protected readonly status = signal<Status>('loading');
   protected readonly funcionarios = signal<FuncionarioResponse[]>([]);
+  protected readonly iniciais = iniciais;
   private cargos: CargoResponse[] = [];
 
   constructor() {

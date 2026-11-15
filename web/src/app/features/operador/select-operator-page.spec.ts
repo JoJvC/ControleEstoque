@@ -127,6 +127,33 @@ describe('SelectOperatorPage', () => {
     expect(TestBed.inject(Router).navigateByUrl).toHaveBeenCalledWith('/home');
   });
 
+  it('renderiza o heading, as iniciais e o nome acessível de cada cartão', async () => {
+    const el = await abrirPagina();
+
+    expect(el.querySelector('h1')?.textContent).toContain('Quem está operando?');
+    const botoes = el.querySelectorAll<HTMLButtonElement>('.operador__item');
+    expect(botoes[0].querySelector('.operador__avatar')?.textContent?.trim()).toBe('MS');
+    expect(botoes[0].textContent).toContain('Maria Silva');
+    expect(botoes[1].querySelector('.operador__avatar')?.textContent?.trim()).toBe('JS');
+    expect(botoes[1].textContent).toContain('João Souza');
+  });
+
+  it('clique chama select com os dados do funcionário e navega para /home', async () => {
+    const el = await abrirPagina();
+    const select = vi.spyOn(TestBed.inject(OperatorStore), 'select');
+
+    await userEvent.setup().click(el.querySelectorAll<HTMLButtonElement>('.operador__item')[0]);
+
+    expect(select).toHaveBeenCalledWith({
+      id: 'f1',
+      nome: 'Maria Silva',
+      cargoId: 'c1',
+      cargoNome: 'Vendedor',
+      permissoes: ['vendas.registrar'],
+    });
+    expect(TestBed.inject(Router).navigateByUrl).toHaveBeenCalledWith('/home');
+  });
+
   describe('Tentar novamente', () => {
     async function abrirComErro(): Promise<HTMLButtonElement> {
       const fixture = TestBed.createComponent(SelectOperatorPage);

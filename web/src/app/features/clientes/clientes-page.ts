@@ -63,6 +63,11 @@ import { ClientesStore } from './clientes-store';
       padding: var(--ce-space-4);
     }
 
+    // Cartões do design Depósito: raio 18–22 px (o ce-list-item é compartilhado, o raio vale só aqui).
+    :host ::ng-deep .item {
+      border-radius: 20px;
+    }
+
     .nome {
       font-weight: 600;
     }

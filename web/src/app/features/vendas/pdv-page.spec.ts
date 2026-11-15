@@ -79,7 +79,7 @@ const RESPOSTA: VendaResponse = {
   saldoCascoCliente: 2,
 };
 
-async function montar(idVenda?: string, opcoes: { desktop?: boolean } = {}) {
+async function montar(idVenda?: string, opcoes: { desktop?: boolean; cliente?: string } = {}) {
   const abrir = vi.fn();
   const confirmar = vi.fn();
   TestBed.configureTestingModule({
@@ -103,6 +103,9 @@ async function montar(idVenda?: string, opcoes: { desktop?: boolean } = {}) {
   const fixture = TestBed.createComponent(PdvPage);
   if (idVenda) {
     fixture.componentRef.setInput('id', idVenda);
+  }
+  if (opcoes.cliente) {
+    fixture.componentRef.setInput('cliente', opcoes.cliente);
   }
   const el = fixture.nativeElement as HTMLElement;
   http.expectOne('/api/estoque/v1/produtos').flush([AGUA, GALAO, GELO, COPO]);
@@ -652,6 +655,47 @@ describe('PdvPage', () => {
 
     expect(t.alertas()).toContain('O caixa do dia já está fechado.');
     expect(t.texto()).not.toContain('Cupom fiscal nº');
+  });
+});
+
+describe('PdvPage com ?cliente=', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('sem id e com cliente: obtém e seleciona o cliente', async () => {
+    const t = await montar(undefined, { cliente: 'c-1' });
+    t.http.expectOne('/api/clientes/v1/clientes/c-1').flush(cliente('c-1', 'Ana'));
+    await assentar(t.fixture);
+    await t.responderSaldos('c-1');
+    expect(t.texto()).toContain('Ana');
+  });
+
+  it('corrida: escolha manual antes do obter responder não é sobrescrita', async () => {
+    const t = await montar(undefined, { cliente: 'c-1' });
+    const pendente = t.http.expectOne('/api/clientes/v1/clientes/c-1');
+    await t.escolherCliente(cliente('c-2', 'Beto'));
+    pendente.flush(cliente('c-1', 'Ana'));
+    await assentar(t.fixture);
+    expect(t.texto()).toContain('Beto');
+    expect(t.texto()).not.toContain('Ana');
+  });
+
+  it('com id (edição): ignora cliente', async () => {
+    const t = await montar('v-1', { cliente: 'c-9' });
+    t.http.expectOne(`${URL_VENDAS}/v-1`).flush({ ...VENDA_EDICAO, itens: [] });
+    await assentar(t.fixture);
+    t.http.expectOne('/api/clientes/v1/clientes/c-1').flush(cliente('c-1', 'Ana'));
+    await assentar(t.fixture);
+    t.http.expectNone('/api/clientes/v1/clientes/c-9');
+    await t.responderSaldos('c-1');
+  });
+
+  it('obter falha: abre sem cliente', async () => {
+    const t = await montar(undefined, { cliente: 'c-1' });
+    t.http
+      .expectOne('/api/clientes/v1/clientes/c-1')
+      .flush({ code: 'X', message: 'x', traceId: 't' }, { status: 404, statusText: 'Not Found' });
+    await assentar(t.fixture);
+    expect(t.botao('Avançar').disabled).toBe(true);
   });
 });
 

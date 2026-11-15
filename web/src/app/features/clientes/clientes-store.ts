@@ -3,6 +3,8 @@ import { Subscription, firstValueFrom } from 'rxjs';
 
 import { ClientesApi } from '../../core/api/clientes-api';
 import { FinanceiroApi } from '../../core/api/financeiro-api';
+import { VendasApi } from '../../core/api/vendas-api';
+import { VendaDetalheResponse } from '../../core/api/models/vendas';
 import {
   ClienteResponse,
   ConversaoCascosResponse,
@@ -22,6 +24,7 @@ const PAGE_SIZE = 20;
 export class ClientesStore {
   private readonly api = inject(ClientesApi);
   private readonly financeiroApi = inject(FinanceiroApi);
+  private readonly vendasApi = inject(VendasApi);
 
   private readonly clientesInterno = signal<ClienteResponse[]>([]);
   private readonly statusInterno = signal<Status>('idle');
@@ -31,7 +34,11 @@ export class ClientesStore {
   private readonly statusSaldosInterno = signal<Status>('idle');
   private readonly erroSaldosInterno = signal<string | null>(null);
 
+  private readonly historicoInterno = signal<VendaDetalheResponse[]>([]);
+  private readonly statusHistoricoInterno = signal<Status>('idle');
+
   private buscaSaldos?: Subscription;
+  private buscaHistorico?: Subscription;
   private nome = '';
   private page = 1;
 
@@ -41,6 +48,8 @@ export class ClientesStore {
   readonly saldos = this.saldosInterno.asReadonly();
   readonly statusSaldos = this.statusSaldosInterno.asReadonly();
   readonly erroSaldos = this.erroSaldosInterno.asReadonly();
+  readonly historico = this.historicoInterno.asReadonly();
+  readonly statusHistorico = this.statusHistoricoInterno.asReadonly();
 
   buscar(nome: string): void {
     this.nome = nome;
@@ -98,6 +107,20 @@ export class ClientesStore {
         );
         this.statusSaldosInterno.set('error');
       },
+    });
+  }
+
+  /** Últimas vendas do cliente. Zera e cancela a busca anterior (mesmo motivo dos saldos). */
+  carregarHistorico(clienteId: string): void {
+    this.buscaHistorico?.unsubscribe();
+    this.historicoInterno.set([]);
+    this.statusHistoricoInterno.set('loading');
+    this.buscaHistorico = this.vendasApi.listar({ clienteId, page: 1, pageSize: 10 }).subscribe({
+      next: (vendas) => {
+        this.historicoInterno.set(vendas);
+        this.statusHistoricoInterno.set('ok');
+      },
+      error: () => this.statusHistoricoInterno.set('error'),
     });
   }
 

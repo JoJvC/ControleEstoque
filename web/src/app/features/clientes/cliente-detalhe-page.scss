@@ -14,7 +14,119 @@
   flex-direction: column;
   gap: var(--ce-space-4);
   padding-inline: var(--ce-space-4);
-  max-width: 640px;
+  padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
+
+  @include mixins.from-desktop {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
+  }
+}
+
+.coluna {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-4);
+}
+
+.detalhe__saldos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-3);
+}
+
+.bloco {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-2);
+  padding: var(--ce-space-4);
+  border-radius: 20px;
+  background: var(--bloco-soft);
+  color: var(--bloco-cor);
+}
+
+.bloco--casco {
+  --bloco-soft: var(--ce-casco-soft);
+  --bloco-cor: var(--ce-casco);
+}
+
+.bloco--sucata {
+  --bloco-soft: var(--ce-sucata-soft);
+  --bloco-cor: var(--ce-sucata);
+}
+
+.bloco--fiado {
+  --bloco-soft: var(--ce-fiado-soft);
+  --bloco-cor: var(--ce-fiado);
+}
+
+.bloco__valor {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.galoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ce-space-1);
+}
+
+.galoes__excedente {
+  font-weight: 700;
+}
+
+.historico {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-2);
+}
+
+.venda {
+  width: 100%;
+  min-height: var(--ce-touch-target);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-1);
+  padding: var(--ce-space-3);
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--ce-border);
+  border-radius: 18px;
+}
+
+.venda__linha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ce-space-2);
+}
+
+.venda__status {
+  font-size: var(--ce-font-sm);
+  color: var(--ce-text-muted);
+}
+
+.chip-mini {
+  padding: 1px var(--ce-space-2);
+  border-radius: 999px;
+  font-size: var(--ce-font-sm);
+  font-weight: 600;
+}
+
+.chip-mini--casco {
+  background: var(--ce-casco-soft);
+  color: var(--ce-casco);
+}
+
+.chip-mini--sucata {
+  background: var(--ce-sucata-soft);
+  color: var(--ce-sucata);
 }
 
 .secao {
@@ -24,7 +136,7 @@
   padding: var(--ce-space-4);
   background: var(--ce-surface);
   border: 1px solid var(--ce-border);
-  border-radius: var(--ce-radius-md);
+  border-radius: 20px;
 }
 
 .secao__cabecalho {
@@ -90,18 +202,6 @@
 .endereco__extra {
   font-size: var(--ce-font-sm);
   color: var(--ce-text-muted);
-}
-
-.saldos {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: var(--ce-space-3);
-}
-
-.acoes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ce-space-2);
 }
 
 .erro {

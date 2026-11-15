@@ -8,77 +8,150 @@
   <div class="centro"><ce-spinner /></div>
 } @else if (cliente(); as c) {
   <div class="detalhe">
-    <section class="secao">
-      <h2 class="secao__titulo">Contato</h2>
-      <p>{{ c.telefone ?? 'Sem telefone cadastrado' }}</p>
-      @if (c.observacoes) {
-        <p class="observacoes">{{ c.observacoes }}</p>
-      }
-    </section>
-
-    <section class="secao">
-      <div class="secao__cabecalho">
-        <h2 class="secao__titulo">Endereços</h2>
-        <ce-button *cePermissao="'clientes.cadastrar'" variante="ghost" (click)="novoEndereco()">
-          <ce-icon nome="mais" [tamanho]="18" /> Adicionar
-        </ce-button>
+    <div class="coluna">
+      <div class="detalhe__saldos">
+        @if (statusSaldos() === 'error') {
+          <section class="secao">
+            <p class="erro" role="alert">
+              {{ erroSaldos() ?? 'Não foi possível carregar os saldos.' }}
+            </p>
+            <ce-button variante="ghost" (click)="carregarSaldos()">Tentar novamente</ce-button>
+          </section>
+        } @else if (saldos(); as s) {
+          <section class="bloco bloco--casco" aria-label="Cascos com ele">
+            <h2 class="secao__titulo">Cascos com ele</h2>
+            <p class="bloco__valor">{{ s.saldoCascos }}</p>
+            @if (galoes(s.saldoCascos); as g) {
+              @if (g.desenhados === 0) {
+                <p class="vazio">Nenhum casco com ele</p>
+              } @else {
+                <div class="galoes">
+                  @for (_ of galoesIdx(g.desenhados); track $index) {
+                    <ce-icon class="galao" nome="casco-na-rua" [tamanho]="32" />
+                  }
+                  @if (g.excedente > 0) {
+                    <span class="galoes__excedente">+{{ g.excedente }}</span>
+                  }
+                </div>
+              }
+            }
+          </section>
+          <section class="bloco bloco--fiado" aria-label="Fiado">
+            <h2 class="secao__titulo">Fiado</h2>
+            <p class="bloco__valor">{{ s.saldoFiado | cePreco }}</p>
+          </section>
+          <section class="bloco bloco--sucata" aria-label="Sucata">
+            <h2 class="secao__titulo">Sucata</h2>
+            <p class="bloco__valor">{{ s.sucataEntregue }}</p>
+            <ce-button variante="ghost" (click)="entregarSucata()">Entregar sucata</ce-button>
+          </section>
+        } @else {
+          <div class="centro"><ce-spinner /></div>
+        }
       </div>
 
-      @if (c.enderecos.length === 0) {
-        <p class="vazio">Nenhum endereço cadastrado.</p>
-      } @else {
-        <ul class="enderecos">
-          @for (endereco of c.enderecos; track endereco.id) {
-            <li class="endereco">
-              <span class="endereco__linha">
-                {{ endereco.logradouro }}{{ endereco.numero ? ', ' + endereco.numero : '' }}
-                @if (endereco.principal) {
-                  <span class="endereco__principal">principal</span>
-                }
-              </span>
-              @if (endereco.bairro || endereco.complemento) {
-                <span class="endereco__extra">
-                  {{ [endereco.bairro, endereco.complemento].join(' · ') }}
-                </span>
-              }
-              @if (endereco.referencia) {
-                <span class="endereco__extra">Ref.: {{ endereco.referencia }}</span>
-              }
-            </li>
+      <section class="secao secao--historico">
+        <h2 class="secao__titulo">Histórico</h2>
+        @switch (statusHistorico()) {
+          @case ('error') {
+            <p class="erro" role="alert">Não foi possível carregar o histórico.</p>
+            <ce-button variante="ghost" (click)="carregarHistorico()">Tentar novamente</ce-button>
           }
-        </ul>
-      }
-    </section>
+          @case ('ok') {
+            @if (historico().length === 0) {
+              <p class="vazio">Sem vendas registradas</p>
+            } @else {
+              <ul class="historico">
+                @for (v of historico(); track v.id) {
+                  <li>
+                    <button type="button" class="venda" (click)="abrirVenda(v.id)">
+                      <span class="venda__linha">
+                        <span>{{ v.data | date: 'dd/MM/yyyy' }}</span>
+                        <strong>{{ v.totalLiquido | cePreco }}</strong>
+                        <span class="venda__status">{{
+                          rotuloStatusPagamento(v.statusPagamento)
+                        }}</span>
+                      </span>
+                      @if (v.cascosDevolvidos > 0 || v.sucataEntregue > 0) {
+                        <span class="venda__linha">
+                          @if (v.cascosDevolvidos > 0) {
+                            <span class="chip-mini chip-mini--casco"
+                              >Cascos devolvidos {{ v.cascosDevolvidos }}</span
+                            >
+                          }
+                          @if (v.sucataEntregue > 0) {
+                            <span class="chip-mini chip-mini--sucata"
+                              >Sucata {{ v.sucataEntregue }}</span
+                            >
+                          }
+                        </span>
+                      }
+                    </button>
+                  </li>
+                }
+              </ul>
+            }
+          }
+          @default {
+            <div class="centro"><ce-spinner /></div>
+          }
+        }
+      </section>
+    </div>
+    <div class="coluna">
+      <section class="secao">
+        <h2 class="secao__titulo">Contato</h2>
+        <p>{{ c.telefone ?? 'Sem telefone cadastrado' }}</p>
+        @if (c.observacoes) {
+          <p class="observacoes">{{ c.observacoes }}</p>
+        }
+      </section>
 
-    <section class="secao secao--saldos">
-      <h2 class="secao__titulo">Saldos (casco, sucata e fiado)</h2>
-
-      @if (statusSaldos() === 'error') {
-        <p class="erro" role="alert">
-          {{ erroSaldos() ?? 'Não foi possível carregar os saldos.' }}
-        </p>
-        <ce-button variante="ghost" (click)="carregarSaldos()">Tentar novamente</ce-button>
-      } @else if (saldos(); as s) {
-        <div class="saldos">
-          <ce-saldo-chip rotulo="Cascos" cor="warning">{{ s.saldoCascos }}</ce-saldo-chip>
-          <ce-saldo-chip rotulo="Sucata entregue" cor="neutral">{{
-            s.sucataEntregue
-          }}</ce-saldo-chip>
-          <ce-saldo-chip rotulo="Fiado" cor="danger">{{ s.saldoFiado | cePreco }}</ce-saldo-chip>
+      <section class="secao">
+        <div class="secao__cabecalho">
+          <h2 class="secao__titulo">Endereços</h2>
+          <ce-button *cePermissao="'clientes.cadastrar'" variante="ghost" (click)="novoEndereco()">
+            <ce-icon nome="mais" [tamanho]="18" /> Adicionar
+          </ce-button>
         </div>
-      } @else {
-        <div class="centro"><ce-spinner /></div>
-      }
 
-      <div class="acoes">
-        <ce-button variante="ghost" (click)="pagarCasco()">Pagar casco</ce-button>
-        <ce-button variante="ghost" (click)="entregarSucata()">Entregar sucata</ce-button>
-        <ce-button variante="ghost" (click)="receberFiado()">Receber fiado</ce-button>
-      </div>
-    </section>
+        @if (c.enderecos.length === 0) {
+          <p class="vazio">Nenhum endereço cadastrado.</p>
+        } @else {
+          <ul class="enderecos">
+            @for (endereco of c.enderecos; track endereco.id) {
+              <li class="endereco">
+                <span class="endereco__linha">
+                  {{ endereco.logradouro }}{{ endereco.numero ? ', ' + endereco.numero : '' }}
+                  @if (endereco.principal) {
+                    <span class="endereco__principal">principal</span>
+                  }
+                </span>
+                @if (endereco.bairro || endereco.complemento) {
+                  <span class="endereco__extra">
+                    {{ [endereco.bairro, endereco.complemento].join(' · ') }}
+                  </span>
+                }
+                @if (endereco.referencia) {
+                  <span class="endereco__extra">Ref.: {{ endereco.referencia }}</span>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    </div>
   </div>
 } @else {
   <ce-empty-state icone="alerta" titulo="Cliente não encontrado">
     <ce-button variante="ghost" (click)="carregar()">Tentar novamente</ce-button>
   </ce-empty-state>
+}
+
+@if (carregando() === false && cliente()) {
+  <ce-barra-acao rotulo="Ações do cliente">
+    <ce-button variante="ghost" (click)="pagarCasco()">Recolher cascos</ce-button>
+    <ce-button variante="ghost" (click)="receberFiado()">Receber fiado</ce-button>
+    <ce-button *cePermissao="'vendas.registrar'" (click)="vender()">Vender</ce-button>
+  </ce-barra-acao>
 }

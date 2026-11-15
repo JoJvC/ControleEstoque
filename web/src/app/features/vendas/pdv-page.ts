@@ -4,12 +4,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   inject,
   input,
   OnInit,
   signal,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { firstValueFrom, map } from 'rxjs';
@@ -216,7 +217,7 @@ const ROTULOS: Record<Passo, string> = {
     </div>
 
     <ng-template #tplBarraCliente>
-      @if (cliente(); as c) {
+      @if (clienteSelecionado(); as c) {
         <section class="cliente-fixo" aria-label="Cliente da venda">
           <div class="cliente-fixo__linha">
             <strong class="cliente-fixo__nome">{{ c.nome }}</strong>
@@ -233,7 +234,7 @@ const ROTULOS: Record<Passo, string> = {
     </ng-template>
 
     <ng-template #tplCliente>
-      @if (cliente(); as c) {
+      @if (clienteSelecionado(); as c) {
         <ng-container *ngTemplateOutlet="tplBarraCliente" />
         @if (c.enderecos.length > 1) {
           <div role="radiogroup" aria-label="Endereço de entrega" class="lista">
@@ -391,7 +392,7 @@ const ROTULOS: Record<Passo, string> = {
       <dl class="resumo">
         <div class="resumo__linha">
           <dt>Cliente</dt>
-          <dd>{{ cliente()?.nome }}</dd>
+          <dd>{{ clienteSelecionado()?.nome }}</dd>
         </div>
         <div class="resumo__linha">
           <dt>Bruto</dt>
@@ -723,6 +724,7 @@ const ROTULOS: Record<Passo, string> = {
 export class PdvPage implements OnInit {
   private readonly vendaStore = inject(VendaStore);
   private readonly clientesApi = inject(ClientesApi);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly estoqueApi = inject(EstoqueApi);
   private readonly operador = inject(OperatorStore);
   private readonly sheet = inject(SheetService);
@@ -739,7 +741,7 @@ export class PdvPage implements OnInit {
   protected readonly mensagemExcede = mensagemDoErro('PAGAMENTO_EXCEDE_TOTAL', 422);
 
   // Rascunho
-  protected readonly cliente = signal<ClienteResponse | null>(null);
+  protected readonly clienteSelecionado = signal<ClienteResponse | null>(null);
   protected readonly enderecoId = signal<string | null>(null);
   protected readonly itens = signal<readonly ItemCarrinho[]>([]);
   protected readonly cascosDevolvidos = signal(0);
@@ -749,6 +751,8 @@ export class PdvPage implements OnInit {
 
   // Edição: com `id` (rota editar/:id) a página pré-carrega a venda e salva por PUT.
   readonly id = input<string>();
+  /** Query param ?cliente=<id> (vem do detalhe do cliente): pré-seleciona o cliente numa venda nova. */
+  readonly cliente = input<string>();
   private readonly vendaCarregada = signal<VendaDetalheResponse | null>(null);
   protected readonly carga = signal<'carregando' | 'erro' | 'ok'>('ok');
   protected readonly erroCarga = signal<string | null>(null);
@@ -804,7 +808,7 @@ export class PdvPage implements OnInit {
   protected readonly saldos = signal<SaldosResponse | null>(null);
 
   protected readonly podeRegistrar = computed(() => {
-    const c = this.cliente();
+    const c = this.clienteSelecionado();
     const enderecoOk = c !== null && (c.enderecos.length <= 1 || this.enderecoId() !== null);
     return enderecoOk && this.itens().length > 0 && !this.excede();
   });
@@ -819,7 +823,7 @@ export class PdvPage implements OnInit {
   protected readonly podeAvancar = computed(() => {
     switch (this.passo()) {
       case 'cliente': {
-        const c = this.cliente();
+        const c = this.clienteSelecionado();
         return c !== null && (c.enderecos.length <= 1 || this.enderecoId() !== null);
       }
       case 'itens':
@@ -843,8 +847,18 @@ export class PdvPage implements OnInit {
 
   ngOnInit(): void {
     const id = this.id();
+    const clienteId = this.cliente();
     if (id) {
       void this.carregarVenda(id);
+    } else if (clienteId) {
+      this.clientesApi
+        .obter(clienteId)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          // Se o operador já escolheu outro cliente enquanto isso, não sobrescreve.
+          next: (c) => this.clienteSelecionado() === null && this.selecionarCliente(c),
+          error: () => undefined, // abre sem cliente, como sem o parâmetro
+        });
     }
   }
 
@@ -955,12 +969,12 @@ export class PdvPage implements OnInit {
   }
 
   protected selecionarCliente(cliente: ClienteResponse): void {
-    this.cliente.set(cliente);
+    this.clienteSelecionado.set(cliente);
     this.enderecoId.set(cliente.enderecos.length === 1 ? cliente.enderecos[0].id : null);
     this.saldos.set(null);
     this.clientesApi.obterSaldos(cliente.id).subscribe({
       next: (saldos) => {
-        if (this.cliente()?.id === cliente.id) {
+        if (this.clienteSelecionado()?.id === cliente.id) {
           this.saldos.set(saldos);
         }
       },
@@ -969,7 +983,7 @@ export class PdvPage implements OnInit {
   }
 
   protected trocarCliente(): void {
-    this.cliente.set(null);
+    this.clienteSelecionado.set(null);
     this.enderecoId.set(null);
     this.saldos.set(null);
     this.passo.set('cliente');
@@ -1104,7 +1118,7 @@ export class PdvPage implements OnInit {
   protected async registrar(): Promise<void> {
     const original = this.vendaCarregada();
     const funcionarioId = original?.funcionarioId ?? this.operador.operator()?.id;
-    const cliente = this.cliente();
+    const cliente = this.clienteSelecionado();
     const edicaoBloqueada = this.id() !== undefined && (!original || original.cupomEmitido);
     if (this.enviando() || this.excede() || !funcionarioId || !cliente || edicaoBloqueada) {
       return;
@@ -1175,7 +1189,7 @@ export class PdvPage implements OnInit {
   }
 
   protected reiniciar(): void {
-    this.cliente.set(null);
+    this.clienteSelecionado.set(null);
     this.enderecoId.set(null);
     this.itens.set([]);
     this.cascosDevolvidos.set(0);

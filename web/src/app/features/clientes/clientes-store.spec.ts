@@ -140,3 +140,50 @@ describe('ClientesStore — saldos e operações', () => {
     expect((erro as ApiError).code).toBe('CAIXA_FECHADO');
   });
 });
+
+describe('ClientesStore — histórico', () => {
+  let store: ClientesStore;
+  let http: HttpTestingController;
+  const VENDAS = '/api/vendas/v1/vendas';
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([apiErrorInterceptor])),
+        provideHttpClientTesting(),
+        { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
+      ],
+    });
+    store = TestBed.inject(ClientesStore);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('envia clienteId, page 1 e pageSize 10', () => {
+    store.carregarHistorico('c-1');
+    expect(store.statusHistorico()).toBe('loading');
+    const req = http.expectOne((r) => r.url === VENDAS);
+    expect(req.request.params.get('clienteId')).toBe('c-1');
+    expect(req.request.params.get('page')).toBe('1');
+    expect(req.request.params.get('pageSize')).toBe('10');
+    req.flush([{ id: 'v-1' }]);
+    expect(store.historico()).toHaveLength(1);
+    expect(store.statusHistorico()).toBe('ok');
+  });
+
+  it('descarta resposta velha quando o id muda', () => {
+    store.carregarHistorico('c-1');
+    const velha = http.expectOne((r) => r.params.get('clienteId') === 'c-1');
+    store.carregarHistorico('c-2');
+    expect(velha.cancelled).toBe(true);
+    http.expectOne((r) => r.params.get('clienteId') === 'c-2').flush([{ id: 'v-2' }]);
+    expect(store.historico()).toEqual([{ id: 'v-2' }]);
+  });
+
+  it('erro põe status error', () => {
+    store.carregarHistorico('c-1');
+    http.expectOne((r) => r.url === VENDAS).flush(null, { status: 500, statusText: 'x' });
+    expect(store.statusHistorico()).toBe('error');
+  });
+});

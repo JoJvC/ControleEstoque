@@ -36,7 +36,7 @@ const TEMAS = {
     fiado: '#c2410c', // tokens.scss:34
     fiadoSoft: '#ffede3', // tokens.scss:35
     pago: '#15803d', // tokens.scss:36
-    pagoSoft: '#e3f5ea', // tokens.scss:37
+    pagoSoft: '#ebf7f1', // tokens.scss:37
     agua: '#08769c', // tokens.scss:38
     aguaSoft: '#e3f3f8', // tokens.scss:39
     aguaNivel: '#4cc9e8', // tokens.scss:40
@@ -72,7 +72,7 @@ const TEMAS = {
     fiado: '#c2410c', // tokens.scss:113
     fiadoSoft: '#ffede3', // tokens.scss:114
     pago: '#15803d', // tokens.scss:115
-    pagoSoft: '#e3f5ea', // tokens.scss:116
+    pagoSoft: '#ebf7f1', // tokens.scss:116
     agua: '#08769c', // tokens.scss:117
     aguaSoft: '#e3f3f8', // tokens.scss:118
     aguaNivel: '#4cc9e8', // tokens.scss:119
@@ -108,7 +108,7 @@ const TEMAS = {
     fiado: '#c2410c', // tokens.scss:151
     fiadoSoft: '#ffede3', // tokens.scss:152
     pago: '#15803d', // tokens.scss:153
-    pagoSoft: '#e3f5ea', // tokens.scss:154
+    pagoSoft: '#ebf7f1', // tokens.scss:154
     agua: '#08769c', // tokens.scss:155
     aguaSoft: '#e3f3f8', // tokens.scss:156
     aguaNivel: '#4cc9e8', // tokens.scss:157
@@ -407,6 +407,41 @@ const PARES_TELAS: [Chave, Chave, number, string][] = [
   ['bordaCampo', 'surface', NAO_TEXTUAL, 'borda de campo nos formulários de cadastro e nas sheets'],
   ['bordaCampo', 'bg', NAO_TEXTUAL, 'borda de campo sobre o fundo da página'],
   ['danger', 'surface', TEXTO, 'p.erro/role=alert dos formulários e sheets'],
+  // Fatia Smoke/Fase 4: PDV em uma tela, Repetir, Clientes, Abastecimento, Caixa, Relatórios e Aparência
+  ['acaoTexto', 'aguaSoft', TEXTO, 'botão Repetir última venda (pdv-page.ts:.repetir)'],
+  ['primaryStrong', 'surface', TEXTO, 'link Preço e desconto (pdv-page.ts:.prod__link)'],
+  [
+    'primary',
+    'primarySoft',
+    TEXTO,
+    'ícone/título do card de relatório (relatorios-page.ts:.card__icone)',
+  ],
+  ['text', 'primarySoft', TEXTO, 'endereço escolhido no PDV (pdv-page.ts:.opcao--ativa)'],
+  [
+    'casco',
+    'cascoSoft',
+    TEXTO,
+    'cascos devolvidos (cobrar-painel.ts:.casco__rua, cliente-detalhe-page.scss)',
+  ],
+  [
+    'sucata',
+    'sucataSoft',
+    TEXTO,
+    'título da sucata (cobrar-painel.ts:.sucata .titulo, cliente-detalhe-page.scss)',
+  ],
+  [
+    'fiado',
+    'fiadoSoft',
+    TEXTO,
+    'Tudo fiado e Vai para fiado (cobrar-painel.ts:.atalho--fiado, .resumo--fiado)',
+  ],
+  ['pago', 'pagoSoft', TEXTO, 'Pago por completo (cobrar-painel.ts:.resumo--pago)'],
+  [
+    'warning',
+    'surfaceMuted',
+    TEXTO,
+    'Fiado gerado na venda registrada (pdv-page.ts:.resumo__linha--fiado)',
+  ],
 ];
 
 describe('Cadastros, seleção de operador e telas restantes no design Depósito', () => {

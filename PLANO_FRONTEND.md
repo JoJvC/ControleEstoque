@@ -328,6 +328,20 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 - [ ] Lighthouse e a11y no navegador: conferência do usuário no aceite
 - **Critério de aceite:** telas de `web/DESIGN.md` §5 nos tokens do tema, sem sobras do visual antigo (varredura `rg` = 0) e smoke Playwright verde no host.
 
+### Fase 4 — Smoke dos fluxos novos e contraste
+- [x] Smoke Playwright (`web/e2e/smoke.spec.ts`) com 10 testes: operador, navegação, venda em uma tela com pagamento parcial → caixa, Repetir última venda, Clientes, reposição (Repor na Home), Caixa, Relatórios, troca de operador e temas (clique, seta, persistência, volta ao Automático)
+- [x] Cargo do smoke com `caixa.fechar`; `web/README.md` com os testes novos, o comando no host e as notas de dados, permissões e caixa
+- [x] Contraste: hex de `TEMAS` conferidos contra `tokens.scss` (136 valores, 0 divergências); pares das telas novas em `PARES_TELAS`, nos 4 temas e no Automático
+- [x] Token corrigido: `--ce-pago-soft` `#e3f5ea` → `#ebf7f1` nos 3 temas claros (`pago/pagoSoft` dava 4,42; agora 4,56 — "Pago por completo" do PDV)
+- [ ] Smoke rodado contra o compose: no host, no aceite (`docker compose -f infra/docker-compose.yml up -d --build` e `cd web && npm run e2e`); na caixa não se roda docker, compose nem Playwright
+- [ ] Lighthouse mobile ≥ 90 e a11y no navegador, na Home e no PDV: conferência do usuário no aceite
+- [ ] Fechar o caixa do dia no smoke: o teste só abre o fechamento e cancela, para o smoke poder rodar de novo no mesmo dia
+- [ ] Seletores estáveis (`data-testid`) onde o spec só tem CSS (`dl`/`ce-money-input` na venda): a fatia não muda template de produção
+- [ ] `e2e/` em `ng lint` e em `format:check`: hoje só `tsc -p e2e/tsconfig.json` e `prettier --check "e2e/**/*.ts"` rodam à mão
+- [ ] Teste que lê `tokens.scss` e compara com `TEMAS`: hoje a conferência é manual, a cada mudança de token
+- [ ] Entregas, caderneta do fiado e consumo médio: fora de escopo (`web/DESIGN.md` §6)
+- **Critério de aceite:** `npm run e2e` verde no host contra o compose, com os 10 testes; vitest de contraste verde nos 4 temas e no Automático.
+
 ---
 
 ## 8. Regras Críticas de UI

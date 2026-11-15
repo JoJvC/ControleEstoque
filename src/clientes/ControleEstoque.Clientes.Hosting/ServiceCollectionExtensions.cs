@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IClienteRepository, PostgresClienteRepository>();
         services.AddSingleton<ISaldosRepository, PostgresSaldosRepository>();
+        services.AddSingleton<ITipoCascoLeituraRepository, PostgresTipoCascoLeituraRepository>();
         services.AddSingleton<ICascoClienteRepository, PostgresCascoClienteRepository>();
         services.AddSingleton<ISucataClienteRepository, PostgresSucataClienteRepository>();
 

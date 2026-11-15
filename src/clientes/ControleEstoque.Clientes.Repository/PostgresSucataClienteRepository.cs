@@ -1,5 +1,4 @@
 using ControleEstoque.Clientes.Domain;
-using ControleEstoque.Shared.Results;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -12,23 +11,17 @@ public sealed class PostgresSucataClienteRepository : ISucataClienteRepository
     public PostgresSucataClienteRepository(NpgsqlDataSource dataSource) => this.dataSource = dataSource;
 
     public async Task<ResultadoEntregaSucata> EntregarAsync(
-        Guid clienteId, int quantidade, decimal? valorConversao, CancellationToken cancellationToken)
+        Guid clienteId, Guid tipoCascoId, int quantidade, decimal? valorConversao,
+        CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-
-        Guid sucataProdutoId;
-        await using (var command = new NpgsqlCommand(Sql.GetProdutoSucata, connection, transaction))
-        {
-            var id = (Guid?)await command.ExecuteScalarAsync(cancellationToken);
-            sucataProdutoId = id ?? throw new BusinessRuleException(
-                "PRODUTO_SUCATA_AUSENTE", "Produto estrutural SUCATA não cadastrado.");
-        }
 
         // Registro do cliente — nunca toca movimentos_casco_cliente.
         await using (var command = new NpgsqlCommand(Sql.InsertEntrega, connection, transaction))
         {
             command.Parameters.AddWithValue("clienteId", clienteId);
+            command.Parameters.AddWithValue("tipoCascoId", tipoCascoId);
             command.Parameters.AddWithValue("quantidade", quantidade);
             command.Parameters.Add(new NpgsqlParameter("valorConversao", NpgsqlDbType.Numeric)
             {
@@ -37,9 +30,9 @@ public sealed class PostgresSucataClienteRepository : ISucataClienteRepository
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        await using (var command = new NpgsqlCommand(Sql.InsertMovimentoEstoque, connection, transaction))
+        await using (var command = new NpgsqlCommand(Sql.InsertMovimentoEstoqueCasco, connection, transaction))
         {
-            command.Parameters.AddWithValue("produtoId", sucataProdutoId);
+            command.Parameters.AddWithValue("tipoCascoId", tipoCascoId);
             command.Parameters.AddWithValue("quantidade", quantidade);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -74,20 +67,14 @@ public sealed class PostgresSucataClienteRepository : ISucataClienteRepository
 
     private static class Sql
     {
-        public const string GetProdutoSucata = """
-            SELECT id FROM produtos
-            WHERE tipo = 'SUCATA' AND deleted_at IS NULL
-            ORDER BY created_at LIMIT 1
-            """;
-
         public const string InsertEntrega = """
-            INSERT INTO entregas_sucata_cliente (cliente_id, quantidade, valor_conversao)
-            VALUES (@clienteId, @quantidade, @valorConversao)
+            INSERT INTO entregas_sucata_cliente (cliente_id, tipo_casco_id, quantidade, valor_conversao)
+            VALUES (@clienteId, @tipoCascoId, @quantidade, @valorConversao)
             """;
 
-        public const string InsertMovimentoEstoque = """
-            INSERT INTO movimentos_estoque (produto_id, tipo, quantidade)
-            VALUES (@produtoId, 'ENTRADA_SUCATA', @quantidade)
+        public const string InsertMovimentoEstoqueCasco = """
+            INSERT INTO movimentos_estoque_casco (tipo_casco_id, situacao, tipo, quantidade)
+            VALUES (@tipoCascoId, 'SUCATA', 'ENTRADA_SUCATA', @quantidade)
             """;
 
         public const string InsertCreditoFiado = """
@@ -95,8 +82,9 @@ public sealed class PostgresSucataClienteRepository : ISucataClienteRepository
             VALUES (@clienteId, 'CREDITO_CONVERSAO_SUCATA', @valor, @observacao)
             """;
 
+        // SUM(bigint) é numeric no Postgres: o ::bigint mantém o (long?) do ExecuteScalar.
         public const string GetTotalEntregue =
-            "SELECT total_entregue FROM vw_sucata_entregue_cliente WHERE cliente_id = @clienteId";
+            "SELECT COALESCE(SUM(total_entregue), 0)::bigint FROM vw_sucata_entregue_cliente WHERE cliente_id = @clienteId";
 
         public const string GetSaldoFiado =
             "SELECT saldo_devedor FROM vw_saldo_fiado_cliente WHERE cliente_id = @clienteId";

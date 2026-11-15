@@ -62,13 +62,13 @@ O vasilhame é controlado por **tipo de casco** (nome, preço do vasilhame, acei
 Controles envolvidos:
 - **Entrada no estoque**: o abastecimento dá entrada por produto+marca. O estoque de **vazios** de cada tipo de casco é alimentado por lançamento (ajuste) e pelas devoluções dos clientes. Sucata normalmente não vem do abastecimento — entra por entrega do cliente, por ajuste ou por baixa de casco quebrado.
 - **Estoque físico de vazios e de sucata, por tipo de casco**: controlados separadamente. Sucata **só** nos tipos que aceitam sucata: entrada ou ajuste de sucata em tipo que não aceita é recusado. Deve existir uma função de **baixa de casco** por tipo para registrar perdas (quebra), atribuída a um ou mais funcionários responsáveis — o casco baixado sai do estoque de vazios do tipo e, **só se o tipo aceita sucata**, passa a compor o estoque de sucata do mesmo tipo; se não aceita, apenas sai do vazio. Sem vazio suficiente no tipo, a baixa é recusada.
-- **Saldo de casco por cliente**: quantos cascos cada cliente está devendo à loja (apenas por vendas de produtos retornáveis). Não há limite de cascos por cliente.
-- **Registro de sucata por cliente**: quantidade de sucata que cada cliente já entregou à loja — não é um débito, apenas um recebimento registrado, independente do saldo de casco.
+- **Saldo de casco por cliente e tipo de casco**: quantos cascos de cada tipo cada cliente está devendo à loja (apenas por vendas de produtos retornáveis). Não há limite de cascos por cliente.
+- **Registro de sucata por cliente e tipo de casco**: quantidade de sucata de cada tipo que cada cliente já entregou à loja — não é um débito, apenas um recebimento registrado, independente do saldo de casco.
 - **Venda de produto retornável — registro da devolução**: a venda registra a quantidade de cheios vendidos e a quantidade de vazios devolvidos pelo cliente naquele momento como campos independentes (não precisam ser iguais). Para o caso comum (troca direta, tudo devolvido), a tela de venda deve ter uma opção rápida do tipo "cascos devolvidos na hora" que preenche a devolução igual à quantidade vendida, mas o valor continua editável para os casos parciais. A diferença (vendido − devolvido) ajusta o saldo de casco do cliente: gera débito se devolveu menos, gera crédito se devolveu mais (abatendo débito de vendas anteriores). Se o cliente entregar sucata na mesma ocasião, essa quantidade é lançada à parte no registro de sucata e **não** abate o débito de casco.
 - **Pagar Casco**: funcionalidade para quitar o débito de casco do cliente, de duas formas possíveis:
-  - **Devolução física**: cliente devolve o(s) casco(s) vazio(s) (no ato da venda ou avulsa, sem compra associada), abatendo o débito e dando entrada no estoque físico de vazios.
-  - **Conversão em valor**: ao invés de devolver fisicamente, o débito de casco é convertido em cobrança em dinheiro, lançando a venda do casco vazio, que migra a pendência para a conta corrente financeira (fiado) do cliente.
-- **Entrega de Sucata**: cliente entrega vasilhame(s) quebrado(s) à loja (avulso ou junto de uma venda), dando entrada no estoque físico de sucata e no registro de sucata do cliente. A loja pode, a seu critério, converter essa entrega em valor (crédito ao cliente na conta corrente/fiado).
+  - **Devolução física**: cliente devolve o(s) casco(s) vazio(s) de um tipo (no ato da venda ou avulsa, sem compra associada), abatendo o débito daquele tipo e dando entrada no estoque físico de vazios do mesmo tipo.
+  - **Conversão em valor**: ao invés de devolver fisicamente, o débito de casco de um tipo é convertido em cobrança em dinheiro, lançando a venda do casco vazio pelo **preço do vasilhame do tipo** (quantidade × preço; tipo sem preço de vasilhame não converte), que migra a pendência para a conta corrente financeira (fiado) do cliente. A quantidade convertida é limitada ao saldo do cliente naquele tipo.
+- **Entrega de Sucata**: cliente entrega vasilhame(s) quebrado(s) de um tipo de casco à loja (avulso ou junto de uma venda), dando entrada no estoque físico de sucata do tipo e no registro de sucata do cliente. Só é aceita em tipo que aceita sucata. A loja pode, a seu critério, converter essa entrega em valor (crédito ao cliente na conta corrente/fiado).
 
 ### 3.7 Abastecimento
 - Registro de abastecimento do estoque da loja, que pode ser feito via frete terceirizado ou com caminhão/funcionário próprio da loja.
@@ -104,16 +104,16 @@ Controles envolvidos:
 - Uma única venda combina, por exemplo, água de marcas diferentes, casco avulso e descartáveis, cada item com seu produto e valor.
 
 ### 4.6 Pagar Casco (Devolução Física)
-- Cliente devolve casco(s) normal(is) vazio(s) — no ato de uma venda de água ou avulso, sem compra associada — abatendo seu débito de casco normal e dando entrada no estoque físico de vazios.
+- Cliente devolve casco(s) normal(is) vazio(s) de um tipo — no ato de uma venda de água ou avulso, sem compra associada — abatendo seu débito de casco normal daquele tipo e dando entrada no estoque físico de vazios do tipo.
 
 ### 4.7 Baixa de Casco por Quebra
 - Registro de perda (quebra) de casco de um tipo, atribuída a um ou mais funcionários responsáveis; o casco sai do estoque de vazios do tipo e, se o tipo aceita sucata, passa a compor a sucata do mesmo tipo (se não aceita, só sai do vazio). Sem vazio suficiente no tipo, a baixa é recusada.
 
 ### 4.8 Pagar Casco (Conversão em Débito Financeiro)
-- Débito de casco normal de um cliente é convertido em valor lançando a venda do casco vazio, que passa a compor a conta corrente (fiado) do cliente, ao invés de aguardar devolução física.
+- Débito de casco normal de um cliente em um tipo é convertido em valor, pelo preço do vasilhame do tipo e até o saldo do cliente naquele tipo, lançando a venda do casco vazio, que passa a compor a conta corrente (fiado) do cliente, ao invés de aguardar devolução física.
 
 ### 4.9 Entrega de Sucata
-- Cliente entrega vasilhame(s) quebrado(s) à loja, avulso ou junto de uma venda, dando entrada no estoque de sucata e no registro de sucata do cliente — sem abater o débito de casco normal. A loja pode, a seu critério, converter a entrega em valor (crédito na conta corrente/fiado).
+- Cliente entrega vasilhame(s) quebrado(s) à loja, avulso ou junto de uma venda, dando entrada no estoque de sucata do tipo (que deve aceitar sucata) e no registro de sucata do cliente por tipo — sem abater o débito de casco normal. A loja pode, a seu critério, converter a entrega em valor (crédito na conta corrente/fiado).
 
 ### 4.10 Venda a Prazo / Fiado
 - Venda registrada com pagamento a prazo, gerando débito na conta corrente do cliente; pagamentos futuros baixam esse saldo.

@@ -5,7 +5,8 @@ namespace ControleEstoque.Clientes.Domain;
 public interface ISucataClienteService
 {
     Task<ResultadoEntregaSucata> EntregarAsync(
-        Guid clienteId, int quantidade, decimal? valorConversao, CancellationToken cancellationToken);
+        Guid clienteId, Guid tipoCascoId, int quantidade, decimal? valorConversao,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -16,15 +17,19 @@ public sealed class SucataClienteService : ISucataClienteService
 {
     private readonly ISucataClienteRepository sucatas;
     private readonly IClienteRepository clientes;
+    private readonly ITipoCascoLeituraRepository tipos;
 
-    public SucataClienteService(ISucataClienteRepository sucatas, IClienteRepository clientes)
+    public SucataClienteService(
+        ISucataClienteRepository sucatas, IClienteRepository clientes, ITipoCascoLeituraRepository tipos)
     {
         this.sucatas = sucatas;
         this.clientes = clientes;
+        this.tipos = tipos;
     }
 
     public async Task<ResultadoEntregaSucata> EntregarAsync(
-        Guid clienteId, int quantidade, decimal? valorConversao, CancellationToken cancellationToken)
+        Guid clienteId, Guid tipoCascoId, int quantidade, decimal? valorConversao,
+        CancellationToken cancellationToken)
     {
         if (quantidade <= 0)
         {
@@ -42,6 +47,15 @@ public sealed class SucataClienteService : ISucataClienteService
             throw new EntityNotFoundException("CLIENTE_NAO_ENCONTRADO", $"Cliente {clienteId} não encontrado.");
         }
 
-        return await sucatas.EntregarAsync(clienteId, quantidade, valorConversao, cancellationToken);
+        var tipo = await tipos.GetAsync(tipoCascoId, cancellationToken)
+            ?? throw new EntityNotFoundException(
+                "TIPO_CASCO_NAO_ENCONTRADO", $"Tipo de casco {tipoCascoId} não encontrado.");
+        if (!tipo.AceitaSucata)
+        {
+            throw new BusinessRuleException(
+                "SUCATA_NAO_ACEITA", $"Tipo de casco '{tipo.Nome}' não aceita sucata.");
+        }
+
+        return await sucatas.EntregarAsync(clienteId, tipoCascoId, quantidade, valorConversao, cancellationToken);
     }
 }

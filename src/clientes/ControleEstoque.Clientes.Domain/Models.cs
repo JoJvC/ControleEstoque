@@ -20,9 +20,22 @@ public sealed record Cliente(
 /// <summary>
 /// Os três saldos do cliente são independentes entre si:
 /// casco normal (unidades devidas), sucata (unidades entregues — não é débito)
-/// e fiado (valor devedor em reais).
+/// e fiado (valor devedor em reais). Casco e sucata são por tipo de casco;
+/// os totais são a soma das listas.
 /// </summary>
-public sealed record SaldosCliente(long SaldoCascos, long SucataEntregue, decimal SaldoFiado);
+public sealed record SaldosCliente(
+    long SaldoCascos,
+    long SucataEntregue,
+    decimal SaldoFiado,
+    IReadOnlyList<SaldoCascoPorTipo> CascosPorTipo,
+    IReadOnlyList<SucataPorTipo> SucataPorTipo);
+
+public sealed record SaldoCascoPorTipo(Guid TipoCascoId, string Nome, long Saldo);
+
+public sealed record SucataPorTipo(Guid TipoCascoId, string Nome, long Quantidade);
+
+/// <summary>Tipo de casco como o Clientes o enxerga: só o que a devolução, a conversão e a sucata usam.</summary>
+public sealed record TipoCascoCliente(Guid Id, string Nome, bool AceitaSucata, decimal PrecoVasilhame);
 
 public sealed record ResultadoDevolucaoCasco(long NovoSaldoCascos);
 

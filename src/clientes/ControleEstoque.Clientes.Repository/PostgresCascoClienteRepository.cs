@@ -1,5 +1,4 @@
 using ControleEstoque.Clientes.Domain;
-using ControleEstoque.Shared.Results;
 using Npgsql;
 
 namespace ControleEstoque.Clientes.Repository;
@@ -10,33 +9,35 @@ public sealed class PostgresCascoClienteRepository : ICascoClienteRepository
 
     public PostgresCascoClienteRepository(NpgsqlDataSource dataSource) => this.dataSource = dataSource;
 
-    public async Task<long> GetSaldoAsync(Guid clienteId, CancellationToken cancellationToken)
+    public async Task<long> GetSaldoAsync(
+        Guid clienteId, Guid tipoCascoId, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        return await GetSaldoAsync(connection, null, clienteId, cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.GetSaldoTipo, connection);
+        command.Parameters.AddWithValue("clienteId", clienteId);
+        command.Parameters.AddWithValue("tipoCascoId", tipoCascoId);
+        return (long?)await command.ExecuteScalarAsync(cancellationToken) ?? 0;
     }
 
     public async Task<ResultadoDevolucaoCasco> DevolverAsync(
-        Guid clienteId, int quantidade, CancellationToken cancellationToken)
+        Guid clienteId, Guid tipoCascoId, int quantidade, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        var cascoProdutoId = await GetProdutoEstruturalAsync(connection, transaction, "CASCO", cancellationToken);
-
         await using (var command = new NpgsqlCommand(Sql.InsertMovimentoCasco, connection, transaction))
         {
             command.Parameters.AddWithValue("clienteId", clienteId);
+            command.Parameters.AddWithValue("tipoCascoId", tipoCascoId);
             command.Parameters.AddWithValue("tipo", "DEVOLUCAO");
             command.Parameters.AddWithValue("quantidade", quantidade);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        // O vazio devolvido entra no estoque físico da loja.
-        await using (var command = new NpgsqlCommand(Sql.InsertMovimentoEstoque, connection, transaction))
+        // O vazio devolvido entra no estoque físico da loja, no tipo de casco devolvido.
+        await using (var command = new NpgsqlCommand(Sql.InsertMovimentoEstoqueCasco, connection, transaction))
         {
-            command.Parameters.AddWithValue("produtoId", cascoProdutoId);
-            command.Parameters.AddWithValue("tipo", "DEVOLUCAO_CLIENTE");
+            command.Parameters.AddWithValue("tipoCascoId", tipoCascoId);
             command.Parameters.AddWithValue("quantidade", quantidade);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -47,7 +48,8 @@ public sealed class PostgresCascoClienteRepository : ICascoClienteRepository
     }
 
     public async Task<ResultadoConversaoCasco> ConverterAsync(
-        Guid clienteId, int quantidade, decimal valorUnitario, CancellationToken cancellationToken)
+        Guid clienteId, Guid tipoCascoId, int quantidade, decimal valorUnitario,
+        CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -55,6 +57,7 @@ public sealed class PostgresCascoClienteRepository : ICascoClienteRepository
         await using (var command = new NpgsqlCommand(Sql.InsertMovimentoCasco, connection, transaction))
         {
             command.Parameters.AddWithValue("clienteId", clienteId);
+            command.Parameters.AddWithValue("tipoCascoId", tipoCascoId);
             command.Parameters.AddWithValue("tipo", "CONVERSAO_VALOR");
             command.Parameters.AddWithValue("quantidade", quantidade);
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -77,16 +80,6 @@ public sealed class PostgresCascoClienteRepository : ICascoClienteRepository
         return new ResultadoConversaoCasco(novoSaldoCascos, novoSaldoFiado);
     }
 
-    private static async Task<Guid> GetProdutoEstruturalAsync(
-        NpgsqlConnection connection, NpgsqlTransaction transaction, string tipo, CancellationToken cancellationToken)
-    {
-        await using var command = new NpgsqlCommand(Sql.GetProdutoEstrutural, connection, transaction);
-        command.Parameters.AddWithValue("tipo", tipo);
-        var id = (Guid?)await command.ExecuteScalarAsync(cancellationToken);
-        return id ?? throw new BusinessRuleException(
-            "PRODUTO_ESTRUTURAL_AUSENTE", $"Produto estrutural {tipo} não cadastrado.");
-    }
-
     private static async Task<long> GetSaldoAsync(
         NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid clienteId,
         CancellationToken cancellationToken)
@@ -107,20 +100,14 @@ public sealed class PostgresCascoClienteRepository : ICascoClienteRepository
 
     private static class Sql
     {
-        public const string GetProdutoEstrutural = """
-            SELECT id FROM produtos
-            WHERE tipo = @tipo::tipo_produto AND deleted_at IS NULL
-            ORDER BY created_at LIMIT 1
-            """;
-
         public const string InsertMovimentoCasco = """
-            INSERT INTO movimentos_casco_cliente (cliente_id, tipo, quantidade)
-            VALUES (@clienteId, @tipo::tipo_movimento_casco, @quantidade)
+            INSERT INTO movimentos_casco_cliente (cliente_id, tipo_casco_id, tipo, quantidade)
+            VALUES (@clienteId, @tipoCascoId, @tipo::tipo_movimento_casco, @quantidade)
             """;
 
-        public const string InsertMovimentoEstoque = """
-            INSERT INTO movimentos_estoque (produto_id, tipo, quantidade)
-            VALUES (@produtoId, @tipo::tipo_movimento_estoque, @quantidade)
+        public const string InsertMovimentoEstoqueCasco = """
+            INSERT INTO movimentos_estoque_casco (tipo_casco_id, situacao, tipo, quantidade)
+            VALUES (@tipoCascoId, 'VAZIO', 'DEVOLUCAO_CLIENTE', @quantidade)
             """;
 
         public const string InsertLancamentoFiado = """
@@ -128,8 +115,14 @@ public sealed class PostgresCascoClienteRepository : ICascoClienteRepository
             VALUES (@clienteId, @tipo::tipo_lancamento_fiado, @valor, @observacao)
             """;
 
+        // SUM(bigint) é numeric no Postgres: o ::bigint mantém o (long?) do ExecuteScalar.
         public const string GetSaldo =
-            "SELECT saldo_cascos FROM vw_saldo_casco_cliente WHERE cliente_id = @clienteId";
+            "SELECT COALESCE(SUM(saldo_cascos), 0)::bigint FROM vw_saldo_casco_cliente WHERE cliente_id = @clienteId";
+
+        public const string GetSaldoTipo = """
+            SELECT COALESCE(SUM(saldo_cascos), 0)::bigint FROM vw_saldo_casco_cliente
+            WHERE cliente_id = @clienteId AND tipo_casco_id = @tipoCascoId
+            """;
 
         public const string GetSaldoFiado =
             "SELECT saldo_devedor FROM vw_saldo_fiado_cliente WHERE cliente_id = @clienteId";

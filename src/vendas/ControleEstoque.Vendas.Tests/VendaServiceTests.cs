@@ -373,6 +373,116 @@ public sealed class VendaServiceTests
     }
 
     [Fact]
+    public async Task CriarAsync_QuandoUsaCredito_ContaComoPagoEGravaUsoCredito()
+    {
+        lookup.Creditos[clienteId] = 50m;
+
+        var resultado = await sut.CriarAsync(
+            NovaVendaDe(agua, 2, 40m, pagamentos:
+                [new PagamentoVenda(FormaPagamento.CREDITO_CLIENTE, 50m), new PagamentoVenda(FormaPagamento.PIX, 30m)]),
+            CancellationToken.None);
+
+        Assert.Equal(StatusPagamento.PAGA, resultado.StatusPagamento);
+        Assert.Equal(80m, resultado.TotalPago);
+        Assert.Equal(0m, resultado.SaldoFiadoGerado);
+        var g = vendas.UltimaGravacao!;
+        Assert.Equal(50m, g.UsoCredito);
+        Assert.Equal(0m, g.DebitoFiado);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoSemCredito_UsoCreditoZeroENaoConsultaLimite()
+    {
+        await sut.CriarAsync(
+            NovaVendaDe(agua, 1, 40m, pagamentos: [new PagamentoVenda(FormaPagamento.PIX, 40m)]),
+            CancellationToken.None);
+
+        Assert.Equal(0m, vendas.UltimaGravacao!.UsoCredito);
+        Assert.Null(lookup.UltimaVendaIgnorada);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoUsoAcimaDoCredito_LancaCreditoInsuficienteENaoGrava()
+    {
+        lookup.Creditos[clienteId] = 20m;
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => sut.CriarAsync(
+                NovaVendaDe(agua, 1, 40m, pagamentos: [new PagamentoVenda(FormaPagamento.CREDITO_CLIENTE, 30m)]),
+                CancellationToken.None));
+
+        Assert.Equal("CREDITO_INSUFICIENTE", e.Code);
+        Assert.Null(vendas.UltimaGravacao);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoClienteEmFiado_CreditoDisponivelEZeroERecusaUso()
+    {
+        lookup.Creditos[clienteId] = -30m; // deve 30: sem crédito
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => sut.CriarAsync(
+                NovaVendaDe(agua, 1, 40m, pagamentos: [new PagamentoVenda(FormaPagamento.CREDITO_CLIENTE, 1m)]),
+                CancellationToken.None));
+
+        Assert.Equal("CREDITO_INSUFICIENTE", e.Code);
+    }
+
+    [Fact]
+    public async Task EditarAsync_QuandoUsoAnteriorDaPropriaVenda_NaoContaContraOLimite()
+    {
+        // Crédito 50 todo usado na venda: o saldo atual é 0, mas a edição ignora o uso da própria venda.
+        lookup.Creditos[clienteId] = 50m;
+        var criada = await sut.CriarAsync(
+            NovaVendaDe(agua, 2, 40m, pagamentos:
+                [new PagamentoVenda(FormaPagamento.CREDITO_CLIENTE, 50m), new PagamentoVenda(FormaPagamento.PIX, 30m)]),
+            CancellationToken.None);
+        lookup.Creditos[clienteId] = 0m;
+        lookup.UsoCreditoPorVenda[criada.Id] = 50m;
+
+        await sut.EditarAsync(
+            criada.Id,
+            NovaVendaDe(agua, 2, 40m, pagamentos:
+                [new PagamentoVenda(FormaPagamento.CREDITO_CLIENTE, 50m), new PagamentoVenda(FormaPagamento.PIX, 30m)]),
+            CancellationToken.None);
+
+        Assert.Equal(criada.Id, lookup.UltimaVendaIgnorada);
+        Assert.Equal(50m, vendas.UltimaEdicao!.UsoCredito);
+    }
+
+    [Fact]
+    public async Task EditarAsync_QuandoUsoPassaDoCreditoMaisOUsoAnterior_LancaCreditoInsuficiente()
+    {
+        var criada = await sut.CriarAsync(NovaVendaDe(agua, 2, 40m), CancellationToken.None);
+        lookup.Creditos[clienteId] = 20m;
+        lookup.UsoCreditoPorVenda[criada.Id] = 10m; // disponível = 30
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => sut.EditarAsync(
+                criada.Id,
+                NovaVendaDe(agua, 2, 40m, pagamentos: [new PagamentoVenda(FormaPagamento.CREDITO_CLIENTE, 31m)]),
+                CancellationToken.None));
+
+        Assert.Equal("CREDITO_INSUFICIENTE", e.Code);
+        Assert.Null(vendas.UltimaEdicao);
+    }
+
+    [Fact]
+    public async Task AdicionarPagamentoAsync_QuandoCreditoCliente_LancaFormaNaoPermitida()
+    {
+        var criada = await sut.CriarAsync(
+            NovaVendaDe(agua, 5, 50m, pagamentos: [new PagamentoVenda(FormaPagamento.PIX, 200m)]),
+            CancellationToken.None);
+        vendas.InfoPagamento = new InfoPagamentoVenda(250m, 200m, 50m, StatusPagamento.PARCIAL);
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => sut.AdicionarPagamentoAsync(
+                criada.Id, FormaPagamento.CREDITO_CLIENTE, 10m, CancellationToken.None));
+
+        Assert.Equal("FORMA_NAO_PERMITIDA", e.Code);
+    }
+
+    [Fact]
     public async Task AdicionarPagamentoAsync_QuandoExcedeSaldo_LancaPagamentoExcedeSaldo()
     {
         var criada = await sut.CriarAsync(

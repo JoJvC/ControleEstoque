@@ -156,8 +156,7 @@ internal sealed class FakeFiadoRepository : IFiadoRepository
     /// <summary>Simula o caixa de hoje FECHADO sob a trava FOR SHARE do repositório.</summary>
     public bool CaixaHojeFechado { get; set; }
 
-    /// <summary>Simula pagamento concorrente que esgotou o saldo entre a pré-checagem e a trava do cliente.</summary>
-    public bool RecusarPorExcesso { get; set; }
+    public List<decimal> PagamentosLancados { get; } = new();
 
     public Task<bool> ClienteExisteAsync(Guid clienteId, CancellationToken cancellationToken) =>
         Task.FromResult(Clientes.Contains(clienteId));
@@ -173,11 +172,7 @@ internal sealed class FakeFiadoRepository : IFiadoRepository
             throw new ConflictException("CAIXA_FECHADO", "Não é possível lançar pagamento em caixa fechado.");
         }
 
-        if (RecusarPorExcesso)
-        {
-            throw new BusinessRuleException("PAGAMENTO_EXCEDE_SALDO", "Pagamento excede o saldo devedor.");
-        }
-
+        PagamentosLancados.Add(valor);
         Saldos[clienteId] = Saldos.GetValueOrDefault(clienteId) - valor;
         return Task.FromResult(Saldos[clienteId]);
     }
@@ -185,7 +180,4 @@ internal sealed class FakeFiadoRepository : IFiadoRepository
     public Task<IReadOnlyList<SaldoFiadoCliente>> ListSaldosDevedoresAsync(
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<SaldoFiadoCliente>>([]);
-
-    public Task<decimal> GetTotalAReceberAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(Saldos.Values.Where(saldo => saldo > 0).Sum());
 }

@@ -12,6 +12,19 @@ public sealed class PostgresVendaLookup : IVendaLookup
     public Task<bool> ClienteExisteAsync(Guid clienteId, CancellationToken cancellationToken) =>
         ExistsAsync(Sql.ClienteExiste, clienteId, cancellationToken);
 
+    public async Task<decimal> GetCreditoDisponivelAsync(
+        Guid clienteId, Guid? vendaIgnorada, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.CreditoDisponivel, connection);
+        command.Parameters.AddWithValue("clienteId", clienteId);
+        command.Parameters.Add(new NpgsqlParameter("vendaIgnorada", NpgsqlTypes.NpgsqlDbType.Uuid)
+        {
+            Value = (object?)vendaIgnorada ?? DBNull.Value
+        });
+        return (decimal?)await command.ExecuteScalarAsync(cancellationToken) ?? 0m;
+    }
+
     public Task<bool> FuncionarioExisteAsync(Guid funcionarioId, CancellationToken cancellationToken) =>
         ExistsAsync(Sql.FuncionarioExiste, funcionarioId, cancellationToken);
 
@@ -76,6 +89,14 @@ public sealed class PostgresVendaLookup : IVendaLookup
     {
         public const string ClienteExiste =
             "SELECT EXISTS (SELECT 1 FROM clientes WHERE id = @id AND deleted_at IS NULL)";
+
+        // Saldo da view sem os lançamentos da venda ignorada (débitos somam de volta, créditos e pagamentos saem).
+        public const string CreditoDisponivel = """
+            SELECT GREATEST(0, COALESCE((SELECT saldo FROM vw_saldo_fiado_cliente WHERE cliente_id = @clienteId), 0)
+                + COALESCE((SELECT SUM(CASE WHEN tipo IN ('CREDITO_CONVERSAO_SUCATA', 'PAGAMENTO') THEN -valor ELSE valor END)
+                            FROM lancamentos_fiado
+                            WHERE venda_id = @vendaIgnorada AND cliente_id = @clienteId AND deleted_at IS NULL), 0))
+            """;
 
         public const string FuncionarioExiste =
             "SELECT EXISTS (SELECT 1 FROM funcionarios WHERE id = @id AND deleted_at IS NULL)";

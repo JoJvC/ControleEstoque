@@ -48,6 +48,21 @@ public static class VendaCalculos
         return new TotaisVenda(calculados, totalBruto, totalDesconto, totalLiquido, totalPago, faltante, status);
     }
 
+    /// <summary>Soma dos pagamentos na forma CREDITO_CLIENTE.</summary>
+    public static decimal UsoCredito(IEnumerable<PagamentoVenda> pagamentos) =>
+        pagamentos.Where(p => p.Forma == FormaPagamento.CREDITO_CLIENTE).Sum(p => p.Valor);
+
+    /// <summary>O uso de crédito não pode passar do crédito disponível do cliente.</summary>
+    public static void ValidarUsoCredito(decimal usoCredito, decimal creditoDisponivel)
+    {
+        if (usoCredito > creditoDisponivel)
+        {
+            throw new BusinessRuleException(
+                "CREDITO_INSUFICIENTE",
+                $"Uso de crédito de {usoCredito:F2} excede o crédito disponível de {creditoDisponivel:F2}.");
+        }
+    }
+
     public static StatusPagamento CalcularStatus(decimal totalLiquido, decimal totalPago) =>
         totalPago >= totalLiquido ? StatusPagamento.PAGA
         : totalPago > 0 ? StatusPagamento.PARCIAL

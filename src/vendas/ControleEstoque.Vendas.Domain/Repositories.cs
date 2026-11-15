@@ -6,6 +6,11 @@ namespace ControleEstoque.Vendas.Domain;
 public interface IVendaLookup
 {
     Task<bool> ClienteExisteAsync(Guid clienteId, CancellationToken cancellationToken);
+    /// <summary>
+    /// Crédito do cliente (max(0, saldo)) sem contar os lançamentos da venda <paramref name="vendaIgnorada"/>
+    /// (na edição, o uso de crédito da própria venda não reduz o disponível).
+    /// </summary>
+    Task<decimal> GetCreditoDisponivelAsync(Guid clienteId, Guid? vendaIgnorada, CancellationToken cancellationToken);
     Task<bool> FuncionarioExisteAsync(Guid funcionarioId, CancellationToken cancellationToken);
     Task<bool> EnderecoPertenceAoClienteAsync(
         Guid enderecoId, Guid clienteId, CancellationToken cancellationToken);
@@ -22,6 +27,8 @@ public interface IVendaRepository
     /// Persiste a venda e todos os efeitos em uma transação; retorna o novo saldo de casco do cliente.
     /// Com pagamento, trava o caixa de hoje (FOR SHARE) e lança ConflictException CAIXA_FECHADO se fechado.
     /// Trava as associações produto+marca vendidas e checa o saldo dentro da transação; sem saldo, faz rollback e devolve a falta.
+    /// Com UsoCredito &gt; 0, trava o cliente (FOR UPDATE) e lança BusinessRuleException CREDITO_INSUFICIENTE (rollback)
+    /// se o uso passa do crédito relido sob a trava.
     /// </summary>
     Task<ResultadoGravacao> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken);
 

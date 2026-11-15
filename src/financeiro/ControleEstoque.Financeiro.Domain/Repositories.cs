@@ -44,17 +44,14 @@ public interface IFiadoRepository
     Task<decimal> GetSaldoAsync(Guid clienteId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Lança PAGAMENTO no fiado e retorna o novo saldo devedor. Na mesma transação trava o caixa de hoje
-    /// (FOR SHARE; FECHADO lança ConflictException CAIXA_FECHADO) e o cliente (FOR UPDATE), relê o saldo
-    /// e recusa com PAGAMENTO_EXCEDE_SALDO se o valor o excede.
+    /// Lança PAGAMENTO do valor inteiro no fiado e retorna o novo saldo devedor (negativo = crédito: o que
+    /// passa do devido vira crédito do cliente). Na mesma transação trava o caixa de hoje (FOR SHARE; FECHADO
+    /// lança ConflictException CAIXA_FECHADO) e o cliente (FOR UPDATE).
     /// </summary>
     Task<decimal> PagarAsync(
         Guid clienteId, decimal valor, string? observacao, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SaldoFiadoCliente>> ListSaldosDevedoresAsync(CancellationToken cancellationToken);
-
-    /// <summary>Soma dos saldos devedores positivos (o que os clientes devem). Créditos não abatem.</summary>
-    Task<decimal> GetTotalAReceberAsync(CancellationToken cancellationToken);
 }
 
 public interface IRelatorioCaixaRepository

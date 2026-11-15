@@ -49,14 +49,6 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
             }
         }
 
-        var saldoAtual = await GetSaldoAsync(connection, transaction, clienteId, cancellationToken);
-        if (valor > saldoAtual)
-        {
-            throw new BusinessRuleException(
-                "PAGAMENTO_EXCEDE_SALDO",
-                $"Pagamento de {valor:F2} excede o saldo devedor de {saldoAtual:F2}.");
-        }
-
         await using (var command = new NpgsqlCommand(Sql.InsertPagamento, connection, transaction))
         {
             command.Parameters.AddWithValue("clienteId", clienteId);
@@ -83,17 +75,10 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
         while (await reader.ReadAsync(cancellationToken))
         {
             results.Add(new SaldoFiadoCliente(
-                reader.GetGuid(0), reader.GetString(1), reader.GetDecimal(2)));
+                reader.GetGuid(0), reader.GetString(1), reader.GetDecimal(2), reader.GetDecimal(3)));
         }
 
         return results;
-    }
-
-    public async Task<decimal> GetTotalAReceberAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.TotalAReceber, connection);
-        return (decimal)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
     private static async Task<decimal> GetSaldoAsync(
@@ -125,16 +110,10 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
             """;
 
         public const string ListSaldosDevedores = """
-            SELECT cliente_id, nome, saldo_devedor
+            SELECT cliente_id, nome, saldo_devedor, saldo
             FROM vw_saldo_fiado_cliente
             WHERE saldo_devedor <> 0
             ORDER BY saldo_devedor DESC
-            """;
-
-        public const string TotalAReceber = """
-            SELECT COALESCE(SUM(saldo_devedor), 0)
-            FROM vw_saldo_fiado_cliente
-            WHERE saldo_devedor > 0
             """;
     }
 }

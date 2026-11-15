@@ -64,4 +64,44 @@ public sealed class InitSqlTests
         Assert.Contains(
             "ALTER TABLE movimentos_estoque_casco ADD COLUMN IF NOT EXISTS venda_id UUID REFERENCES vendas(id);", sql);
     }
+
+    [Fact]
+    public void FormaPagamento_RotulosDoInitSqlSaoOsDoEnumCSharp()
+    {
+        var sql = Ler();
+
+        var ini = sql.IndexOf("CREATE TYPE forma_pagamento AS ENUM", StringComparison.Ordinal);
+        Assert.True(ini >= 0, "forma_pagamento deve ser um ENUM");
+        var bloco = sql[ini..sql.IndexOf(';', ini)];
+
+        var rotulos = Regex.Matches(bloco, "'([A-Z_]+)'").Select(m => m.Groups[1].Value).ToArray();
+        Assert.Equal(Enum.GetNames<ControleEstoque.Vendas.Domain.FormaPagamento>(), rotulos);
+    }
+
+    [Fact]
+    public void TipoLancamentoFiado_TemDebitoUsoCredito()
+    {
+        var sql = Ler();
+
+        var ini = sql.IndexOf("CREATE TYPE tipo_lancamento_fiado AS ENUM", StringComparison.Ordinal);
+        Assert.True(ini >= 0, "tipo_lancamento_fiado deve ser um ENUM");
+        Assert.Contains("'DEBITO_USO_CREDITO'", sql[ini..sql.IndexOf(';', ini)]);
+        Assert.Contains("ALTER TYPE tipo_lancamento_fiado ADD VALUE IF NOT EXISTS 'DEBITO_USO_CREDITO';", sql);
+        Assert.Contains("ALTER TYPE forma_pagamento ADD VALUE IF NOT EXISTS 'CREDITO_CLIENTE';", sql);
+    }
+
+    [Fact]
+    public void ViewSaldoFiado_SomaUsoDeCreditoComoDebitoETemSaldoComoUltimaColuna()
+    {
+        var sql = Ler();
+
+        var ini = sql.IndexOf("VIEW vw_saldo_fiado_cliente AS", StringComparison.Ordinal);
+        Assert.True(ini >= 0, "vw_saldo_fiado_cliente não encontrada");
+        var view = sql[ini..sql.IndexOf(';', ini)];
+
+        Assert.Matches(@"WHEN 'DEBITO_USO_CREDITO'\s+THEN\s+l\.valor", view);
+        Assert.Contains("AS saldo_devedor", view);
+        Assert.True(view.IndexOf("AS saldo\n", StringComparison.Ordinal) > view.IndexOf("AS saldo_devedor", StringComparison.Ordinal),
+            "saldo deve ser a última coluna");
+    }
 }

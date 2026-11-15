@@ -15,7 +15,8 @@ public enum FormaPagamento
     CARTAO_CREDITO,
     CARTAO_DEBITO,
     DINHEIRO,
-    OUTRO
+    OUTRO,
+    CREDITO_CLIENTE // "Crédito do cliente": usa o saldo positivo; não é dinheiro que entra no caixa
 }
 
 public enum StatusPagamento

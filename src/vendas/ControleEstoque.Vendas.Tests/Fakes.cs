@@ -33,6 +33,22 @@ internal sealed class FakeVendaLookup : IVendaLookup
     public Task<bool> ClienteExisteAsync(Guid clienteId, CancellationToken cancellationToken) =>
         Task.FromResult(Clientes.Contains(clienteId));
 
+    /// <summary>Crédito (saldo positivo) por cliente.</summary>
+    public Dictionary<Guid, decimal> Creditos { get; } = new();
+
+    /// <summary>Uso de crédito já gravado por venda (a venda ignorada não conta contra o limite).</summary>
+    public Dictionary<Guid, decimal> UsoCreditoPorVenda { get; } = new();
+
+    public Guid? UltimaVendaIgnorada { get; private set; }
+
+    public Task<decimal> GetCreditoDisponivelAsync(
+        Guid clienteId, Guid? vendaIgnorada, CancellationToken cancellationToken)
+    {
+        UltimaVendaIgnorada = vendaIgnorada;
+        var uso = vendaIgnorada is { } id ? UsoCreditoPorVenda.GetValueOrDefault(id) : 0m;
+        return Task.FromResult(Math.Max(0m, Creditos.GetValueOrDefault(clienteId) + uso));
+    }
+
     public Task<bool> FuncionarioExisteAsync(Guid funcionarioId, CancellationToken cancellationToken) =>
         Task.FromResult(Funcionarios.Contains(funcionarioId));
 

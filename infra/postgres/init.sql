@@ -37,8 +37,11 @@ BEGIN
 END
 $$;
 
+-- CREDITO_CLIENTE: usa o crédito do cliente (saldo positivo); não é dinheiro que entra no caixa.
 CREATE TYPE forma_pagamento AS ENUM
-    ('PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO', 'OUTRO');
+    ('PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO', 'OUTRO', 'CREDITO_CLIENTE');
+-- Volumes antigos (o tipo já existe sem o rótulo); no-op quando o rótulo já está no CREATE TYPE.
+ALTER TYPE forma_pagamento ADD VALUE IF NOT EXISTS 'CREDITO_CLIENTE';
 
 -- Venda só é PAGA quando a soma dos pagamentos cobre o total líquido.
 CREATE TYPE status_pagamento_venda AS ENUM ('PENDENTE', 'PARCIAL', 'PAGA');
@@ -55,7 +58,9 @@ CREATE TYPE tipo_lancamento_fiado AS ENUM
     ('DEBITO_VENDA',            -- parte não paga de uma venda
      'DEBITO_CONVERSAO_CASCO',  -- conversão de débito de casco em valor
      'CREDITO_CONVERSAO_SUCATA',-- sucata entregue convertida em crédito
-     'PAGAMENTO');              -- baixa por pagamento do cliente
+     'PAGAMENTO',               -- baixa por pagamento do cliente
+     'DEBITO_USO_CREDITO');     -- crédito do cliente usado como forma de pagamento da venda
+ALTER TYPE tipo_lancamento_fiado ADD VALUE IF NOT EXISTS 'DEBITO_USO_CREDITO';
 
 CREATE TYPE tipo_lancamento_funcionario AS ENUM ('DIARIA', 'VALE', 'PAGAMENTO');
 
@@ -633,17 +638,25 @@ LEFT JOIN entregas_sucata_cliente e
 WHERE c.deleted_at IS NULL
 GROUP BY c.id, e.tipo_casco_id;
 
--- Saldo devedor de fiado por cliente
--- (débitos − créditos de sucata − pagamentos; positivo = cliente deve).
-CREATE VIEW vw_saldo_fiado_cliente AS
+-- Saldo de fiado por cliente. saldo_devedor = débitos − créditos de sucata − pagamentos
+-- (positivo = cliente deve). saldo = −saldo_devedor (negativo = fiado, positivo = crédito).
+CREATE OR REPLACE VIEW vw_saldo_fiado_cliente AS
 SELECT c.id AS cliente_id,
        c.nome,
        COALESCE(SUM(CASE l.tipo
            WHEN 'DEBITO_VENDA'             THEN  l.valor
            WHEN 'DEBITO_CONVERSAO_CASCO'   THEN  l.valor
+           WHEN 'DEBITO_USO_CREDITO'       THEN  l.valor
            WHEN 'CREDITO_CONVERSAO_SUCATA' THEN -l.valor
            WHEN 'PAGAMENTO'                THEN -l.valor
-       END), 0) AS saldo_devedor
+       END), 0) AS saldo_devedor,
+       -COALESCE(SUM(CASE l.tipo
+           WHEN 'DEBITO_VENDA'             THEN  l.valor
+           WHEN 'DEBITO_CONVERSAO_CASCO'   THEN  l.valor
+           WHEN 'DEBITO_USO_CREDITO'       THEN  l.valor
+           WHEN 'CREDITO_CONVERSAO_SUCATA' THEN -l.valor
+           WHEN 'PAGAMENTO'                THEN -l.valor
+       END), 0) AS saldo
 FROM clientes c
 LEFT JOIN lancamentos_fiado l
        ON l.cliente_id = c.id AND l.deleted_at IS NULL

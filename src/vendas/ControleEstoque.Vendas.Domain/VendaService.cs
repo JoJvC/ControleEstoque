@@ -77,6 +77,13 @@ public sealed class VendaService : IVendaService
             throw new RequestValidationException("PAGAMENTO_INVALIDO", "Valor de pagamento deve ser positivo.");
         }
 
+        // Com saldo único, o crédito já abate o fiado no saldo do cliente: não há "pagar a venda com crédito".
+        if (forma == FormaPagamento.CREDITO_CLIENTE)
+        {
+            throw new BusinessRuleException(
+                "FORMA_NAO_PERMITIDA", "Crédito do cliente só pode ser usado ao registrar a venda.");
+        }
+
         var info = await vendas.GetInfoPagamentoAsync(vendaId, cancellationToken)
             ?? throw new EntityNotFoundException("VENDA_NAO_ENCONTRADA", $"Venda {vendaId} não encontrada.");
 
@@ -196,6 +203,13 @@ public sealed class VendaService : IVendaService
                 produtos[par].ProdutoMarcaId, tipoCascoId, tipoCascoId is { } id ? tipos[id].PrecoVasilhame : 0m);
         });
 
+        var usoCredito = VendaCalculos.UsoCredito(venda.Pagamentos);
+        if (usoCredito > 0)
+        {
+            VendaCalculos.ValidarUsoCredito(
+                usoCredito, await lookup.GetCreditoDisponivelAsync(venda.ClienteId, vendaId, cancellationToken));
+        }
+
         // Troca (padrão) empresta a quantidade no tipo da linha; pagou o vasilhame não gera empréstimo.
         var emprestimos = SomarPorTipo(totais.Itens
             .Where(i => i.TipoCascoId is not null && !i.PagouVasilhame)
@@ -229,7 +243,7 @@ public sealed class VendaService : IVendaService
             totais.TotalBruto, totais.TotalDesconto, totais.TotalLiquido, totais.Status,
             totais.Itens, venda.Pagamentos,
             emprestimos, devolvidos, sucata,
-            totais.Faltante);
+            totais.Faltante, usoCredito);
     }
 
     private static IReadOnlyList<CascoQuantidade> SomarPorTipo(IEnumerable<CascoQuantidade> cascos) =>

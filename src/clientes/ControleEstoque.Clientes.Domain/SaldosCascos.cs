@@ -12,12 +12,13 @@ public static class SaldosCascos
     public static SaldosCliente Montar(
         IEnumerable<SaldoCascoPorTipo> cascos, IEnumerable<SucataPorTipo> sucata, decimal saldoFiado)
     {
+        var saldo = 0m - saldoFiado;
         var cascosPorTipo = cascos.Where(c => c.Saldo != 0)
             .OrderBy(c => c.Nome, StringComparer.CurrentCulture).ToList();
         var sucataPorTipo = sucata.Where(s => s.Quantidade > 0)
             .OrderBy(s => s.Nome, StringComparer.CurrentCulture).ToList();
         return new SaldosCliente(
             cascosPorTipo.Sum(c => c.Saldo), sucataPorTipo.Sum(s => s.Quantidade), saldoFiado,
-            cascosPorTipo, sucataPorTipo);
+            saldo, Math.Max(0m, saldo), cascosPorTipo, sucataPorTipo);
     }
 }

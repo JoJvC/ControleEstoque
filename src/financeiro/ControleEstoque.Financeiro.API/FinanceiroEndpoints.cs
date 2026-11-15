@@ -66,7 +66,7 @@ public static class FinanceiroEndpoints
             CancellationToken cancellationToken) =>
         {
             var novoSaldo = await fiado.PagarAsync(id, request.Valor, request.Forma, cancellationToken);
-            return Results.Ok(new PagamentoFiadoResponse(novoSaldo));
+            return Results.Ok(new PagamentoFiadoResponse(novoSaldo, 0m - novoSaldo));
         });
 
         // ---- Relatórios ---------------------------------------------------------
@@ -84,7 +84,10 @@ public static class FinanceiroEndpoints
 
         app.MapGet("/v1/relatorios/fiado/total", async (
             IFiadoRepository fiado, CancellationToken cancellationToken) =>
-            Results.Ok(new TotalFiadoResponse(await fiado.GetTotalAReceberAsync(cancellationToken))));
+        {
+            var saldos = await fiado.ListSaldosDevedoresAsync(cancellationToken);
+            return Results.Ok(new TotalFiadoResponse(SaldoCliente.FiadoAReceber(saldos.Select(s => s.Saldo))));
+        });
 
         return app;
     }

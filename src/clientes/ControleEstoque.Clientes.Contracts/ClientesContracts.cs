@@ -52,6 +52,8 @@ public sealed record SaldosResponse(
     long SaldoCascos,
     long SucataEntregue,
     decimal SaldoFiado,
+    decimal Saldo,
+    decimal CreditoDisponivel,
     IReadOnlyList<CascoPorTipoResponse> CascosPorTipo,
     IReadOnlyList<SucataPorTipoResponse> SucataPorTipo);
 
@@ -61,8 +63,8 @@ public sealed record DevolucaoCascosResponse(long NovoSaldoCascos);
 
 public sealed record ConversaoCascosRequest(Guid TipoCascoId, int Quantidade);
 
-public sealed record ConversaoCascosResponse(long NovoSaldoCascos, decimal NovoSaldoFiado);
+public sealed record ConversaoCascosResponse(long NovoSaldoCascos, decimal NovoSaldoFiado, decimal NovoSaldo);
 
 public sealed record EntregaSucataRequest(Guid TipoCascoId, int Quantidade, decimal? ValorConversao);
 
-public sealed record EntregaSucataResponse(long TotalSucataEntregue, decimal NovoSaldoFiado);
+public sealed record EntregaSucataResponse(long TotalSucataEntregue, decimal NovoSaldoFiado, decimal NovoSaldo);

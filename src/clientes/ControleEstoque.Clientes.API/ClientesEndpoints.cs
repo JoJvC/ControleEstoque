@@ -76,7 +76,7 @@ public static class ClientesEndpoints
         {
             var saldos = await clientes.ObterSaldosAsync(id, cancellationToken);
             return Results.Ok(new SaldosResponse(
-                saldos.SaldoCascos, saldos.SucataEntregue, saldos.SaldoFiado,
+                saldos.SaldoCascos, saldos.SucataEntregue, saldos.SaldoFiado, saldos.Saldo, saldos.CreditoDisponivel,
                 saldos.CascosPorTipo.Select(c => new CascoPorTipoResponse(c.TipoCascoId, c.Nome, c.Saldo)).ToList(),
                 saldos.SucataPorTipo.Select(s => new SucataPorTipoResponse(s.TipoCascoId, s.Nome, s.Quantidade))
                     .ToList()));
@@ -97,7 +97,8 @@ public static class ClientesEndpoints
         {
             var resultado = await cascos.ConverterAsync(
                 id, request.TipoCascoId, request.Quantidade, cancellationToken);
-            return Results.Ok(new ConversaoCascosResponse(resultado.NovoSaldoCascos, resultado.NovoSaldoFiado));
+            return Results.Ok(new ConversaoCascosResponse(
+                resultado.NovoSaldoCascos, resultado.NovoSaldoFiado, resultado.NovoSaldo));
         });
 
         // ---- Entrega de Sucata (não abate casco) -----------------------------
@@ -108,7 +109,7 @@ public static class ClientesEndpoints
             var resultado = await sucatas.EntregarAsync(
                 id, request.TipoCascoId, request.Quantidade, request.ValorConversao, cancellationToken);
             return Results.Ok(new EntregaSucataResponse(
-                resultado.TotalSucataEntregue, resultado.NovoSaldoFiado));
+                resultado.TotalSucataEntregue, resultado.NovoSaldoFiado, resultado.NovoSaldo));
         });
 
         // ---- Relatórios ------------------------------------------------------

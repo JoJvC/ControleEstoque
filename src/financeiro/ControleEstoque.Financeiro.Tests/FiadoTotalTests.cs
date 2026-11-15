@@ -4,39 +4,18 @@ namespace ControleEstoque.Financeiro.Tests;
 
 public sealed class FiadoTotalTests
 {
-    private readonly FakeFiadoRepository fiado = new();
-
     [Fact]
-    public async Task GetTotalAReceberAsync_SomaSomenteSaldosPositivos()
+    public void FiadoAReceber_IgnoraSaldosPositivos()
     {
-        fiado.Saldos[Guid.NewGuid()] = 30m;
-        fiado.Saldos[Guid.NewGuid()] = 20m;
-        fiado.Saldos[Guid.NewGuid()] = 0m;
-
-        var total = await fiado.GetTotalAReceberAsync(CancellationToken.None);
-
-        Assert.Equal(50m, total);
+        // −40 e −10 são fiado; +25 é crédito e não abate.
+        Assert.Equal(50m, SaldoCliente.FiadoAReceber([-40m, 25m, -10m]));
     }
 
     [Fact]
-    public async Task GetTotalAReceberAsync_CreditoDoClienteNaoAbateTotal()
+    public void FiadoAReceber_SemFiado_RetornaZero()
     {
-        fiado.Saldos[Guid.NewGuid()] = 30m;
-        fiado.Saldos[Guid.NewGuid()] = -15m;
-
-        var total = await fiado.GetTotalAReceberAsync(CancellationToken.None);
-
-        Assert.Equal(30m, total);
-    }
-
-    [Fact]
-    public async Task GetTotalAReceberAsync_SemSaldosPositivos_RetornaZero()
-    {
-        fiado.Saldos[Guid.NewGuid()] = -10m;
-
-        var total = await fiado.GetTotalAReceberAsync(CancellationToken.None);
-
-        Assert.Equal(0m, total);
+        Assert.Equal(0m, SaldoCliente.FiadoAReceber([25m, 0m]));
+        Assert.Equal(0m, SaldoCliente.FiadoAReceber([]));
     }
 
     [Fact]
@@ -47,6 +26,6 @@ public sealed class FiadoTotalTests
         Assert.Equal(typeof(Task<IReadOnlyList<SaldoFiadoCliente>>), metodo!.ReturnType);
 
         var campos = typeof(SaldoFiadoCliente).GetProperties().Select(p => p.Name).Order();
-        Assert.Equal(new[] { "ClienteId", "Nome", "SaldoDevedor" }, campos);
+        Assert.Equal(new[] { "ClienteId", "Nome", "Saldo", "SaldoDevedor" }, campos);
     }
 }

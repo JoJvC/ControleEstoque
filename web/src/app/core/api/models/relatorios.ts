@@ -64,7 +64,15 @@ export interface SaldoFiadoCliente {
   saldoDevedor: number;
 }
 
+export interface TotalFiadoResponse {
+  totalAReceber: number;
+}
+
 // clientes — Clientes.Domain/Models.cs
+export interface TotalCascosRelatorio {
+  totalCascos: number;
+}
+
 export interface SaldoCascoRelatorio {
   clienteId: string;
   nome: string;

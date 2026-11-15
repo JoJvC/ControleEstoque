@@ -19,6 +19,8 @@ import { HomePage } from './home-page';
 const HOJE = hojeLocal();
 const URL_CAIXA = `/api/financeiro/v1/caixas/${HOJE}`;
 const URL_FAT = '/api/vendas/v1/relatorios/faturamento';
+const URL_CAS = '/api/clientes/v1/relatorios/cascos/total';
+const URL_FIADO = '/api/financeiro/v1/relatorios/fiado/total';
 const URL_EST = '/api/estoque/v1/relatorios/estoque';
 
 const RESUMO = {
@@ -27,6 +29,13 @@ const RESUMO = {
   totalDespesas: 0,
   saldoParcial: 100,
   despesas: [],
+};
+const FAT = {
+  totalLiquido: 1234.5,
+  porCategoria: [
+    { categoria: 'GELO', quantidade: 12, totalLiquido: 120 },
+    { categoria: 'CARVAO', quantidade: 3, totalLiquido: 60 },
+  ],
 };
 const ITEM = { produtoId: 'p-1', nome: 'Cerveja X', quantidade: 2, estoqueMinimo: 5 };
 
@@ -46,7 +55,17 @@ async function assentar(fixture: { whenStable(): Promise<unknown> }): Promise<vo
   await fixture.whenStable();
 }
 
-async function montar(o: { caixa?: Resp; fat?: Resp; est?: Resp; permissoes?: string[] } = {}) {
+async function montar(
+  o: {
+    caixa?: Resp;
+    fat?: Resp;
+    est?: Resp;
+    cas?: Resp;
+    fiado?: Resp;
+    permissoes?: string[];
+    pendentes?: boolean;
+  } = {},
+) {
   TestBed.configureTestingModule({
     providers: [
       { provide: StorageService, useValue: new FakeStorage() },
@@ -61,17 +80,25 @@ async function montar(o: { caixa?: Resp; fat?: Resp; est?: Resp; permissoes?: st
   const fixture = TestBed.createComponent(HomePage);
   fixture.detectChanges();
   await assentar(fixture);
-  responder(http.expectOne(URL_CAIXA), o.caixa ?? RESUMO, 'CAIXA_NAO_ENCONTRADO');
+  const reqCaixa = http.expectOne(URL_CAIXA);
+  const reqCas = http.expectOne(URL_CAS);
+  const reqFiado = http.expectOne(URL_FIADO);
   const fat = http.expectOne(
     (r) => r.url === URL_FAT && r.params.get('inicio') === HOJE && r.params.get('fim') === HOJE,
   );
-  responder(fat, o.fat ?? { totalLiquido: 1234.5 });
-  responder(http.expectOne(URL_EST), o.est ?? { itens: [], alertasEstoqueMinimo: [] });
-  await assentar(fixture);
+  const reqEst = http.expectOne(URL_EST);
   const el = fixture.nativeElement as HTMLElement;
+  if (o.pendentes) return { el, botao: () => undefined, navegar, texto: () => el.textContent };
+  responder(reqCaixa, o.caixa ?? RESUMO, 'CAIXA_NAO_ENCONTRADO');
+  responder(fat, o.fat ?? FAT);
+  responder(reqCas, o.cas ?? { totalCascos: 7 });
+  responder(reqFiado, o.fiado ?? { totalAReceber: 350 });
+  responder(reqEst, o.est ?? { itens: [], alertasEstoqueMinimo: [] });
+  await assentar(fixture);
   return {
     el,
     navegar,
+    texto: () => el.textContent?.replace(/\s/g, ' '),
     botao: (t: string) =>
       Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes(t)),
   };
@@ -91,6 +118,30 @@ describe('HomePage', () => {
   it('total vendido em BRL', async () => {
     const { el } = await montar();
     expect(el.textContent?.replace(/\s/g, ' ')).toContain('R$ 1.234,50');
+  });
+
+  it('hero, cascos e fiado exibem exatamente o que o servidor respondeu', async () => {
+    const { el } = await montar();
+    const saidas = Array.from(el.querySelectorAll('.hero__saida')).map((e) =>
+      e.textContent?.replace(/\s+/g, ' ').trim(),
+    );
+    expect(saidas).toEqual(['GELO12', 'CARVAO3']);
+    expect(el.querySelector('.cartao--casco .cartao__valor')?.textContent?.trim()).toBe('7');
+    expect(el.textContent?.replace(/\s/g, ' ')).toContain('R$ 350,00');
+  });
+
+  it('carregando antes de responder', async () => {
+    const { el } = await montar({ pendentes: true });
+    expect(el.querySelectorAll('ce-skeleton').length).toBe(4);
+  });
+
+  it('falha isolada: fiado 500, resto renderiza', async () => {
+    const { el } = await montar({ fiado: 500 });
+    expect(el.querySelector('[aria-label="Fiado a receber"]')?.textContent).toContain(
+      'Não foi possível carregar',
+    );
+    expect(el.textContent?.replace(/\s/g, ' ')).toContain('R$ 1.234,50');
+    expect(el.querySelector('.cartao--casco .cartao__valor')?.textContent?.trim()).toBe('7');
   });
 
   it('alertas vazios', async () => {

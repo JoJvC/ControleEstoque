@@ -102,4 +102,13 @@ describe('FinanceiroApi', () => {
     req.flush([{ clienteId: 'c1' }]);
     expect(resp).toEqual([{ clienteId: 'c1' }]);
   });
+
+  it('totalFiado: GET /relatorios/fiado/total', () => {
+    let resp: unknown;
+    api.totalFiado().subscribe((r) => (resp = r));
+    const req = http.expectOne(`${BASE}/relatorios/fiado/total`);
+    expect(req.request.method).toBe('GET');
+    req.flush({ totalAReceber: 350 });
+    expect(resp).toEqual({ totalAReceber: 350 });
+  });
 });

@@ -16,7 +16,11 @@ import {
   EntregaSucataResponse,
   SaldosResponse,
 } from './models/clientes';
-import { SaldoCascoRelatorio, SucataEntregueRelatorio } from './models/relatorios';
+import {
+  SaldoCascoRelatorio,
+  SucataEntregueRelatorio,
+  TotalCascosRelatorio,
+} from './models/relatorios';
 
 @Injectable({ providedIn: 'root' })
 export class ClientesApi {
@@ -93,6 +97,10 @@ export class ClientesApi {
 
   relatorioCascos(): Observable<SaldoCascoRelatorio[]> {
     return this.http.get<SaldoCascoRelatorio[]>(`${this.base}/relatorios/cascos`);
+  }
+
+  totalCascos(): Observable<TotalCascosRelatorio> {
+    return this.http.get<TotalCascosRelatorio>(`${this.base}/relatorios/cascos/total`);
   }
 
   relatorioSucata(): Observable<SucataEntregueRelatorio[]> {

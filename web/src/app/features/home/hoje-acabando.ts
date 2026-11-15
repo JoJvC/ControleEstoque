@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 
 import { EstoqueItemResponse } from '../../core/api/models/estoque';
+import { rotuloDaMarca } from '../../core/api/produto-leitura';
 import { PermissionService } from '../../core/permissions/permission-service';
 import { Icon, IconeNome } from '../../ui/atoms/icon';
 import { iconeDoProduto } from '../../ui/atoms/icone-do-produto';
@@ -9,6 +10,9 @@ import { EmptyState } from '../../ui/molecules/empty-state';
 import { HojeStatus } from './hoje-status';
 
 export interface AcabandoLinha {
+  /** Produto + marca: duas marcas do mesmo produto são duas linhas. */
+  chave: string;
+  /** produtoId: o Repor segue por produto. */
   id: string;
   nome: string;
   quantidade: number;
@@ -24,8 +28,9 @@ export function rotaRepor(produtoId: string): string {
 /** O servidor já filtrou (abaixo do mínimo); aqui só se mapeia para exibição. */
 export function modeloAcabando(itens: EstoqueItemResponse[]): AcabandoLinha[] {
   return itens.map((i) => ({
+    chave: `${i.produtoId}:${i.marca ?? ''}`,
     id: i.produtoId,
-    nome: i.nome,
+    nome: i.marca ? `${i.nome} — ${rotuloDaMarca(i.marca)}` : i.nome,
     quantidade: i.quantidade,
     minimo: i.estoqueMinimo,
     icone: iconeDoProduto({ tipo: i.tipo, categoria: i.categoria }),
@@ -45,7 +50,7 @@ export function modeloAcabando(itens: EstoqueItemResponse[]): AcabandoLinha[] {
             <ce-empty-state titulo="Nenhum produto abaixo do mínimo" />
           } @else {
             <ul class="acabando__lista">
-              @for (l of itens(); track l.id) {
+              @for (l of itens(); track l.chave) {
                 <li class="acabando__item">
                   <ce-icon [nome]="l.icone" [tamanho]="24" />
                   <span class="acabando__nome">{{ l.nome }}</span>

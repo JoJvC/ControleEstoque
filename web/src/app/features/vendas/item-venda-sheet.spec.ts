@@ -6,12 +6,18 @@ import { ProdutoResponse } from '../../core/api/models/estoque';
 import { produtoResp } from '../../core/api/testing';
 import { ItemCarrinho } from './carrinho';
 import { ItemVendaSheet, ItemVendaSheetDados } from './item-venda-sheet';
+import { itemCarrinho } from './testing';
 
 const PRODUTO: ProdutoResponse = produtoResp({ nome: 'Água 20L' });
 
-async function montar(existente: ItemCarrinho | null) {
+async function montar(existente: ItemCarrinho | null, precoVasilhame: number | null = null) {
   const close = vi.fn();
-  const dados: ItemVendaSheetDados = { produto: PRODUTO, existente };
+  const dados: ItemVendaSheetDados = {
+    produto: PRODUTO,
+    marca: PRODUTO.marcas[0],
+    existente,
+    precoVasilhame,
+  };
   await TestBed.configureTestingModule({
     imports: [ItemVendaSheet],
     providers: [
@@ -66,21 +72,40 @@ describe('ItemVendaSheet', () => {
 
     botao('Adicionar ao carrinho').click();
 
-    expect(close).toHaveBeenCalledWith({
-      produto: PRODUTO,
-      quantidade: 1,
-      precoUnitario: 50,
-      desconto: { tipo: 'VALOR', valor: 5, motivo: 'cliente antigo' },
-    });
+    expect(close).toHaveBeenCalledWith(
+      itemCarrinho({
+        produto: PRODUTO,
+        desconto: { tipo: 'VALOR', valor: 5, motivo: 'cliente antigo' },
+      }),
+    );
+  });
+
+  it('item descartável (sem preço de vasilhame) não mostra a opção', async () => {
+    const { el } = await montar(null, null);
+
+    expect(el.textContent).not.toContain('Pagou o vasilhame');
+  });
+
+  it('marcar "pagou o vasilhame" soma o vasilhame ao total e fecha com pagouVasilhame', async () => {
+    const { fixture, el, close, botao } = await montar(null, 30);
+
+    expect(el.textContent?.replace(/\s+/g, ' ')).toContain(
+      'Pagou o vasilhame (+ R$ 30,00 por unidade)',
+    );
+    expect(el.textContent?.replace(/\s+/g, ' ')).toMatch(/Total do item ?R\$ 50,00/);
+    (el.querySelector('input[type="checkbox"]') as HTMLInputElement).click();
+    await fixture.whenStable();
+    expect(el.textContent?.replace(/\s+/g, ' ')).toMatch(/Total do item ?R\$ 80,00/);
+
+    botao('Adicionar ao carrinho').click();
+
+    expect(close).toHaveBeenCalledWith(
+      itemCarrinho({ produto: PRODUTO, pagouVasilhame: true, precoVasilhame: 30 }),
+    );
   });
 
   it('o botão de remover fecha com "remover"', async () => {
-    const existente: ItemCarrinho = {
-      produto: PRODUTO,
-      quantidade: 2,
-      precoUnitario: 50,
-      desconto: null,
-    };
+    const existente = itemCarrinho({ produto: PRODUTO, quantidade: 2 });
     const { fixture, close, botao } = await montar(existente);
 
     botao('Remover do carrinho').click();

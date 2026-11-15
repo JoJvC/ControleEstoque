@@ -1,6 +1,10 @@
-import { EstoqueItemResponse, ProdutoResponse } from '../../core/api/models/estoque';
-import { precoReferenciaDe } from '../../core/api/produto-leitura';
 import {
+  ProdutoMarcaResponse,
+  ProdutoResponse,
+  TipoCascoResponse,
+} from '../../core/api/models/estoque';
+import {
+  CascoPorTipoRequest,
   CreateVendaRequest,
   FormaPagamento,
   ItemVendaRequest,
@@ -8,6 +12,7 @@ import {
   VendaDetalheResponse,
 } from '../../core/api/models/vendas';
 import { PagamentoEdicao } from '../../ui/organisms/pagamento-lista';
+import { QuantidadesPorTipo, cascosParaRequest, tiposCascoDoCarrinho } from './cascos-por-tipo';
 
 export interface DescontoCarrinho {
   readonly tipo: TipoDesconto;
@@ -15,18 +20,56 @@ export interface DescontoCarrinho {
   readonly motivo: string;
 }
 
+/** A identidade do item é produto+marca. */
 export interface ItemCarrinho {
   readonly produto: ProdutoResponse;
+  readonly marca: ProdutoMarcaResponse;
   readonly quantidade: number;
   readonly precoUnitario: number;
   readonly desconto: DescontoCarrinho | null;
+  /** Cliente pagou o vasilhame (em vez de trocar ou emprestar o casco). */
+  readonly pagouVasilhame: boolean;
+  /** Preço do vasilhame do tipo de casco da marca; só entra no bruto com `pagouVasilhame`. */
+  readonly precoVasilhame: number;
+}
+
+export const mesmoItem = (
+  item: ItemCarrinho,
+  produto: ProdutoResponse,
+  marca: ProdutoMarcaResponse,
+): boolean => item.produto.id === produto.id && item.marca.marcaId === marca.marcaId;
+
+export function precoVasilhameDe(
+  marca: ProdutoMarcaResponse,
+  tiposCasco: readonly TipoCascoResponse[],
+): number {
+  return tiposCasco.find((t) => t.id === marca.tipoCascoResolvidoId)?.precoVasilhame ?? 0;
+}
+
+/** Linha nova no carrinho: troca/empréstimo por padrão, preço sugerido = referência da marca. */
+export function itemNovo(
+  produto: ProdutoResponse,
+  marca: ProdutoMarcaResponse,
+  quantidade: number,
+  tiposCasco: readonly TipoCascoResponse[],
+): ItemCarrinho {
+  return {
+    produto,
+    marca,
+    quantidade,
+    precoUnitario: marca.precoReferencia,
+    desconto: null,
+    pagouVasilhame: false,
+    precoVasilhame: precoVasilhameDe(marca, tiposCasco),
+  };
 }
 
 // Espelho client-side de VendaCalculos (backend) — SÓ para feedback ao vivo;
 // os totais oficiais vêm sempre do response do servidor (Regra 8.6).
 
 export function brutoDe(item: ItemCarrinho): number {
-  return item.quantidade * item.precoUnitario;
+  const vasilhame = item.pagouVasilhame ? item.quantidade * item.precoVasilhame : 0;
+  return item.quantidade * item.precoUnitario + vasilhame;
 }
 
 export function valorDescontoDe(item: ItemCarrinho): number {
@@ -48,12 +91,14 @@ export function totalItemDe(item: ItemCarrinho): number {
 export function paraItemRequest(item: ItemCarrinho): ItemVendaRequest {
   return {
     produtoId: item.produto.id,
+    marcaId: item.marca.marcaId,
     quantidade: item.quantidade,
     precoUnitario: item.precoUnitario,
     desconto:
       item.desconto === null
         ? null
         : { tipo: item.desconto.tipo, valor: item.desconto.valor, motivo: item.desconto.motivo },
+    pagouVasilhame: item.pagouVasilhame,
   };
 }
 
@@ -69,9 +114,9 @@ export interface RascunhoVenda {
   readonly enderecoEntregaId: string | null;
   readonly itens: readonly ItemCarrinho[];
   readonly pagamentos: readonly PagamentoEdicao[];
-  readonly cascosDevolvidos: number;
-  readonly cascosDevolvidosNaHora: boolean;
-  readonly sucataEntregue: number;
+  readonly cascosDevolvidos: QuantidadesPorTipo;
+  readonly cascosNaHora: boolean;
+  readonly sucataEntregue: QuantidadesPorTipo;
 }
 
 // Dinheiro em reais com 2 casas: arredonda para não acumular erro de ponto flutuante.
@@ -106,14 +151,6 @@ export function excedeSaldo(saldo: number, valor: number): boolean {
   return Math.round(valor * 100) > Math.round(saldo * 100);
 }
 
-export function temAgua(itens: readonly ItemCarrinho[]): boolean {
-  return itens.some((i) => i.produto.tipo === 'RETORNAVEL');
-}
-
-export function quantidadeAgua(itens: readonly ItemCarrinho[]): number {
-  return itens.filter((i) => i.produto.tipo === 'RETORNAVEL').reduce((s, i) => s + i.quantidade, 0);
-}
-
 // Feedback local do passo Cascos (Regra 8.1): não é saldo guardado, o servidor continua dono dele.
 export function cascosNaRua(quantidadeDeAgua: number, devolvidos: number): number {
   return Math.max(0, quantidadeDeAgua - devolvidos);
@@ -143,14 +180,9 @@ export function valorDoAtalho(
   return (atalho === 'tudo' ? restante : Math.floor(restante / 2)) / 100;
 }
 
-/** Pílula do produto: RETORNAVEL sempre em "Água"; DESCARTAVEL usa a categoria. */
+/** Pílula do produto: a categoria cadastrada (null = sem pílula). */
 export function categoriaDoProduto(produto: ProdutoResponse): string | null {
-  switch (produto.tipo) {
-    case 'RETORNAVEL':
-      return 'Água';
-    case 'DESCARTAVEL':
-      return produto.categoria || null;
-  }
+  return produto.categoria || null;
 }
 
 export function categoriasDe(produtos: readonly ProdutoResponse[]): string[] {
@@ -160,32 +192,21 @@ export function categoriasDe(produtos: readonly ProdutoResponse[]): string[] {
 }
 
 /** `categoria` null = "Todas". */
-export function filtrarPorCategoria(
-  produtos: readonly ProdutoResponse[],
+export function filtrarPorCategoria<L extends { readonly produto: ProdutoResponse }>(
+  linhas: readonly L[],
   categoria: string | null,
-): readonly ProdutoResponse[] {
+): readonly L[] {
   return categoria === null
-    ? produtos
-    : produtos.filter((p) => categoriaDoProduto(p) === categoria);
+    ? linhas
+    : linhas.filter((l) => categoriaDoProduto(l.produto) === categoria);
 }
 
-export interface ProdutoComEstoque {
-  readonly produto: ProdutoResponse;
-  /** null quando o estoque não trouxe o produto (ou ainda não carregou). */
-  readonly estoque: number | null;
-}
-
-export function produtosComEstoque(
-  produtos: readonly ProdutoResponse[],
-  estoque: readonly EstoqueItemResponse[],
-): ProdutoComEstoque[] {
-  const porProduto = new Map(estoque.map((e) => [e.produtoId, e.quantidade]));
-  return produtos.map((produto) => ({ produto, estoque: porProduto.get(produto.id) ?? null }));
-}
-
-// Sem ÁGUA no carrinho o passo Cascos não existe: casco e sucata vão zerados.
-export function paraCreateVendaRequest(rascunho: RascunhoVenda): CreateVendaRequest {
-  const comCascos = temAgua(rascunho.itens);
+// Casco e sucata só vão para os tipos de casco do carrinho (cascosParaRequest).
+export function paraCreateVendaRequest(
+  rascunho: RascunhoVenda,
+  tiposCasco: readonly TipoCascoResponse[],
+): CreateVendaRequest {
+  const tipos = tiposCascoDoCarrinho(rascunho.itens, tiposCasco);
   return {
     clienteId: rascunho.clienteId,
     funcionarioId: rascunho.funcionarioId,
@@ -194,9 +215,12 @@ export function paraCreateVendaRequest(rascunho: RascunhoVenda): CreateVendaRequ
     pagamentos: rascunho.pagamentos
       .filter((p) => p.valor !== null && p.valor > 0)
       .map((p) => ({ forma: p.forma as FormaPagamento, valor: p.valor as number })),
-    cascosDevolvidos: comCascos ? rascunho.cascosDevolvidos : 0,
-    cascosDevolvidosNaHora: comCascos && rascunho.cascosDevolvidosNaHora,
-    sucataEntregue: comCascos ? rascunho.sucataEntregue : 0,
+    ...cascosParaRequest(
+      tipos,
+      rascunho.cascosNaHora,
+      rascunho.cascosDevolvidos,
+      rascunho.sucataEntregue,
+    ),
     observacao: null,
   };
 }
@@ -205,30 +229,43 @@ export function paraCreateVendaRequest(rascunho: RascunhoVenda): CreateVendaRequ
 export function rascunhoDeVenda(
   venda: VendaDetalheResponse,
   produtos: ReadonlyMap<string, ProdutoResponse>,
+  tiposCasco: readonly TipoCascoResponse[],
 ): RascunhoVenda {
+  const porTipo = (lista: readonly CascoPorTipoRequest[]): QuantidadesPorTipo =>
+    Object.fromEntries(lista.map((c) => [c.tipoCascoId, c.quantidade]));
   return {
     clienteId: venda.clienteId,
     funcionarioId: venda.funcionarioId,
     enderecoEntregaId: venda.enderecoEntregaId,
-    itens: venda.itens.map((i) => ({
-      produto: produtos.get(i.produtoId) as ProdutoResponse,
-      quantidade: i.quantidade,
-      precoUnitario: i.precoUnitario,
-      desconto:
-        i.descontoTipo === null
-          ? null
-          : { tipo: i.descontoTipo, valor: i.descontoValor ?? 0, motivo: i.motivoDesconto ?? '' },
-    })),
+    itens: venda.itens.map((i) => {
+      const produto = produtos.get(i.produtoId) as ProdutoResponse;
+      const marca = produto.marcas.find((m) => m.marcaId === i.marcaId);
+      if (!marca) {
+        throw new Error(`Marca ${i.marcaId} da venda não existe mais no produto ${produto.nome}.`);
+      }
+      return {
+        produto,
+        marca,
+        quantidade: i.quantidade,
+        precoUnitario: i.precoUnitario,
+        desconto:
+          i.descontoTipo === null
+            ? null
+            : { tipo: i.descontoTipo, valor: i.descontoValor ?? 0, motivo: i.motivoDesconto ?? '' },
+        pagouVasilhame: i.pagouVasilhame,
+        precoVasilhame: i.pagouVasilhame ? i.precoVasilhame : precoVasilhameDe(marca, tiposCasco),
+      };
+    }),
     pagamentos: venda.pagamentos.map((p) => ({ forma: p.forma, valor: p.valor })),
-    cascosDevolvidos: venda.cascosDevolvidos ?? 0,
-    cascosDevolvidosNaHora: false,
-    sucataEntregue: venda.sucataEntregue ?? 0,
+    cascosDevolvidos: porTipo(venda.cascosDevolvidos ?? []),
+    cascosNaHora: false,
+    sucataEntregue: porTipo(venda.sucataEntregue ?? []),
   };
 }
 
 export interface UltimaVendaCarregada {
   readonly itens: readonly ItemCarrinho[];
-  /** Itens da venda antiga cujo produto não está mais no catálogo. */
+  /** Itens da venda antiga cujo produto ou marca não está mais no catálogo. */
   readonly pulados: number;
 }
 
@@ -239,16 +276,16 @@ export interface UltimaVendaCarregada {
 export function itensDaUltimaVenda(
   venda: VendaDetalheResponse,
   produtos: ReadonlyMap<string, ProdutoResponse>,
+  tiposCasco: readonly TipoCascoResponse[],
 ): UltimaVendaCarregada {
   const itens: ItemCarrinho[] = [];
   for (const i of venda.itens) {
     const produto = produtos.get(i.produtoId);
-    if (produto) {
+    const marca = produto?.marcas.find((m) => m.marcaId === i.marcaId);
+    if (produto && marca) {
       itens.push({
-        produto,
-        quantidade: i.quantidade,
-        precoUnitario: precoReferenciaDe(produto),
-        desconto: null,
+        ...itemNovo(produto, marca, i.quantidade, tiposCasco),
+        pagouVasilhame: i.pagouVasilhame,
       });
     }
   }

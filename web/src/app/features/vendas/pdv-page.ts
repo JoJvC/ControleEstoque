@@ -15,20 +15,23 @@ import {
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { firstValueFrom, map } from 'rxjs';
+import { firstValueFrom, forkJoin, map } from 'rxjs';
 
 import { ClientesApi } from '../../core/api/clientes-api';
 import { EstoqueApi } from '../../core/api/estoque-api';
 import { ClienteResponse, EnderecoResponse } from '../../core/api/models/clientes';
 import { SaldosResponse } from '../../core/api/models/clientes';
-import { EstoqueItemResponse, ProdutoResponse } from '../../core/api/models/estoque';
-import { nomesDasMarcas, precoReferenciaDe } from '../../core/api/produto-leitura';
+import {
+  ProdutoMarcaResponse,
+  ProdutoResponse,
+  TipoCascoResponse,
+} from '../../core/api/models/estoque';
+import { rotuloDaMarca } from '../../core/api/produto-leitura';
 import { StatusPagamento, VendaDetalheResponse, VendaResponse } from '../../core/api/models/vendas';
 import { VendasApi } from '../../core/api/vendas-api';
 import { ApiError } from '../../core/http/api-error';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { SheetService } from '../../core/overlay/sheet-service';
-import { semAcento } from '../../core/util/sem-acento';
 import { Badge } from '../../ui/atoms/badge';
 import { Button } from '../../ui/atoms/button';
 import { Chip } from '../../ui/atoms/chip';
@@ -46,13 +49,13 @@ import {
   categoriasDe,
   fiadoDe,
   filtrarPorCategoria,
+  itemNovo,
   itensDaUltimaVenda,
+  mesmoItem,
   pagamentoExcede,
   paraCreateVendaRequest,
-  produtosComEstoque,
-  quantidadeAgua,
+  precoVasilhameDe,
   rascunhoDeVenda,
-  temAgua,
   totaisDe,
   totalItemDe,
   totalPagoDe,
@@ -60,6 +63,16 @@ import {
   valorDescontoDe,
 } from './carrinho';
 import {
+  LinhaProduto,
+  SugestaoBusca,
+  filtrarPorSugestao,
+  filtrarPorTexto,
+  linhasDoCatalogo,
+  sugestoesDaBusca,
+} from './busca-produto';
+import { QuantidadesPorTipo, quantidadeDevolvida, tiposCascoDoCarrinho } from './cascos-por-tipo';
+import {
+  CascoTipoEstado,
   CobrarAcao,
   CobrarEstado,
   CobrarPainel,
@@ -202,9 +215,28 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
           </div>
           @if (saldos(); as s) {
             <div class="cliente-fixo__chips">
-              <ce-chip tom="casco" icone="casco">Casco {{ s.saldoCascos }}</ce-chip>
+              <button
+                type="button"
+                class="chip-botao"
+                [attr.aria-expanded]="cascosAbertos()"
+                (click)="cascosAbertos.set(!cascosAbertos())"
+              >
+                <ce-chip tom="casco" icone="casco">Casco {{ s.saldoCascos }}</ce-chip>
+              </button>
               <ce-chip tom="fiado" icone="dinheiro">Fiado {{ s.saldoFiado | cePreco }}</ce-chip>
             </div>
+            @if (cascosAbertos()) {
+              <ul class="casco-lista" aria-label="Cascos por tipo">
+                @for (c of cascosComSaldo(); track c.tipoCascoId) {
+                  <li>
+                    {{ c.nome }} = {{ c.saldo < 0 ? -c.saldo : c.saldo
+                    }}{{ c.saldo < 0 ? ' a favor do cliente' : '' }}
+                  </li>
+                } @empty {
+                  <li>Nenhum casco com ele.</li>
+                }
+              </ul>
+            }
           }
           @if (podeRepetir()) {
             <button
@@ -288,7 +320,7 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
           class="pilula"
           [class.pilula--ativa]="categoria() === null"
           [attr.aria-pressed]="categoria() === null"
-          (click)="categoria.set(null)"
+          (click)="escolherCategoria(null)"
         >
           Todos
         </button>
@@ -298,7 +330,7 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
             class="pilula"
             [class.pilula--ativa]="categoria() === c"
             [attr.aria-pressed]="categoria() === c"
-            (click)="categoria.set(c)"
+            (click)="escolherCategoria(c)"
           >
             {{ c }}
           </button>
@@ -306,10 +338,30 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
       </div>
       <ce-search-box
         rotulo="Buscar produto"
-        placeholder="Buscar produto por nome…"
-        (buscar)="termoProduto.set($event)"
+        placeholder="Buscar por nome, marca ou categoria…"
+        [valor]="textoBusca()"
+        (buscar)="buscarProduto($event)"
         (keydown.enter)="enterProduto($event)"
       />
+      @if (sugestoes().length > 0) {
+        <ul class="sugestoes" aria-label="Sugestões da busca">
+          @for (sugestao of sugestoes(); track sugestao.tipo + sugestao.valor) {
+            <li>
+              <button type="button" class="sugestao" (click)="escolherSugestao(sugestao)">
+                {{ rotuloDaSugestao(sugestao) }}
+              </button>
+            </li>
+          }
+        </ul>
+      }
+      @if (filtroSugestao(); as filtro) {
+        <span class="filtro" role="group" aria-label="Filtro da busca">
+          {{ rotuloDaSugestao(filtro) }}
+          <button type="button" aria-label="Limpar filtro" (click)="limparSugestao()">
+            <ce-icon nome="fechar" [tamanho]="16" />
+          </button>
+        </span>
+      }
       <ce-data-list
         [itens]="linhasDeProduto()"
         [status]="produtosStatus()"
@@ -318,43 +370,45 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
       >
         <ng-template let-linha>
           @let p = linha.produto;
-          @let item = itemDe(p);
+          @let item = itemDe(linha);
+          @let rotulo = rotuloDaLinha(linha);
           <div class="prod" [class.prod--sel]="item !== undefined">
             <button
               type="button"
               class="prod__corpo"
-              [attr.aria-label]="'Adicionar ' + p.nome"
-              (click)="mudarQuantidade(p, (item?.quantidade ?? 0) + 1)"
+              [attr.aria-label]="'Adicionar ' + rotulo"
+              (click)="mudarQuantidade(linha, (item?.quantidade ?? 0) + 1)"
             >
               <ce-icon class="prod__icone" [nome]="iconeDe(p)" [tamanho]="32" />
               <span class="prod__info">
-                <span class="prod__nome">{{ p.nome }}</span>
+                <span class="prod__nome">{{ rotulo }}</span>
                 <span class="dica">
-                  @if (detalheDe(p)) {
-                    {{ detalheDe(p) }} ·
+                  @if (p.tamanho) {
+                    {{ p.tamanho }} ·
                   }
-                  @if (linha.estoque !== null) {
-                    Estoque: {{ linha.estoque }} ·
-                  }
-                  <span class="prod__preco">{{ precoDe(p) | cePreco }}</span>
+                  Estoque: {{ linha.marca.quantidade }} ·
+                  <span class="prod__preco">{{ precoDe(linha) | cePreco }}</span>
                 </span>
               </span>
             </button>
             @if (item) {
               <ce-quantity-stepper
-                [rotulo]="'Quantidade de ' + p.nome"
-                [item]="p.nome"
+                [rotulo]="'Quantidade de ' + rotulo"
+                [item]="rotulo"
                 [ngModel]="item.quantidade"
-                (ngModelChange)="mudarQuantidade(p, $event)"
+                (ngModelChange)="mudarQuantidade(linha, $event)"
               />
               <div class="prod__extra">
-                <button type="button" class="prod__link" (click)="editarPreco(p)">
+                <button type="button" class="prod__link" (click)="editarPreco(linha)">
                   Preço e desconto
                 </button>
                 @if (item.desconto) {
                   <span class="dica">desc. {{ descontoDe(item) | cePreco }}</span>
-                } @else if (item.precoUnitario !== precoSugerido(p)) {
+                } @else if (item.precoUnitario !== linha.marca.precoReferencia) {
                   <span class="dica">preço editado</span>
+                }
+                @if (item.pagouVasilhame) {
+                  <span class="dica">vasilhame pago</span>
                 }
                 <span class="prod__total">{{ totalDe(item) | cePreco }}</span>
               </div>
@@ -454,6 +508,7 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
     }
 
     .pilula,
+    .sugestao,
     .repetir {
       @include mixins.touch-target;
 
@@ -463,6 +518,40 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
       border-radius: 999px;
       background: var(--ce-surface);
       font-weight: 600;
+    }
+
+    .sugestoes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--ce-space-2);
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .filtro {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--ce-space-2);
+      padding: var(--ce-space-1) var(--ce-space-3);
+      border-radius: 999px;
+      background: var(--ce-primary-soft);
+      color: var(--ce-primary-strong);
+      font-weight: 600;
+    }
+
+    .chip-botao {
+      padding: 0;
+      border: none;
+      background: none;
+    }
+
+    .casco-lista {
+      margin: 0;
+      padding-left: var(--ce-space-4);
+      color: var(--ce-text-muted);
+      font-size: var(--ce-font-sm);
     }
 
     .repetir {
@@ -548,6 +637,7 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
     // ≥960 px: catálogo à esquerda, a venda (o mesmo conteúdo da sheet) à direita
     .grade {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       gap: var(--ce-space-4);
       align-items: start;
     }
@@ -673,9 +763,10 @@ export class PdvPage implements OnInit {
   protected readonly clienteSelecionado = signal<ClienteResponse | null>(null);
   protected readonly enderecoId = signal<string | null>(null);
   protected readonly itens = signal<readonly ItemCarrinho[]>([]);
-  protected readonly cascosDevolvidos = signal(0);
+  // Casco e sucata por tipo de casco (chave = tipoCascoId); com 'na hora' o devolvido vem do carrinho.
+  protected readonly cascosDevolvidos = signal<QuantidadesPorTipo>({});
   protected readonly cascosNaHora = signal(false);
-  protected readonly sucataEntregue = signal(0);
+  protected readonly sucataEntregue = signal<QuantidadesPorTipo>({});
   protected readonly pagamentos = signal<readonly PagamentoEdicao[]>(PAGAMENTO_PADRAO);
 
   // Edição: com `id` (rota editar/:id) a página pré-carrega a venda e salva por PUT.
@@ -708,20 +799,24 @@ export class PdvPage implements OnInit {
 
   // Produtos: a API não filtra por texto, então carrega a lista inteira e filtra aqui.
   protected readonly produtos = signal<readonly ProdutoResponse[]>([]);
+  protected readonly tiposCasco = signal<readonly TipoCascoResponse[]>([]);
   protected readonly produtosStatus = signal<DataListStatus>('idle');
   protected readonly termoProduto = signal('');
-  protected readonly estoque = signal<readonly EstoqueItemResponse[]>([]);
+  // Texto mostrado na caixa de busca; esvaziá-lo ao escolher uma sugestão limpa o campo.
+  protected readonly textoBusca = signal('');
+  protected readonly filtroSugestao = signal<SugestaoBusca | null>(null);
   protected readonly categoria = signal<string | null>(null);
   protected readonly categorias = computed(() => categoriasDe(this.produtos()));
-  protected readonly produtosFiltrados = computed(() => {
-    const termo = semAcento(this.termoProduto());
-    return filtrarPorCategoria(this.produtos(), this.categoria()).filter((p) =>
-      semAcento(p.nome).includes(termo),
-    );
-  });
-  protected readonly linhasDeProduto = computed(() =>
-    produtosComEstoque(this.produtosFiltrados(), this.estoque()),
+  private readonly catalogo = computed(() => linhasDoCatalogo(this.produtos()));
+  protected readonly sugestoes = computed(() =>
+    sugestoesDaBusca(this.catalogo(), this.termoProduto()),
   );
+  protected readonly linhasDeProduto = computed(() => {
+    const porCategoria = filtrarPorCategoria(this.catalogo(), this.categoria());
+    const filtro = this.filtroSugestao();
+    const porSugestao = filtro === null ? porCategoria : filtrarPorSugestao(porCategoria, filtro);
+    return filtrarPorTexto(porSugestao, this.termoProduto());
+  });
 
   protected readonly totais = computed(() => totaisDe(this.itens()));
   protected readonly pago = computed(() => totalPagoDe(this.pagamentos()));
@@ -729,17 +824,36 @@ export class PdvPage implements OnInit {
   protected readonly excede = computed(() =>
     pagamentoExcede(this.totais().liquido, this.pagamentos()),
   );
-  protected readonly comCascos = computed(() => temAgua(this.itens()));
-  // Feedback ao vivo (Regra 8.6): em venda nova com saldo carregado, o saldo do cliente entra na
-  // conta; na edição o saldo já inclui a venda original, então só conta a água desta venda.
+  // Feedback ao vivo (Regra 8.6): em venda nova com saldo carregado, o saldo do cliente por tipo entra
+  // na conta; na edição o saldo já inclui a venda original, então só conta o casco desta venda.
   private readonly saldoBaseDeCascos = computed(() =>
-    this.id() === undefined ? (this.saldos()?.saldoCascos ?? null) : null,
+    this.id() === undefined ? (this.saldos()?.cascosPorTipo ?? null) : null,
   );
-  protected readonly cascoNaRua = computed(() =>
-    cascosNaRua(
-      (this.saldoBaseDeCascos() ?? 0) + quantidadeAgua(this.itens()),
-      this.cascosDevolvidos(),
-    ),
+  private readonly tiposDoCarrinho = computed(() =>
+    tiposCascoDoCarrinho(this.itens(), this.tiposCasco()),
+  );
+  protected readonly cascos = computed<CascoTipoEstado[]>(() => {
+    const base = this.saldoBaseDeCascos();
+    return this.tiposDoCarrinho().map((tipo) => {
+      const { valor, travado } = quantidadeDevolvida(
+        tipo,
+        this.cascosNaHora(),
+        this.cascosDevolvidos()[tipo.tipoCascoId] ?? 0,
+      );
+      const saldo = base?.find((c) => c.tipoCascoId === tipo.tipoCascoId)?.saldo ?? 0;
+      return {
+        ...tipo,
+        devolvidos: valor,
+        travado,
+        sucata: this.sucataEntregue()[tipo.tipoCascoId] ?? 0,
+        naRua: cascosNaRua(saldo + tipo.vendidosEmTroca, valor),
+        aMais: Math.max(0, valor - saldo - tipo.vendidosEmTroca),
+      };
+    });
+  });
+  protected readonly cascosAbertos = signal(false);
+  protected readonly cascosComSaldo = computed(() =>
+    (this.saldos()?.cascosPorTipo ?? []).filter((c) => c.saldo !== 0),
   );
 
   // Saldos do cliente vêm do servidor e são exibidos como chegaram (Regra 8.6): sem soma local.
@@ -776,20 +890,9 @@ export class PdvPage implements OnInit {
   protected readonly cobrarEstado = computed<CobrarEstado>(() => ({
     itens: this.itens(),
     totais: this.totais(),
-    comCascos: this.comCascos(),
-    comGalaoCompleto: false,
-    cascosDevolvidos: this.cascosDevolvidos(),
+    cascos: this.cascos(),
     cascosNaHora: this.cascosNaHora(),
-    cascoNaRua: this.cascoNaRua(),
-    cascosAMais: Math.max(
-      0,
-      this.cascosDevolvidos() - (this.saldoBaseDeCascos() ?? 0) - quantidadeAgua(this.itens()),
-    ),
-    clienteNome:
-      this.saldoBaseDeCascos() === null
-        ? null
-        : (this.clienteSelecionado()?.nome ?? '').split(' ')[0],
-    sucataEntregue: this.sucataEntregue(),
+    clienteNome: this.saldoBaseDeCascos() === null ? null : (this.clienteSelecionado()?.nome ?? ''),
     pagamentos: this.pagamentos(),
     excede: this.excede(),
     erro: this.erro(),
@@ -820,10 +923,6 @@ export class PdvPage implements OnInit {
         this.cobrarRef?.close();
       }
     });
-    // Só informativo: sem estoque a linha omite a quantidade.
-    this.estoqueApi
-      .obterEstoque()
-      .subscribe({ next: (lista) => this.estoque.set(lista), error: () => undefined });
   }
 
   ngOnInit(): void {
@@ -863,13 +962,13 @@ export class PdvPage implements OnInit {
           produtos.set(produtoId, await firstValueFrom(this.estoqueApi.obterProduto(produtoId)));
         }
       }
-      const rascunho = rascunhoDeVenda(venda, produtos);
+      const rascunho = rascunhoDeVenda(venda, produtos, this.tiposCasco());
       this.selecionarCliente(cliente);
       this.enderecoId.set(rascunho.enderecoEntregaId);
       this.itens.set(rascunho.itens);
       this.pagamentos.set(rascunho.pagamentos);
       this.cascosDevolvidos.set(rascunho.cascosDevolvidos);
-      this.cascosNaHora.set(rascunho.cascosDevolvidosNaHora);
+      this.cascosNaHora.set(rascunho.cascosNaHora);
       this.sucataEntregue.set(rascunho.sucataEntregue);
       this.vendaCarregada.set(venda);
       this.carga.set('ok');
@@ -890,8 +989,13 @@ export class PdvPage implements OnInit {
     return [e.logradouro, e.numero, e.bairro].filter((parte) => !!parte).join(', ');
   }
 
-  protected detalheDe(p: ProdutoResponse): string {
-    return [nomesDasMarcas(p).join(', '), p.tamanho].filter((parte) => !!parte).join(' · ');
+  protected rotuloDaLinha({ produto, marca }: LinhaProduto): string {
+    return `${produto.nome} — ${rotuloDaMarca(marca.marcaNome)}`;
+  }
+
+  protected rotuloDaSugestao(s: SugestaoBusca): string {
+    const valor = s.tipo === 'marca' ? rotuloDaMarca(s.valor) : s.valor;
+    return `${{ nome: 'Produto', marca: 'Marca', categoria: 'Categoria' }[s.tipo]}: ${valor}`;
   }
 
   // Cliente
@@ -940,6 +1044,7 @@ export class PdvPage implements OnInit {
     this.clienteSelecionado.set(cliente);
     this.enderecoId.set(cliente.enderecos.length === 1 ? cliente.enderecos[0].id : null);
     this.saldos.set(null);
+    this.cascosAbertos.set(false);
     this.repetir.set({ estado: 'ocioso' });
     this.carregarSaldos(cliente.id);
   }
@@ -959,6 +1064,7 @@ export class PdvPage implements OnInit {
     this.clienteSelecionado.set(null);
     this.enderecoId.set(null);
     this.saldos.set(null);
+    this.cascosAbertos.set(false);
     this.repetir.set({ estado: 'ocioso' });
   }
 
@@ -967,9 +1073,13 @@ export class PdvPage implements OnInit {
   protected carregarProdutos(): void {
     this.produtosStatus.set('loading');
     this.produtosPronto = new Promise((resolve) => {
-      this.estoqueApi.listarProdutos().subscribe({
-        next: (lista) => {
-          this.produtos.set(lista);
+      forkJoin({
+        produtos: this.estoqueApi.listarProdutos(),
+        tiposCasco: this.estoqueApi.listarTiposCasco(),
+      }).subscribe({
+        next: ({ produtos, tiposCasco }) => {
+          this.produtos.set(produtos);
+          this.tiposCasco.set(tiposCasco);
           this.produtosStatus.set('ok');
           resolve();
         },
@@ -981,23 +1091,50 @@ export class PdvPage implements OnInit {
     });
   }
 
+  protected buscarProduto(texto: string): void {
+    this.termoProduto.set(texto);
+    this.textoBusca.set(texto);
+  }
+
+  protected escolherSugestao(sugestao: SugestaoBusca): void {
+    this.filtroSugestao.set(sugestao);
+    this.categoria.set(sugestao.tipo === 'categoria' ? sugestao.valor : this.categoria());
+    this.termoProduto.set('');
+    this.textoBusca.set('');
+  }
+
+  protected limparSugestao(): void {
+    if (this.filtroSugestao()?.tipo === 'categoria') {
+      this.categoria.set(null);
+    }
+    this.filtroSugestao.set(null);
+  }
+
+  // Trocar a pílula desfaz o filtro de categoria vindo de uma sugestão.
+  protected escolherCategoria(categoria: string | null): void {
+    if (this.filtroSugestao()?.tipo === 'categoria') {
+      this.filtroSugestao.set(null);
+    }
+    this.categoria.set(categoria);
+  }
+
   protected enterProduto(evento: Event): void {
     this.termoProduto.set((evento.target as HTMLInputElement).value.trim());
-    const [primeiro] = this.produtosFiltrados();
-    if (primeiro) {
-      void this.adicionarProduto(primeiro);
+    const [primeira] = this.linhasDeProduto();
+    if (primeira) {
+      void this.adicionarProduto(primeira);
     }
   }
 
-  protected async adicionarProduto(produto: ProdutoResponse): Promise<void> {
-    const resultado = await this.abrirItem(produto, null);
+  protected async adicionarProduto(linha: LinhaProduto): Promise<void> {
+    const resultado = await this.abrirItem(linha, null);
     if (resultado !== undefined && resultado !== 'remover') {
-      this.mudarItens((atual) => [...atual, resultado]);
+      this.itens.update((atual) => [...atual, resultado]);
     }
   }
 
-  protected itemDe(produto: ProdutoResponse): ItemCarrinho | undefined {
-    return this.itens().find((i) => i.produto.id === produto.id);
+  protected itemDe({ produto, marca }: LinhaProduto): ItemCarrinho | undefined {
+    return this.itens().find((i) => mesmoItem(i, produto, marca));
   }
 
   protected iconeDe(produto: ProdutoResponse): IconeNome {
@@ -1031,9 +1168,9 @@ export class PdvPage implements OnInit {
         this.repetir.set({ estado: 'sem-venda' });
         return;
       }
-      const { itens, pulados } = itensDaUltimaVenda(ultima, catalogo);
+      const { itens, pulados } = itensDaUltimaVenda(ultima, catalogo, this.tiposCasco());
       if (itens.length > 0) {
-        this.mudarItens(() => itens);
+        this.itens.set(itens);
       }
       this.repetir.set(
         pulados > 0
@@ -1049,72 +1186,55 @@ export class PdvPage implements OnInit {
     }
   }
 
-  protected readonly precoSugerido = precoReferenciaDe;
-
-  /** Preço vivo: o do item no carrinho (editável) ou a sugestão do produto. */
-  protected precoDe(produto: ProdutoResponse): number {
-    return (
-      this.itens().find((i) => i.produto.id === produto.id)?.precoUnitario ??
-      precoReferenciaDe(produto)
-    );
+  /** Preço vivo: o do item no carrinho (editável) ou a sugestão da marca. */
+  protected precoDe(linha: LinhaProduto): number {
+    return this.itemDe(linha)?.precoUnitario ?? linha.marca.precoReferencia;
   }
 
-  protected mudarQuantidade(produto: ProdutoResponse, quantidade: number): void {
-    const indice = this.itens().findIndex((i) => i.produto.id === produto.id);
+  protected mudarQuantidade(linha: LinhaProduto, quantidade: number): void {
+    const indice = this.itens().findIndex((i) => mesmoItem(i, linha.produto, linha.marca));
     if (quantidade <= 0) {
       if (indice >= 0) {
         this.removerItem(indice);
       }
     } else if (indice >= 0) {
-      this.mudarItens((atual) => atual.map((i, n) => (n === indice ? { ...i, quantidade } : i)));
+      this.itens.update((atual) => atual.map((i, n) => (n === indice ? { ...i, quantidade } : i)));
     } else {
-      const novo: ItemCarrinho = {
-        produto,
-        quantidade,
-        precoUnitario: precoReferenciaDe(produto),
-        desconto: null,
-      };
-      this.mudarItens((atual) => [...atual, novo]);
+      const novo = itemNovo(linha.produto, linha.marca, quantidade, this.tiposCasco());
+      this.itens.update((atual) => [...atual, novo]);
     }
   }
 
-  /** Link "preço e desconto": abre o sheet do item já no carrinho ou, se não houver, do produto. */
-  protected async editarPreco(produto: ProdutoResponse): Promise<void> {
-    const indice = this.itens().findIndex((i) => i.produto.id === produto.id);
-    await (indice >= 0 ? this.editarItem(indice) : this.adicionarProduto(produto));
+  /** Link "preço e desconto": abre o sheet do item já no carrinho ou, se não houver, da linha. */
+  protected async editarPreco(linha: LinhaProduto): Promise<void> {
+    const indice = this.itens().findIndex((i) => mesmoItem(i, linha.produto, linha.marca));
+    await (indice >= 0 ? this.editarItem(indice) : this.adicionarProduto(linha));
   }
 
   protected async editarItem(indice: number): Promise<void> {
     const existente = this.itens()[indice];
-    const resultado = await this.abrirItem(existente.produto, existente);
+    const resultado = await this.abrirItem(existente, existente);
     if (resultado === 'remover') {
       this.removerItem(indice);
     } else if (resultado !== undefined) {
-      this.mudarItens((atual) => atual.map((item, i) => (i === indice ? resultado : item)));
+      this.itens.update((atual) => atual.map((item, i) => (i === indice ? resultado : item)));
     }
   }
 
   protected removerItem(indice: number): void {
-    this.mudarItens((atual) => atual.filter((_, i) => i !== indice));
-  }
-
-  /** Com "todos na hora" ligado e sem edição manual, devolvidos acompanha a quantidade de água. */
-  private mudarItens(fn: (atual: readonly ItemCarrinho[]) => readonly ItemCarrinho[]): void {
-    const antes = quantidadeAgua(this.itens());
-    const acompanha = this.cascosNaHora() && this.cascosDevolvidos() === antes;
-    this.itens.update(fn);
-    if (acompanha) {
-      this.cascosDevolvidos.set(quantidadeAgua(this.itens()));
-    }
+    this.itens.update((atual) => atual.filter((_, i) => i !== indice));
   }
 
   private async abrirItem(
-    produto: ProdutoResponse,
+    { produto, marca }: { produto: ProdutoResponse; marca: ProdutoMarcaResponse },
     existente: ItemCarrinho | null,
   ): Promise<ItemVendaSheetResultado | undefined> {
+    const tipo = produto.tipo === 'RETORNAVEL' ? marca.tipoCascoResolvidoId : null;
     const ref = this.sheet.abrir<ItemVendaSheetResultado, ItemVendaSheetDados>(ItemVendaSheet, {
       produto,
+      marca,
       existente,
+      precoVasilhame: tipo === null ? null : precoVasilhameDe(marca, this.tiposCasco()),
     });
     return firstValueFrom(ref.closed);
   }
@@ -1138,13 +1258,13 @@ export class PdvPage implements OnInit {
   protected agir(acao: CobrarAcao): void {
     switch (acao.tipo) {
       case 'cascos':
-        this.cascosDevolvidos.set(acao.valor);
+        this.cascosDevolvidos.update((m) => ({ ...m, [acao.tipoCascoId]: acao.valor }));
         break;
       case 'naHora':
         this.alternarNaHora(acao.valor);
         break;
       case 'sucata':
-        this.sucataEntregue.set(acao.valor);
+        this.sucataEntregue.update((m) => ({ ...m, [acao.tipoCascoId]: acao.valor }));
         break;
       case 'pagamentos':
         this.pagamentos.set(acao.valor);
@@ -1164,11 +1284,14 @@ export class PdvPage implements OnInit {
   // Cascos
 
   protected alternarNaHora(ligado: boolean): void {
-    this.cascosNaHora.set(ligado);
-    if (ligado) {
-      // Atalho, não trava (Regra 8.2): o campo segue editável e desligar não zera.
-      this.cascosDevolvidos.set(quantidadeAgua(this.itens()));
+    // Marcado, o devolvido de cada tipo é o vendido em troca (travado); ao desmarcar, o campo
+    // fica editável a partir do valor que tinha.
+    if (!ligado && this.cascosNaHora()) {
+      this.cascosDevolvidos.set(
+        Object.fromEntries(this.cascos().map((c) => [c.tipoCascoId, c.devolvidos])),
+      );
     }
+    this.cascosNaHora.set(ligado);
   }
 
   // Pagamento
@@ -1195,16 +1318,19 @@ export class PdvPage implements OnInit {
     this.enviando.set(true);
     this.erro.set(null);
     try {
-      const request = paraCreateVendaRequest({
-        clienteId: cliente.id,
-        funcionarioId,
-        enderecoEntregaId: this.enderecoId(),
-        itens: this.itens(),
-        pagamentos: this.pagamentos(),
-        cascosDevolvidos: this.cascosDevolvidos(),
-        cascosDevolvidosNaHora: this.cascosNaHora(),
-        sucataEntregue: this.sucataEntregue(),
-      });
+      const request = paraCreateVendaRequest(
+        {
+          clienteId: cliente.id,
+          funcionarioId,
+          enderecoEntregaId: this.enderecoId(),
+          itens: this.itens(),
+          pagamentos: this.pagamentos(),
+          cascosDevolvidos: this.cascosDevolvidos(),
+          cascosNaHora: this.cascosNaHora(),
+          sucataEntregue: this.sucataEntregue(),
+        },
+        this.tiposCasco(),
+      );
       if (original) {
         // O PUT sobrescreve a observação: reenvia a da venda carregada.
         await this.vendaStore.editar(original.id, { ...request, observacao: original.observacao });
@@ -1267,9 +1393,9 @@ export class PdvPage implements OnInit {
     this.clienteSelecionado.set(null);
     this.enderecoId.set(null);
     this.itens.set([]);
-    this.cascosDevolvidos.set(0);
+    this.cascosDevolvidos.set({});
     this.cascosNaHora.set(false);
-    this.sucataEntregue.set(0);
+    this.sucataEntregue.set({});
     this.pagamentos.set(PAGAMENTO_PADRAO);
     this.erro.set(null);
     this.venda.set(null);
@@ -1279,6 +1405,8 @@ export class PdvPage implements OnInit {
     this.buscaClientes = null;
     this.saldos.set(null);
     this.categoria.set(null);
+    this.filtroSugestao.set(null);
+    this.cascosAbertos.set(false);
     this.repetir.set({ estado: 'ocioso' });
   }
 }

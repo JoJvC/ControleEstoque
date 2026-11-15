@@ -67,11 +67,19 @@ describe('VendaStore.editar', () => {
       clienteId: 'c-1',
       funcionarioId: 'f-1',
       enderecoEntregaId: null,
-      itens: [{ produtoId: 'p-1', quantidade: 3, precoUnitario: 10, desconto: null }],
+      itens: [
+        {
+          produtoId: 'p-1',
+          marcaId: 'm-1',
+          quantidade: 3,
+          precoUnitario: 10,
+          desconto: null,
+          pagouVasilhame: false,
+        },
+      ],
       pagamentos: [{ forma: 'PIX', valor: 30 }],
-      cascosDevolvidos: 2,
-      cascosDevolvidosNaHora: false,
-      sucataEntregue: 1,
+      cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 2 }],
+      sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
       observacao: null,
     };
 
@@ -118,8 +126,8 @@ function venda(id: string, clienteId: string): VendaDetalheResponse {
     cupomEmitidoEm: null,
     itens: [],
     pagamentos: [],
-    cascosDevolvidos: 0,
-    sucataEntregue: 0,
+    cascosDevolvidos: [],
+    sucataEntregue: [],
   };
 }
 
@@ -283,6 +291,10 @@ describe('VendaStore cache de produtos', () => {
       ...venda(id, 'c-1'),
       itens: produtoIds.map((produtoId) => ({
         produtoId,
+        marcaId: 'm-1',
+        tipoCascoId: null,
+        pagouVasilhame: false,
+        precoVasilhame: 0,
         quantidade: 1,
         precoUnitario: 10,
         descontoTipo: null,

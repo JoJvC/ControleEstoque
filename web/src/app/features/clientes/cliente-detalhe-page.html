@@ -93,17 +93,17 @@
                             rotuloStatusPagamento(v.statusPagamento)
                           }}</span>
                         </span>
-                        @if (v.cascosDevolvidos > 0 || v.sucataEntregue > 0) {
+                        @let devolvidos = somaPorTipo(v.cascosDevolvidos);
+                        @let sucata = somaPorTipo(v.sucataEntregue);
+                        @if (devolvidos > 0 || sucata > 0) {
                           <span class="venda__linha">
-                            @if (v.cascosDevolvidos > 0) {
+                            @if (devolvidos > 0) {
                               <span class="chip-mini chip-mini--casco"
-                                >Cascos devolvidos {{ v.cascosDevolvidos }}</span
+                                >Cascos devolvidos {{ devolvidos }}</span
                               >
                             }
-                            @if (v.sucataEntregue > 0) {
-                              <span class="chip-mini chip-mini--sucata"
-                                >Sucata {{ v.sucataEntregue }}</span
-                              >
+                            @if (sucata > 0) {
+                              <span class="chip-mini chip-mini--sucata">Sucata {{ sucata }}</span>
                             }
                           </span>
                         }

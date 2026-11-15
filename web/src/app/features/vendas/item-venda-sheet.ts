@@ -2,8 +2,8 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 
-import { ProdutoResponse } from '../../core/api/models/estoque';
-import { precoReferenciaDe } from '../../core/api/produto-leitura';
+import { ProdutoMarcaResponse, ProdutoResponse } from '../../core/api/models/estoque';
+import { rotuloDaMarca } from '../../core/api/produto-leitura';
 import { TipoDesconto } from '../../core/api/models/vendas';
 import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
@@ -17,7 +17,10 @@ import { ItemCarrinho, brutoDe, totalItemDe, valorDescontoDe } from './carrinho'
 
 export interface ItemVendaSheetDados {
   readonly produto: ProdutoResponse;
+  readonly marca: ProdutoMarcaResponse;
   readonly existente: ItemCarrinho | null;
+  /** Preço do vasilhame do tipo de casco; null = sem opção (descartável ou sem tipo resolvido). */
+  readonly precoVasilhame: number | null;
 }
 
 /** Resultado: ItemCarrinho (adicionar/atualizar), 'remover' ou undefined (cancelou). */
@@ -38,7 +41,7 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
     PrecoPipe,
   ],
   template: `
-    <ce-sheet-shell [titulo]="dados.produto.nome" (fechar)="ref.close()">
+    <ce-sheet-shell [titulo]="titulo" (fechar)="ref.close()">
       <form class="form" (submit)="$event.preventDefault(); confirmar()">
         <div class="linha">
           <ce-form-field rotulo="Quantidade">
@@ -51,6 +54,12 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
             <ce-money-input [formControl]="preco" />
           </ce-form-field>
         </div>
+
+        @if (dados.precoVasilhame !== null) {
+          <ce-checkbox [formControl]="pagouVasilhame">
+            Pagou o vasilhame (+ {{ dados.precoVasilhame | cePreco }} por unidade)
+          </ce-checkbox>
+        }
 
         <ce-checkbox [formControl]="comDesconto">Aplicar desconto neste item</ce-checkbox>
 
@@ -220,13 +229,18 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
 export class ItemVendaSheet {
   protected readonly ref = inject(DialogRef<ItemVendaSheetResultado>);
   protected readonly dados = inject<ItemVendaSheetDados>(DIALOG_DATA);
-  protected readonly precoSugerido = precoReferenciaDe(this.dados.produto);
+  protected readonly precoSugerido = this.dados.marca.precoReferencia;
+  protected readonly titulo = `${this.dados.produto.nome} — ${rotuloDaMarca(this.dados.marca.marcaNome)}`;
 
   protected readonly quantidade = new FormControl(this.dados.existente?.quantidade ?? 1, {
     nonNullable: true,
   });
   protected readonly preco = new FormControl<number | null>(
     this.dados.existente?.precoUnitario ?? this.precoSugerido,
+  );
+  protected readonly pagouVasilhame = new FormControl(
+    this.dados.precoVasilhame !== null && (this.dados.existente?.pagouVasilhame ?? false),
+    { nonNullable: true },
   );
   protected readonly comDesconto = new FormControl(
     this.dados.existente?.desconto !== null && this.dados.existente !== null,
@@ -255,13 +269,17 @@ export class ItemVendaSheet {
   // sinais-espelho dos controls para os totais ao vivo
   private readonly quantidadeSig = signal(this.quantidade.value);
   private readonly precoSig = signal(this.preco.value);
+  private readonly pagouVasilhameSig = signal(this.pagouVasilhame.value);
   private readonly comDescontoSig = signal(this.comDesconto.value);
   private readonly descontoValorSig = signal(this.descontoValor.value);
   private readonly descontoPercentualSig = signal(this.descontoPercentual.value);
 
   protected readonly comDescontoAtivo = computed(() => this.comDescontoSig());
 
-  protected readonly bruto = computed(() => this.quantidadeSig() * (this.precoSig() ?? 0));
+  protected readonly bruto = computed(() => {
+    const vasilhame = this.pagouVasilhameSig() ? (this.dados.precoVasilhame ?? 0) : 0;
+    return this.quantidadeSig() * ((this.precoSig() ?? 0) + vasilhame);
+  });
 
   protected readonly descontoCalculado = computed(() => {
     const item = this.montarItem();
@@ -276,6 +294,7 @@ export class ItemVendaSheet {
   constructor() {
     this.quantidade.valueChanges.subscribe((v) => this.quantidadeSig.set(v));
     this.preco.valueChanges.subscribe((v) => this.precoSig.set(v));
+    this.pagouVasilhame.valueChanges.subscribe((v) => this.pagouVasilhameSig.set(v));
     this.comDesconto.valueChanges.subscribe((v) => this.comDescontoSig.set(v));
     this.descontoValor.valueChanges.subscribe((v) => this.descontoValorSig.set(v));
     this.descontoPercentual.valueChanges.subscribe((v) => this.descontoPercentualSig.set(v));
@@ -338,8 +357,11 @@ export class ItemVendaSheet {
     const valorDesconto = this.comDescontoSig() ? this.valorDescontoInformado() : null;
     return {
       produto: this.dados.produto,
+      marca: this.dados.marca,
       quantidade: this.quantidadeSig(),
       precoUnitario: preco,
+      pagouVasilhame: this.pagouVasilhameSig(),
+      precoVasilhame: this.dados.precoVasilhame ?? 0,
       desconto:
         valorDesconto === null || valorDesconto <= 0
           ? null

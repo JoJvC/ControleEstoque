@@ -35,10 +35,24 @@ export interface ClienteResponse {
   enderecos: EnderecoResponse[];
 }
 
+export interface CascoClientePorTipo {
+  tipoCascoId: string;
+  nome: string;
+  saldo: number;
+}
+
+export interface SucataClientePorTipo {
+  tipoCascoId: string;
+  nome: string;
+  quantidade: number;
+}
+
 export interface SaldosResponse {
   saldoCascos: number;
   sucataEntregue: number;
   saldoFiado: number;
+  cascosPorTipo: CascoClientePorTipo[];
+  sucataPorTipo: SucataClientePorTipo[];
 }
 
 export interface DevolucaoCascosRequest {

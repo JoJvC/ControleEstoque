@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 
 import { ConfigStore } from '../config/app-config';
+import { CreateVendaRequest } from './models/vendas';
 import { VendasApi } from './vendas-api';
 
 describe('VendasApi', () => {
@@ -25,7 +26,25 @@ describe('VendasApi', () => {
 
   const ID = 'v-1';
   const BASE = '/api/vendas/v1/vendas';
-  const body = { chave: 'valor' } as never;
+  const body: CreateVendaRequest = {
+    clienteId: 'c-1',
+    funcionarioId: 'f-1',
+    enderecoEntregaId: null,
+    itens: [
+      {
+        produtoId: 'p-1',
+        marcaId: 'm-1',
+        quantidade: 5,
+        precoUnitario: 50,
+        desconto: null,
+        pagouVasilhame: true,
+      },
+    ],
+    pagamentos: [{ forma: 'PIX', valor: 200 }],
+    cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 3 }],
+    sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
+    observacao: null,
+  };
 
   it('criar: POST /vendas com o corpo e repassa a resposta', () => {
     let resp: unknown;
@@ -92,10 +111,11 @@ describe('VendasApi', () => {
   });
 
   it('adicionarPagamento: POST /vendas/{id}/pagamentos com o corpo', () => {
-    api.adicionarPagamento(ID, body).subscribe();
+    const pagamento = { forma: 'PIX' as const, valor: 10 };
+    api.adicionarPagamento(ID, pagamento).subscribe();
     const req = http.expectOne(`${BASE}/${ID}/pagamentos`);
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual(body);
+    expect(req.request.body).toEqual(pagamento);
     req.flush({});
   });
 

@@ -19,6 +19,10 @@ const VENDA: VendaDetalheResponse = {
   itens: [
     {
       produtoId: 'p-1',
+      marcaId: 'm-1',
+      tipoCascoId: null,
+      pagouVasilhame: false,
+      precoVasilhame: 0,
       quantidade: 3,
       precoUnitario: 40,
       descontoTipo: null,
@@ -28,8 +32,8 @@ const VENDA: VendaDetalheResponse = {
     },
   ],
   pagamentos: [{ forma: 'PIX', valor: 100 }],
-  cascosDevolvidos: 0,
-  sucataEntregue: 0,
+  cascosDevolvidos: [],
+  sucataEntregue: [],
 };
 
 const normalizar = (s: string) => s.replace(/\s/g, ' ');

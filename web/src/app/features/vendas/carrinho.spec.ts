@@ -1,14 +1,17 @@
-import { EstoqueItemResponse, ProdutoResponse } from '../../core/api/models/estoque';
-import { produtoResp } from '../../core/api/testing';
+import { ProdutoResponse, TipoCascoResponse } from '../../core/api/models/estoque';
 import { VendaDetalheResponse } from '../../core/api/models/vendas';
+import { marcaResp, produtoResp } from '../../core/api/testing';
 import {
   ItemCarrinho,
+  brutoDe,
   cascosNaRua,
   rotuloCascoNaRua,
   categoriaDoProduto,
   categoriasDe,
   filtrarPorCategoria,
-  produtosComEstoque,
+  itemNovo,
+  mesmoItem,
+  precoVasilhameDe,
   valorDoAtalho,
   fiadoDe,
   itensDaUltimaVenda,
@@ -16,15 +19,33 @@ import {
   saldoAPagar,
   excedeSaldo,
   paraCreateVendaRequest,
-  quantidadeAgua,
   rascunhoDeVenda,
-  temAgua,
   totaisDe,
   totalPagoDe,
 } from './carrinho';
+import { itemCarrinho } from './testing';
 
-function produto(tipo: ProdutoResponse['tipo'], id = 'p-1'): ProdutoResponse {
-  return produtoResp({ id, tipo });
+const TIPO_T: TipoCascoResponse = {
+  id: 't-1',
+  nome: 'Casco 20L',
+  marcaId: null,
+  marca: null,
+  precoVasilhame: 30,
+  aceitaSucata: true,
+};
+const TIPOS = [TIPO_T];
+
+/** Produto com uma marca; `casco` é o tipo de casco resolvido da marca (null = sem casco). */
+function produto(
+  tipo: ProdutoResponse['tipo'],
+  id = 'p-1',
+  casco: string | null = tipo === 'RETORNAVEL' ? 't-1' : null,
+): ProdutoResponse {
+  return produtoResp({
+    id,
+    tipo,
+    marcas: [marcaResp({ tipoCascoResolvidoId: casco })],
+  });
 }
 
 function item(
@@ -32,8 +53,9 @@ function item(
   precoUnitario: number,
   desconto: ItemCarrinho['desconto'] = null,
   tipo: ProdutoResponse['tipo'] = 'RETORNAVEL',
+  extra: Partial<ItemCarrinho> = {},
 ): ItemCarrinho {
-  return { produto: produto(tipo), quantidade, precoUnitario, desconto };
+  return itemCarrinho({ produto: produto(tipo), quantidade, precoUnitario, desconto, ...extra });
 }
 
 describe('totaisDe', () => {
@@ -51,6 +73,50 @@ describe('totaisDe', () => {
 
   it('carrinho vazio zera tudo', () => {
     expect(totaisDe([])).toEqual({ bruto: 0, desconto: 0, liquido: 0 });
+  });
+
+  it('2 × R$ 10 com vasilhame de R$ 30 pago: bruto R$ 80', () => {
+    const pago = item(2, 10, null, 'RETORNAVEL', { pagouVasilhame: true, precoVasilhame: 30 });
+    expect(brutoDe(pago)).toBe(80);
+    expect(totaisDe([pago])).toEqual({ bruto: 80, desconto: 0, liquido: 80 });
+  });
+
+  it('vasilhame só entra com pagouVasilhame; o desconto incide sobre o bruto com vasilhame', () => {
+    const troca = item(2, 10, null, 'RETORNAVEL', { precoVasilhame: 30 });
+    expect(brutoDe(troca)).toBe(20);
+    const pago = item(2, 10, { tipo: 'PERCENTUAL', valor: 10, motivo: 'm' }, 'RETORNAVEL', {
+      pagouVasilhame: true,
+      precoVasilhame: 30,
+    });
+    expect(totaisDe([pago])).toEqual({ bruto: 80, desconto: 8, liquido: 72 });
+  });
+});
+
+describe('itemNovo / mesmoItem / precoVasilhameDe', () => {
+  const agua = produto('RETORNAVEL', 'p-agua');
+  const outra = { ...agua, marcas: [marcaResp({ marcaId: 'm-2', tipoCascoResolvidoId: 't-1' })] };
+
+  it('linha nova: preço sugerido da marca, troca por padrão e vasilhame do tipo resolvido', () => {
+    expect(itemNovo(agua, agua.marcas[0], 3, TIPOS)).toEqual({
+      produto: agua,
+      marca: agua.marcas[0],
+      quantidade: 3,
+      precoUnitario: 50,
+      desconto: null,
+      pagouVasilhame: false,
+      precoVasilhame: 30,
+    });
+  });
+
+  it('sem tipo resolvido o vasilhame é 0', () => {
+    const gelo = produto('DESCARTAVEL', 'p-gelo');
+    expect(precoVasilhameDe(gelo.marcas[0], TIPOS)).toBe(0);
+  });
+
+  it('a identidade do item é produto+marca', () => {
+    const i = itemNovo(agua, agua.marcas[0], 1, TIPOS);
+    expect(mesmoItem(i, agua, agua.marcas[0])).toBe(true);
+    expect(mesmoItem(i, agua, outra.marcas[0])).toBe(false);
   });
 });
 
@@ -89,39 +155,22 @@ describe('pagamentos', () => {
   });
 });
 
-describe('temAgua / quantidadeAgua', () => {
-  it('detecta item de ÁGUA e soma só a quantidade de água', () => {
-    const itens = [item(2, 5, null, 'DESCARTAVEL'), item(3, 50), item(2, 50)];
-    expect(temAgua(itens)).toBe(true);
-    expect(quantidadeAgua(itens)).toBe(5);
-  });
-
-  it('sem ÁGUA', () => {
-    expect(temAgua([item(1, 5, null, 'DESCARTAVEL')])).toBe(false);
-    expect(temAgua([])).toBe(false);
-  });
-});
-
 describe('paraCreateVendaRequest', () => {
   const base = {
     clienteId: 'c-1',
     funcionarioId: 'f-1',
     enderecoEntregaId: 'e-1',
-    cascosDevolvidos: 3,
-    cascosDevolvidosNaHora: true,
-    sucataEntregue: 1,
+    cascosDevolvidos: { 't-1': 3 },
+    cascosNaHora: false,
+    sucataEntregue: { 't-1': 1 },
   };
 
-  it('monta o corpo com itens, pagamentos válidos e cascos', () => {
-    const request = paraCreateVendaRequest({
-      ...base,
-      itens: [item(5, 50, { tipo: 'VALOR', valor: 10, motivo: 'm' })],
-      pagamentos: [
-        { forma: 'PIX', valor: 200 },
-        { forma: 'DINHEIRO', valor: null },
-        { forma: 'OUTRO', valor: 0 },
-      ],
-    });
+  it('Exemplo da F5: 5 Água de T, devolução 3, sucata 1 e PIX 200 → listas por tipo e total 250', () => {
+    const itens = [item(5, 50)];
+    const request = paraCreateVendaRequest(
+      { ...base, itens, pagamentos: [{ forma: 'PIX', valor: 200 }] },
+      TIPOS,
+    );
     expect(request).toEqual({
       clienteId: 'c-1',
       funcionarioId: 'f-1',
@@ -129,28 +178,58 @@ describe('paraCreateVendaRequest', () => {
       itens: [
         {
           produtoId: 'p-1',
+          marcaId: 'm-1',
           quantidade: 5,
           precoUnitario: 50,
-          desconto: { tipo: 'VALOR', valor: 10, motivo: 'm' },
+          desconto: null,
+          pagouVasilhame: false,
         },
       ],
       pagamentos: [{ forma: 'PIX', valor: 200 }],
-      cascosDevolvidos: 3,
-      cascosDevolvidosNaHora: true,
-      sucataEntregue: 1,
+      cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 3 }],
+      sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
       observacao: null,
     });
+    expect(totaisDe(itens).liquido).toBe(250);
   });
 
-  it('sem ÁGUA, casco e sucata vão zerados', () => {
-    const request = paraCreateVendaRequest({
-      ...base,
-      itens: [item(1, 5, null, 'DESCARTAVEL')],
-      pagamentos: [],
-    });
-    expect(request.cascosDevolvidos).toBe(0);
-    expect(request.cascosDevolvidosNaHora).toBe(false);
-    expect(request.sucataEntregue).toBe(0);
+  it('pagamentos sem valor ou zerados ficam de fora; desconto e vasilhame pago vão no item', () => {
+    const request = paraCreateVendaRequest(
+      {
+        ...base,
+        itens: [
+          item(5, 50, { tipo: 'VALOR', valor: 10, motivo: 'm' }, 'RETORNAVEL', {
+            pagouVasilhame: true,
+          }),
+        ],
+        pagamentos: [
+          { forma: 'PIX', valor: 200 },
+          { forma: 'DINHEIRO', valor: null },
+          { forma: 'OUTRO', valor: 0 },
+        ],
+      },
+      TIPOS,
+    );
+    expect(request.pagamentos).toEqual([{ forma: 'PIX', valor: 200 }]);
+    expect(request.itens[0].desconto).toEqual({ tipo: 'VALOR', valor: 10, motivo: 'm' });
+    expect(request.itens[0].pagouVasilhame).toBe(true);
+  });
+
+  it('só descartável no carrinho: listas de casco e sucata vazias', () => {
+    const request = paraCreateVendaRequest(
+      { ...base, itens: [item(1, 5, null, 'DESCARTAVEL')], pagamentos: [] },
+      TIPOS,
+    );
+    expect(request.cascosDevolvidos).toEqual([]);
+    expect(request.sucataEntregue).toEqual([]);
+  });
+
+  it('com "na hora" a devolução é o vendido em troca, ignorando o digitado', () => {
+    const request = paraCreateVendaRequest(
+      { ...base, itens: [item(5, 50)], pagamentos: [], cascosNaHora: true },
+      TIPOS,
+    );
+    expect(request.cascosDevolvidos).toEqual([{ tipoCascoId: 't-1', quantidade: 5 }]);
   });
 });
 
@@ -178,15 +257,23 @@ describe('rascunhoDeVenda', () => {
     itens: [
       {
         produtoId: 'p-agua',
+        marcaId: 'm-1',
+        tipoCascoId: 't-1',
+        pagouVasilhame: true,
+        precoVasilhame: 30,
         quantidade: 1,
         precoUnitario: 50,
         descontoTipo: null,
         descontoValor: null,
         motivoDesconto: null,
-        totalItem: 50,
+        totalItem: 80,
       },
       {
         produtoId: 'p-carvao',
+        marcaId: 'm-1',
+        tipoCascoId: null,
+        pagouVasilhame: false,
+        precoVasilhame: 0,
         quantidade: 1,
         precoUnitario: 50,
         descontoTipo: 'PERCENTUAL',
@@ -199,49 +286,74 @@ describe('rascunhoDeVenda', () => {
       { forma: 'DINHEIRO', valor: 30 },
       { forma: 'PIX', valor: 20 },
     ],
-    cascosDevolvidos: 2,
-    sucataEntregue: 1,
+    cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 2 }],
+    sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
   };
 
-  it('item sem desconto e item com desconto (motivo null vira vazio)', () => {
-    const { itens } = rascunhoDeVenda(venda, mapa);
-    expect(itens[0]).toEqual({ produto: agua, quantidade: 1, precoUnitario: 50, desconto: null });
+  it('reconstrói a marca e o pagouVasilhame; desconto com motivo null vira vazio', () => {
+    const { itens } = rascunhoDeVenda(venda, mapa, TIPOS);
+    expect(itens[0]).toEqual({
+      produto: agua,
+      marca: agua.marcas[0],
+      quantidade: 1,
+      precoUnitario: 50,
+      desconto: null,
+      pagouVasilhame: true,
+      precoVasilhame: 30,
+    });
     expect(itens[1]).toEqual({
       produto: carvao,
+      marca: carvao.marcas[0],
       quantidade: 1,
       precoUnitario: 50,
       desconto: { tipo: 'PERCENTUAL', valor: 10, motivo: '' },
+      pagouVasilhame: false,
+      precoVasilhame: 0,
     });
   });
 
-  it('pagamentos, cascos, sucata, vendedor e endereço vêm da venda; na hora é false', () => {
-    const r = rascunhoDeVenda(venda, mapa);
+  it('pagamentos, cascos e sucata por tipo, vendedor e endereço vêm da venda; na hora é false', () => {
+    const r = rascunhoDeVenda(venda, mapa, TIPOS);
     expect(r.pagamentos).toEqual([
       { forma: 'DINHEIRO', valor: 30 },
       { forma: 'PIX', valor: 20 },
     ]);
-    expect(r.cascosDevolvidos).toBe(2);
-    expect(r.sucataEntregue).toBe(1);
-    expect(r.cascosDevolvidosNaHora).toBe(false);
+    expect(r.cascosDevolvidos).toEqual({ 't-1': 2 });
+    expect(r.sucataEntregue).toEqual({ 't-1': 1 });
+    expect(r.cascosNaHora).toBe(false);
     expect(r.funcionarioId).toBe('f-orig');
     expect(r.enderecoEntregaId).toBe('e-1');
     expect(r.clienteId).toBe('c-1');
   });
 
+  it('marca que não existe mais no produto falha em vez de montar item sem marca', () => {
+    const semMarca = { ...venda, itens: [{ ...venda.itens[0], marcaId: 'm-sumiu' }] };
+    expect(() => rascunhoDeVenda(semMarca, mapa, TIPOS)).toThrow();
+  });
+
   it('ida e volta: paraCreateVendaRequest reproduz itens, pagamentos, cascos e sucata', () => {
-    const req = paraCreateVendaRequest(rascunhoDeVenda(venda, mapa));
+    const req = paraCreateVendaRequest(rascunhoDeVenda(venda, mapa, TIPOS), TIPOS);
     expect(req.itens).toEqual([
-      { produtoId: 'p-agua', quantidade: 1, precoUnitario: 50, desconto: null },
+      {
+        produtoId: 'p-agua',
+        marcaId: 'm-1',
+        quantidade: 1,
+        precoUnitario: 50,
+        desconto: null,
+        pagouVasilhame: true,
+      },
       {
         produtoId: 'p-carvao',
+        marcaId: 'm-1',
         quantidade: 1,
         precoUnitario: 50,
         desconto: { tipo: 'PERCENTUAL', valor: 10, motivo: '' },
+        pagouVasilhame: false,
       },
     ]);
     expect(req.pagamentos).toEqual(venda.pagamentos);
-    expect(req.cascosDevolvidos).toBe(2);
-    expect(req.sucataEntregue).toBe(1);
+    expect(req.cascosDevolvidos).toEqual(venda.cascosDevolvidos);
+    expect(req.sucataEntregue).toEqual(venda.sucataEntregue);
   });
 });
 
@@ -296,62 +408,57 @@ describe('categorias e filtro', () => {
     categoria,
   });
   const lista = [com('a', 'Gelo'), com('b', 'Copos'), com('c', 'Gelo'), com('d', null)];
+  const linhas = lista.map((p) => ({ produto: p, marca: p.marcas[0] }));
 
-  it('categoriaDoProduto: Água para RETORNAVEL; categoria só em DESCARTAVEL', () => {
+  it('categoriaDoProduto: a categoria cadastrada, sem pílula "Água" para retornável', () => {
     const tipo = (t: ProdutoResponse['tipo'], categoria: string | null) => ({
       ...produto(t),
       categoria,
     });
-    expect(categoriaDoProduto(tipo('RETORNAVEL', null))).toBe('Água');
-    expect(categoriaDoProduto(tipo('RETORNAVEL', 'Outra'))).toBe('Água');
+    expect(categoriaDoProduto(tipo('RETORNAVEL', null))).toBeNull();
+    expect(categoriaDoProduto(tipo('RETORNAVEL', 'Água'))).toBe('Água');
     expect(categoriaDoProduto(tipo('DESCARTAVEL', 'Gelo'))).toBe('Gelo');
     expect(categoriaDoProduto(tipo('DESCARTAVEL', null))).toBeNull();
   });
 
-  it('água sem categoria ganha a pílula Água e é filtrada por ela', () => {
-    const mix = [
-      { ...produto('RETORNAVEL', 'x'), categoria: null },
-      { ...produto('RETORNAVEL', 'y'), categoria: 'Gelo' },
-      com('g', 'Gelo'),
-    ];
-    expect(categoriasDe(mix)).toEqual(['Água', 'Gelo']);
-    expect(filtrarPorCategoria(mix, 'Água').map((p) => p.id)).toEqual(['x', 'y']);
-    expect(filtrarPorCategoria(mix, 'Gelo').map((p) => p.id)).toEqual(['g']);
-    expect(filtrarPorCategoria(mix, null)).toHaveLength(3);
-  });
-
   it('categoriasDe: distintas, sem vazio, em ordem', () => {
     expect(categoriasDe(lista)).toEqual(['Copos', 'Gelo']);
+    expect(categoriasDe([{ ...produto('RETORNAVEL', 'x'), categoria: null }])).toEqual([]);
   });
 
   it('filtrarPorCategoria: null é Todas', () => {
-    expect(filtrarPorCategoria(lista, null)).toHaveLength(4);
-    expect(filtrarPorCategoria(lista, 'Gelo').map((p) => p.id)).toEqual(['a', 'c']);
-    expect(filtrarPorCategoria(lista, 'Inexistente')).toEqual([]);
-  });
-});
-
-describe('produtosComEstoque', () => {
-  it('cruza pelo produtoId; ausente vira null', () => {
-    const estoque = [{ produtoId: 'p-1', quantidade: 12 }] as EstoqueItemResponse[];
-    const r = produtosComEstoque(
-      [produto('RETORNAVEL', 'p-1'), produto('RETORNAVEL', 'p-2')],
-      estoque,
-    );
-    expect(r.map((x) => x.estoque)).toEqual([12, null]);
-    expect(produtosComEstoque([produto('RETORNAVEL', 'p-1')], [])[0].estoque).toBeNull();
+    expect(filtrarPorCategoria(linhas, null)).toHaveLength(4);
+    expect(filtrarPorCategoria(linhas, 'Gelo').map((l) => l.produto.id)).toEqual(['a', 'c']);
+    expect(filtrarPorCategoria(linhas, 'Inexistente')).toEqual([]);
   });
 });
 
 describe('itensDaUltimaVenda', () => {
-  const agua = produtoResp({ id: 'p-agua', preco: 14 });
-  const gelo = produtoResp({ id: 'p-gelo', tipo: 'DESCARTAVEL', preco: 8 });
+  const agua = produtoResp({
+    id: 'p-agua',
+    marcas: [marcaResp({ precoReferencia: 14, tipoCascoResolvidoId: 't-1' })],
+  });
+  const gelo = produtoResp({
+    id: 'p-gelo',
+    tipo: 'DESCARTAVEL',
+    marcas: [marcaResp({ precoReferencia: 8 })],
+  });
   const catalogo = new Map([
     [agua.id, agua],
     [gelo.id, gelo],
   ]);
-  const itemVenda = (produtoId: string, quantidade: number, precoUnitario: number) => ({
+  const itemVenda = (
+    produtoId: string,
+    quantidade: number,
+    precoUnitario: number,
+    marcaId = 'm-1',
+    pagouVasilhame = false,
+  ) => ({
     produtoId,
+    marcaId,
+    tipoCascoId: null,
+    pagouVasilhame,
+    precoVasilhame: 0,
     quantidade,
     precoUnitario,
     descontoTipo: 'PERCENTUAL' as const,
@@ -375,27 +482,25 @@ describe('itensDaUltimaVenda', () => {
     cupomEmitidoEm: null,
     itens,
     pagamentos: [{ forma: 'PIX', valor: 99 }],
-    cascosDevolvidos: 3,
-    sucataEntregue: 2,
+    cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 3 }],
+    sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 2 }],
   });
 
   it('converte produto e quantidade; desconto, pagamentos, cascos e sucata não são copiados', () => {
     const r = itensDaUltimaVenda(
       venda([itemVenda('p-agua', 2, 14), itemVenda('p-gelo', 1, 8)]),
       catalogo,
+      TIPOS,
     );
     expect(r).toEqual({
-      itens: [
-        { produto: agua, quantidade: 2, precoUnitario: 14, desconto: null },
-        { produto: gelo, quantidade: 1, precoUnitario: 8, desconto: null },
-      ],
+      itens: [itemNovo(agua, agua.marcas[0], 2, TIPOS), itemNovo(gelo, gelo.marcas[0], 1, TIPOS)],
       pulados: 0,
     });
     expect(totaisDe(r.itens)).toEqual({ bruto: 36, desconto: 0, liquido: 36 });
   });
 
   it('o preço é o precoReferencia de hoje, não o da venda antiga', () => {
-    const r = itensDaUltimaVenda(venda([itemVenda('p-agua', 1, 12)]), catalogo);
+    const r = itensDaUltimaVenda(venda([itemVenda('p-agua', 1, 12)]), catalogo, TIPOS);
     expect(r.itens[0].precoUnitario).toBe(14);
   });
 
@@ -403,8 +508,22 @@ describe('itensDaUltimaVenda', () => {
     const r = itensDaUltimaVenda(
       venda([itemVenda('p-agua', 2, 12), itemVenda('p-gas', 1, 90)]),
       catalogo,
+      TIPOS,
     );
     expect(r.itens.map((i) => i.produto.id)).toEqual(['p-agua']);
+    expect(r.pulados).toBe(1);
+  });
+
+  it('leva marcaId e pagouVasilhame; linha cuja marca não existe mais é descartada', () => {
+    const r = itensDaUltimaVenda(
+      venda([itemVenda('p-agua', 2, 12, 'm-1', true), itemVenda('p-gelo', 1, 8, 'm-sumiu')]),
+      catalogo,
+      TIPOS,
+    );
+    expect(r.itens).toHaveLength(1);
+    expect(r.itens[0].marca.marcaId).toBe('m-1');
+    expect(r.itens[0].pagouVasilhame).toBe(true);
+    expect(r.itens[0].precoVasilhame).toBe(30);
     expect(r.pulados).toBe(1);
   });
 });

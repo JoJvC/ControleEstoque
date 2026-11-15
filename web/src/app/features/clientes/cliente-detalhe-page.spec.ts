@@ -34,8 +34,8 @@ const VENDA = {
   data: '2026-01-02T10:00:00',
   totalLiquido: 95,
   statusPagamento: 'PAGA',
-  cascosDevolvidos: 2,
-  sucataEntregue: 1,
+  cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 2 }],
+  sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
 };
 
 async function montar(

@@ -7,34 +7,60 @@ import { BehaviorSubject, map, of } from 'rxjs';
 import { vi } from 'vitest';
 
 import { ClienteResponse, SaldosResponse } from '../../core/api/models/clientes';
-import { EstoqueItemResponse, ProdutoResponse } from '../../core/api/models/estoque';
-import { produtoResp } from '../../core/api/testing';
+import { ProdutoResponse, TipoCascoResponse } from '../../core/api/models/estoque';
+import { marcaResp, produtoResp } from '../../core/api/testing';
 import { VendaDetalheResponse, VendaResponse } from '../../core/api/models/vendas';
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { SheetService } from '../../core/overlay/sheet-service';
-import { ItemCarrinho } from './carrinho';
+import { ItemCarrinho, itemNovo } from './carrinho';
 import { CobrarSheet } from './cobrar-painel';
 import { ItemVendaSheet } from './item-venda-sheet';
 import { PdvPage } from './pdv-page';
 
 const URL_VENDAS = '/api/vendas/v1/vendas';
 
-function produto(id: string, nome: string, tipo: ProdutoResponse['tipo']): ProdutoResponse {
-  return produtoResp({ id, tipo, nome });
+const TIPO_T: TipoCascoResponse = {
+  id: 't-1',
+  nome: 'Casco 20L',
+  marcaId: null,
+  marca: null,
+  precoVasilhame: 30,
+  aceitaSucata: true,
+};
+const TIPO_B: TipoCascoResponse = {
+  id: 't-2',
+  nome: 'Casco 10L',
+  marcaId: null,
+  marca: null,
+  precoVasilhame: 15,
+  aceitaSucata: false,
+};
+const TIPOS = [TIPO_T, TIPO_B];
+
+// Uma marca (Indaiá, R$ 50) por produto; `casco` é o tipo de casco resolvido da marca.
+function produto(
+  id: string,
+  nome: string,
+  tipo: ProdutoResponse['tipo'],
+  quantidade = 0,
+  casco: string | null = tipo === 'RETORNAVEL' ? 't-1' : null,
+): ProdutoResponse {
+  return produtoResp({
+    id,
+    tipo,
+    nome,
+    marcas: [marcaResp({ quantidade, tipoCascoResolvidoId: casco })],
+  });
 }
 
-const AGUA = produto('p-agua', 'Água 20L', 'RETORNAVEL');
+const AGUA = produto('p-agua', 'Água 20L', 'RETORNAVEL', 12);
 const GALAO = produto('p-galao', 'Galão vazio', 'DESCARTAVEL');
-const GELO = { ...produto('p-gelo', 'Gelo 5kg', 'DESCARTAVEL'), categoria: 'Gelo' };
-const OUTRA_AGUA = produto('p-agua2', 'Galão completo', 'RETORNAVEL');
+const GELO = { ...produto('p-gelo', 'Gelo 5kg', 'DESCARTAVEL', 7), categoria: 'Gelo' };
+// Retornável de outro tipo de casco (10L, sem sucata).
+const AGUA_10 = produto('p-agua10', 'Água 10L', 'RETORNAVEL', 4, 't-2');
 const COPO = { ...produto('p-copo', 'Copo 200ml', 'DESCARTAVEL'), categoria: 'Copos' };
-
-const ESTOQUE = [
-  { produtoId: 'p-agua', quantidade: 12 },
-  { produtoId: 'p-gelo', quantidade: 7 },
-] as EstoqueItemResponse[];
 
 function cliente(id: string, nome: string, enderecos = 1): ClienteResponse {
   return {
@@ -55,7 +81,7 @@ function cliente(id: string, nome: string, enderecos = 1): ClienteResponse {
 }
 
 function itemDe(p: ProdutoResponse, quantidade: number): ItemCarrinho {
-  return { produto: p, quantidade, precoUnitario: 50, desconto: null };
+  return itemNovo(p, p.marcas[0], quantidade, TIPOS);
 }
 
 const RESPOSTA: VendaResponse = {
@@ -67,10 +93,23 @@ const RESPOSTA: VendaResponse = {
   saldoFiadoGerado: 50,
   statusPagamento: 'PARCIAL',
   saldoCascoCliente: 2,
+  saldoCascoClientePorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', saldo: 2 }],
 };
 
-const SALDOS: SaldosResponse = { saldoCascos: 3, sucataEntregue: 0, saldoFiado: 40 };
-const SALDOS_ZERO: SaldosResponse = { saldoCascos: 0, sucataEntregue: 0, saldoFiado: 0 };
+const SALDOS: SaldosResponse = {
+  saldoCascos: 3,
+  sucataEntregue: 0,
+  saldoFiado: 40,
+  cascosPorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', saldo: 3 }],
+  sucataPorTipo: [],
+};
+const SALDOS_ZERO: SaldosResponse = {
+  saldoCascos: 0,
+  sucataEntregue: 0,
+  saldoFiado: 0,
+  cascosPorTipo: [],
+  sucataPorTipo: [],
+};
 
 // A sheet Cobrar é a SheetService de verdade (Esc e Fechar valem); só a sheet do item é dublê.
 async function montar(
@@ -80,6 +119,7 @@ async function montar(
     cliente?: string;
     repetirUltima?: string;
     catalogoFalha?: boolean;
+    catalogo?: ProdutoResponse[];
   } = {},
 ) {
   const largura = new BehaviorSubject(opcoes.desktop === true);
@@ -123,15 +163,15 @@ async function montar(
   }
   const el = fixture.nativeElement as HTMLElement;
   const produtosReq = http.expectOne('/api/estoque/v1/produtos');
+  http.expectOne('/api/estoque/v1/tipos-casco').flush(TIPOS);
   if (opcoes.catalogoFalha) {
     produtosReq.flush(
       { code: 'ERRO_X', message: 'falhou', traceId: 't' },
       { status: 500, statusText: 'Server Error' },
     );
   } else {
-    produtosReq.flush([AGUA, GALAO, GELO, COPO, OUTRA_AGUA]);
+    produtosReq.flush(opcoes.catalogo ?? [AGUA, GALAO, GELO, COPO, AGUA_10]);
   }
-  http.expectOne('/api/estoque/v1/estoque').flush(ESTOQUE);
   await assentar(fixture);
 
   // O painel de cobrança é um só: dentro da sheet (celular) ou na coluna da direita (desktop).
@@ -191,28 +231,36 @@ async function montar(
     http.expectOne(`/api/clientes/v1/clientes/${clienteId}/saldos`).flush(SALDOS_ZERO);
     await assentar(fixture);
   };
-  const linha = (p: ProdutoResponse): HTMLElement => {
+  // Uma linha por produto+marca: o rótulo é 'Nome — Marca' (todas as fixtures usam a marca Indaiá).
+  const rotulo = (p: ProdutoResponse, marca = 'Indaiá') => `${p.nome} — ${marca}`;
+  const linha = (p: ProdutoResponse, marca = 'Indaiá'): HTMLElement => {
     const achada = Array.from(el.querySelectorAll<HTMLElement>('.prod')).find((l) =>
-      l.textContent?.includes(p.nome),
+      l.textContent?.includes(rotulo(p, marca)),
     );
     if (!achada) {
-      throw new Error(`linha "${p.nome}" não encontrada`);
+      throw new Error(`linha "${rotulo(p, marca)}" não encontrada`);
     }
     return achada;
   };
   // Toque na linha do catálogo: adiciona uma unidade.
   const tocar = async (p: ProdutoResponse, vezes = 1) => {
     for (let i = 0; i < vezes; i++) {
-      linha(p).querySelector<HTMLElement>(`button[aria-label="Adicionar ${p.nome}"]`)!.click();
+      linha(p)
+        .querySelector<HTMLElement>(`button[aria-label="Adicionar ${rotulo(p)}"]`)!
+        .click();
       await assentar(fixture);
     }
   };
   const aumentar = async (p: ProdutoResponse) => {
-    linha(p).querySelector<HTMLElement>(`button[aria-label="Aumentar ${p.nome}"]`)!.click();
+    linha(p)
+      .querySelector<HTMLElement>(`button[aria-label="Aumentar ${rotulo(p)}"]`)!
+      .click();
     await assentar(fixture);
   };
   const diminuir = async (p: ProdutoResponse) => {
-    linha(p).querySelector<HTMLElement>(`button[aria-label="Diminuir ${p.nome}"]`)!.click();
+    linha(p)
+      .querySelector<HTMLElement>(`button[aria-label="Diminuir ${rotulo(p)}"]`)!
+      .click();
     await assentar(fixture);
   };
   const barra = () => texto(el.querySelector('.barra')!);
@@ -261,6 +309,7 @@ async function montar(
     escolherCliente,
     responderSaldos,
     linha,
+    rotulo,
     tocar,
     aumentar,
     diminuir,
@@ -298,6 +347,10 @@ const VENDA_EDICAO: VendaDetalheResponse = {
   itens: [
     {
       produtoId: 'p-agua',
+      marcaId: 'm-1',
+      tipoCascoId: 't-1',
+      pagouVasilhame: false,
+      precoVasilhame: 0,
       quantidade: 1,
       precoUnitario: 50,
       descontoTipo: 'PERCENTUAL',
@@ -307,6 +360,10 @@ const VENDA_EDICAO: VendaDetalheResponse = {
     },
     {
       produtoId: 'p-galao',
+      marcaId: 'm-1',
+      tipoCascoId: null,
+      pagouVasilhame: false,
+      precoVasilhame: 0,
       quantidade: 1,
       precoUnitario: 50,
       descontoTipo: null,
@@ -316,8 +373,8 @@ const VENDA_EDICAO: VendaDetalheResponse = {
     },
   ],
   pagamentos: [{ forma: 'DINHEIRO', valor: 30 }],
-  cascosDevolvidos: 2,
-  sucataEntregue: 1,
+  cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 2 }],
+  sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
 };
 
 const CORPO_ORIGINAL = {
@@ -327,21 +384,33 @@ const CORPO_ORIGINAL = {
   itens: [
     {
       produtoId: 'p-agua',
+      marcaId: 'm-1',
       quantidade: 1,
       precoUnitario: 50,
       desconto: { tipo: 'PERCENTUAL', valor: 10, motivo: '' },
+      pagouVasilhame: false,
     },
-    { produtoId: 'p-galao', quantidade: 1, precoUnitario: 50, desconto: null },
+    {
+      produtoId: 'p-galao',
+      marcaId: 'm-1',
+      quantidade: 1,
+      precoUnitario: 50,
+      desconto: null,
+      pagouVasilhame: false,
+    },
   ],
   pagamentos: [{ forma: 'DINHEIRO', valor: 30 }],
-  cascosDevolvidos: 2,
-  cascosDevolvidosNaHora: false,
-  sucataEntregue: 1,
+  cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 2 }],
+  sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
   observacao: 'entregar à tarde',
 };
 
 const itemAntigo = (produtoId: string, quantidade: number, precoUnitario: number) => ({
   produtoId,
+  marcaId: 'm-1',
+  tipoCascoId: null,
+  pagouVasilhame: false,
+  precoVasilhame: 0,
   quantidade,
   precoUnitario,
   descontoTipo: 'PERCENTUAL' as const,
@@ -416,7 +485,7 @@ describe('PdvPage: venda em uma tela', () => {
     expect(nomes()).toHaveLength(5);
 
     await t.clicar('Gelo');
-    expect(nomes()).toEqual(['Gelo 5kg']);
+    expect(nomes()).toEqual(['Gelo 5kg — Indaiá']);
     await t.clicar('Todos');
     expect(nomes()).toHaveLength(5);
   });
@@ -431,7 +500,9 @@ describe('PdvPage: venda em uma tela', () => {
 
     expect(t.abrir).toHaveBeenCalledWith(expect.anything(), {
       produto: AGUA,
+      marca: AGUA.marcas[0],
       existente: itemDe(AGUA, 2),
+      precoVasilhame: 30,
     });
     expect(t.texto(t.linha(AGUA))).toContain('preço editado');
     expect(t.barra()).toContain('R$ 90,00');
@@ -441,17 +512,22 @@ describe('PdvPage: venda em uma tela', () => {
     expect(t.el.querySelectorAll('.prod--sel')).toHaveLength(0);
   });
 
-  it('Enter na busca de produto abre o sheet do primeiro produto filtrado', async () => {
+  it('Enter na busca de produto abre o sheet da primeira linha produto+marca filtrada', async () => {
     const t = await montar();
     await t.escolherCliente(cliente('c-1', 'Ana'));
 
     t.abrir.mockReturnValueOnce({ closed: of(undefined) });
-    const busca = t.campo('ce-search-box input[placeholder^="Buscar produto"]');
+    const busca = t.campo('ce-search-box input[placeholder^="Buscar por nome"]');
     busca.value = 'galao';
     busca.dispatchEvent(new Event('input'));
     await t.enter(busca);
 
-    expect(t.abrir).toHaveBeenCalledWith(expect.anything(), { produto: GALAO, existente: null });
+    expect(t.abrir).toHaveBeenCalledWith(expect.anything(), {
+      produto: GALAO,
+      marca: GALAO.marcas[0],
+      existente: null,
+      precoVasilhame: null,
+    });
   });
 
   it('cliente fixo no topo: chips de casco e fiado do servidor; Trocar volta à busca', async () => {
@@ -532,7 +608,7 @@ describe('PdvPage: cobrar no celular (sheet)', () => {
     await t.cobrar();
     expect(t.aberta()).toBe(true);
     expect(document.querySelector('.ce-sheet-panel')?.textContent).toContain('Fechar venda');
-    expect(t.texto(t.painel())).toContain('1× Água 20L');
+    expect(t.texto(t.painel())).toContain('1× Água 20L — Indaiá');
 
     document.querySelector<HTMLElement>('.ce-sheet-panel button[aria-label="Fechar"]')!.click();
     await assentar(t.fixture);
@@ -568,11 +644,9 @@ describe('PdvPage: cobrar no celular (sheet)', () => {
     expect(t.barra()).toMatch(/5 itens R\$ 250,00/);
     await t.cobrar();
 
-    t.campoDoPainel('ce-checkbox input').click();
-    await assentar(t.fixture);
     await t.digitar(t.campoDoPainel('ce-quantity-stepper input', 0), '3');
     await t.digitar(t.campoDoPainel('ce-quantity-stepper input', 1), '1');
-    expect(t.texto(t.painel())).toContain('Ficam 5 cascos na rua com Ana');
+    expect(t.texto(t.painel())).toContain('Casco 20L: Ficam 5 cascos na rua com Ana');
 
     t.exato(t.painel(), 'PIX')[0].click();
     await assentar(t.fixture);
@@ -586,16 +660,30 @@ describe('PdvPage: cobrar no celular (sheet)', () => {
       clienteId: 'c-1',
       funcionarioId: 'f-1',
       enderecoEntregaId: 'c-1-e1',
-      itens: [{ produtoId: 'p-agua', quantidade: 5, precoUnitario: 50, desconto: null }],
+      itens: [
+        {
+          produtoId: 'p-agua',
+          marcaId: 'm-1',
+          quantidade: 5,
+          precoUnitario: 50,
+          desconto: null,
+          pagouVasilhame: false,
+        },
+      ],
       pagamentos: [{ forma: 'PIX', valor: 200 }],
-      cascosDevolvidos: 3,
-      cascosDevolvidosNaHora: true,
-      sucataEntregue: 1,
+      cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 3 }],
+      sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
       observacao: null,
     });
     req.flush(RESPOSTA);
     await assentar(t.fixture);
-    await t.depoisDoPost({ saldoCascos: 2, sucataEntregue: 1, saldoFiado: 90 });
+    await t.depoisDoPost({
+      saldoCascos: 2,
+      sucataEntregue: 1,
+      saldoFiado: 90,
+      cascosPorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', saldo: 2 }],
+      sucataPorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', quantidade: 1 }],
+    });
 
     expect(t.aberta()).toBe(false);
     expect(t.texto()).toContain('Venda registrada');
@@ -665,42 +753,110 @@ describe('PdvPage: cobrar no desktop (painel à direita)', () => {
     expect(t.el.querySelector('ce-page-placeholder')).toBeNull();
   });
 
-  it('"Devolveu todos na hora" preenche com a água, segue editável e desligar não zera', async () => {
+  it('"Devolveu todos na hora" trava o stepper de cada tipo no vendido em troca; desmarcar libera a partir do valor', async () => {
     const t = await comAguas(5);
     const toggle = t.campoDoPainel('ce-checkbox input');
-    const casco = () => t.campoDoPainel('ce-quantity-stepper input', 0);
+    const casco = () => t.campoDoPainel('.casco ce-quantity-stepper input', 0);
     expect(t.texto(t.painel())).toContain('Devolveu todos na hora');
+    expect(casco().disabled).toBe(false);
 
     toggle.click();
     await assentar(t.fixture);
+    expect(casco().disabled).toBe(true);
+    expect(casco().value).toBe('5');
+
+    toggle.click();
+    await assentar(t.fixture);
+    expect(casco().disabled).toBe(false);
     expect(casco().value).toBe('5');
 
     await t.digitar(casco(), '3');
     expect(casco().value).toBe('3');
-
-    toggle.click();
-    await assentar(t.fixture);
-    expect(casco().value).toBe('3');
   });
 
-  it('com o atalho ligado, mudar a água acompanha os devolvidos; edição manual fica', async () => {
+  it('com "na hora" marcado, mudar a quantidade no carrinho atualiza o valor travado', async () => {
     const t = await comAguas(5);
     t.campoDoPainel('ce-checkbox input').click();
     await assentar(t.fixture);
-    const casco = () => t.campoDoPainel('ce-quantity-stepper input', 0);
+    const casco = () => t.campoDoPainel('.casco ce-quantity-stepper input', 0);
     expect(casco().value).toBe('5');
 
     await t.aumentar(AGUA);
     expect(casco().value).toBe('6');
-
-    await t.digitar(casco(), '4');
-    await t.aumentar(AGUA);
-    expect(casco().value).toBe('4');
+    expect(casco().disabled).toBe(true);
 
     await t.clicarNoPainel('Confirmar venda');
     const req = t.http.expectOne(URL_VENDAS);
-    expect(req.request.body.cascosDevolvidos).toBe(4);
-    expect(req.request.body.itens[0].quantidade).toBe(7);
+    expect(req.request.body.cascosDevolvidos).toEqual([{ tipoCascoId: 't-1', quantidade: 6 }]);
+    expect(req.request.body.itens[0].quantidade).toBe(6);
+    req.flush(RESPOSTA);
+    await assentar(t.fixture);
+    await t.depoisDoPost();
+  });
+
+  it('desmarcar "na hora" e editar: o valor editado vai no pedido', async () => {
+    const t = await comAguas(5);
+    const toggle = t.campoDoPainel('ce-checkbox input');
+    toggle.click();
+    await assentar(t.fixture);
+    toggle.click();
+    await assentar(t.fixture);
+    await t.digitar(t.campoDoPainel('.casco ce-quantity-stepper input', 0), '4');
+    await t.aumentar(AGUA);
+    expect(t.campoDoPainel('.casco ce-quantity-stepper input', 0).value).toBe('4');
+
+    await t.clicarNoPainel('Confirmar venda');
+    const req = t.http.expectOne(URL_VENDAS);
+    expect(req.request.body.cascosDevolvidos).toEqual([{ tipoCascoId: 't-1', quantidade: 4 }]);
+    expect(req.request.body.itens[0].quantidade).toBe(6);
+    req.flush(RESPOSTA);
+    await assentar(t.fixture);
+    await t.depoisDoPost();
+  });
+
+  it('um stepper de devolução por tipo do carrinho; sucata só para o tipo que aceita; "na hora" trava os dois', async () => {
+    const t = await comAguas(2);
+    await t.tocar(AGUA_10, 3);
+    const painel = t.painel();
+    expect(painel.querySelectorAll('.casco ce-quantity-stepper')).toHaveLength(2);
+    expect(painel.querySelectorAll('.sucata ce-quantity-stepper')).toHaveLength(1);
+    expect(t.texto(painel.querySelector('.sucata')!)).toContain('Casco 20L');
+    expect(t.texto(painel.querySelector('.sucata')!)).not.toContain('Casco 10L');
+
+    t.campoDoPainel('ce-checkbox input').click();
+    await assentar(t.fixture);
+    const campos = Array.from(
+      painel.querySelectorAll<HTMLInputElement>('.casco ce-quantity-stepper input'),
+    );
+    expect(campos.map((c) => [c.value, c.disabled])).toEqual([
+      ['2', true],
+      ['3', true],
+    ]);
+
+    await t.clicarNoPainel('Confirmar venda');
+    const req = t.http.expectOne(URL_VENDAS);
+    expect(req.request.body.cascosDevolvidos).toEqual([
+      { tipoCascoId: 't-1', quantidade: 2 },
+      { tipoCascoId: 't-2', quantidade: 3 },
+    ]);
+    expect(req.request.body.sucataEntregue).toEqual([]);
+    req.flush(RESPOSTA);
+    await assentar(t.fixture);
+    await t.depoisDoPost();
+  });
+
+  it('tipo que sai do carrinho some da seção e do pedido', async () => {
+    const t = await comAguas(2);
+    await t.tocar(AGUA_10, 3);
+    await t.digitar(t.campoDoPainel('.casco ce-quantity-stepper input', 1), '2');
+    await t.diminuir(AGUA_10);
+    await t.diminuir(AGUA_10);
+    await t.diminuir(AGUA_10);
+
+    expect(t.painel().querySelectorAll('.casco ce-quantity-stepper')).toHaveLength(1);
+    await t.clicarNoPainel('Confirmar venda');
+    const req = t.http.expectOne(URL_VENDAS);
+    expect(req.request.body.cascosDevolvidos).toEqual([]);
     req.flush(RESPOSTA);
     await assentar(t.fixture);
     await t.depoisDoPost();
@@ -717,10 +873,10 @@ describe('PdvPage: cobrar no desktop (painel à direita)', () => {
     );
 
     await t.digitar(t.campoDoPainel('ce-quantity-stepper input', 1), '2');
-    expect(t.texto(painel)).toContain('Ficam 5 cascos na rua com Ana');
+    expect(t.texto(painel)).toContain('Casco 20L: Ficam 5 cascos na rua com Ana');
   });
 
-  it('sem ÁGUA no carrinho a seção de cascos e sucata fica oculta e o request vai zerado', async () => {
+  it('só descartável no carrinho: sem seção de cascos e o pedido vai com as listas vazias', async () => {
     const t = await comAguas(2);
     await t.digitar(t.campoDoPainel('ce-quantity-stepper input', 0), '2');
     await t.diminuir(AGUA);
@@ -733,20 +889,35 @@ describe('PdvPage: cobrar no desktop (painel à direita)', () => {
 
     await t.clicarNoPainel('Confirmar venda');
     const req = t.http.expectOne(URL_VENDAS);
-    expect(req.request.body.cascosDevolvidos).toBe(0);
-    expect(req.request.body.sucataEntregue).toBe(0);
+    expect(req.request.body.cascosDevolvidos).toEqual([]);
+    expect(req.request.body.sucataEntregue).toEqual([]);
     req.flush(RESPOSTA);
     await assentar(t.fixture);
     await t.depoisDoPost();
   });
 
-  it('produto Retornável gera casco: a seção aparece e a nota de galão completo não (tipo deixou de existir)', async () => {
+  it('"pagou o vasilhame" no sheet do item: soma o vasilhame ao total, a linha indica e o pedido leva pagouVasilhame', async () => {
     const t = await montar(undefined, { desktop: true });
     await t.escolherCliente(cliente('c-1', 'Ana'));
-    await t.tocar(AGUA);
+    await t.tocar(AGUA, 2);
+    t.abrir.mockReturnValueOnce({
+      closed: of({ ...itemDe(AGUA, 2), pagouVasilhame: true }),
+    });
+    await t.clicar('Preço e desconto');
 
+    expect(t.texto(t.linha(AGUA))).toContain('vasilhame pago');
+    expect(t.texto(t.painel())).toMatch(/Total ?R\$ 160,00/);
+    expect(t.texto(t.painel())).toContain('vasilhame pago');
+    // Vasilhame pago não é troca: o tipo continua listado, mas sem nada vendido em troca.
     expect(t.painel().querySelector('.casco')).not.toBeNull();
-    expect(t.texto(t.painel())).not.toContain('Galão completo não gera casco');
+
+    await t.clicarNoPainel('Confirmar venda');
+    const req = t.http.expectOne(URL_VENDAS);
+    expect(req.request.body.itens[0]).toMatchObject({ quantidade: 2, pagouVasilhame: true });
+    expect(req.request.body.cascosDevolvidos).toEqual([]);
+    req.flush(RESPOSTA);
+    await assentar(t.fixture);
+    await t.depoisDoPost();
   });
 
   it('formas, valor e atalhos Tudo, Metade e Tudo fiado sempre visíveis; "Vai para fiado: R$ X" muda ao digitar; acima do total bloqueia', async () => {
@@ -818,10 +989,18 @@ describe('PdvPage: cobrar no desktop (painel à direita)', () => {
     const t = await comAguas(2);
 
     await t.digitar(t.campoDoPainel('ce-quantity-stepper input', 0), '1');
-    expect(t.texto(t.painel())).toContain('Ficam 4 cascos na rua com Ana');
+    expect(t.texto(t.painel())).toContain('Casco 20L: Ficam 4 cascos na rua com Ana');
 
     await t.digitar(t.campoDoPainel('ce-quantity-stepper input', 0), '4');
-    expect(t.texto(t.painel())).toContain('Fica 1 casco na rua com Ana');
+    expect(t.texto(t.painel())).toContain('Casco 20L: Fica 1 casco na rua com Ana');
+  });
+
+  it('o feedback de casco na rua usa o nome completo do cliente', async () => {
+    const t = await montar(undefined, { desktop: true });
+    await t.escolherCliente(cliente('c-1', 'Dona Rosa'), SALDOS);
+    await t.tocar(AGUA, 2);
+
+    expect(t.texto(t.painel())).toContain('Casco 20L: Ficam 5 cascos na rua com Dona Rosa');
   });
 
   it('devolver mais do que o saldo mais a água mostra "Devolveu N a mais"', async () => {
@@ -1254,5 +1433,188 @@ describe('PdvPage em modo edição', () => {
     expect(t.alertas()).toHaveLength(1);
     expect(t.texto()).not.toContain('Salvar alterações');
     expect(t.el.querySelector('.barra')).toBeNull();
+  });
+});
+
+describe('PdvPage: busca com sugestão', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  const marca = (marcaId: string, marcaNome: string) =>
+    marcaResp({ marcaId, marcaNome, tipoCascoResolvidoId: 't-1' });
+  const AGUA_2 = produtoResp({
+    id: 'p-agua',
+    nome: 'Água 20L',
+    categoria: 'Água',
+    marcas: [marca('m-ind', 'Indaiá'), marca('m-cri', 'Cristal')],
+  });
+  const GELO_2 = produtoResp({
+    id: 'p-gelo',
+    tipo: 'DESCARTAVEL',
+    nome: 'Gelo 5kg',
+    categoria: 'Gelo',
+    marcas: [marcaResp({ marcaId: 'm-ind', marcaNome: 'Indaiá' })],
+  });
+  const COPO_2 = produtoResp({
+    id: 'p-copo',
+    tipo: 'DESCARTAVEL',
+    nome: 'Copo 200ml',
+    categoria: 'Copos',
+    marcas: [marcaResp({ marcaId: 'm-ger', marcaNome: 'Genérica' })],
+  });
+
+  async function comCatalogo() {
+    const t = await montar(undefined, { catalogo: [AGUA_2, GELO_2, COPO_2] });
+    const caixa = () => t.campo('ce-search-box input[placeholder^="Buscar por nome"]');
+    // O SearchBox emite a busca depois do debounce de 300 ms.
+    const buscar = async (texto: string) => {
+      await t.digitar(caixa(), texto);
+      await new Promise((r) => setTimeout(r, 350));
+      await assentar(t.fixture);
+    };
+    const nomes = () =>
+      Array.from(t.el.querySelectorAll('.prod__nome')).map((n) => n.textContent?.trim());
+    const sugestoes = () =>
+      Array.from(t.el.querySelectorAll('.sugestao')).map((b) => b.textContent?.trim());
+    return { ...t, caixa, buscar, nomes, sugestoes };
+  }
+
+  it('a lista tem uma linha por produto+marca, "Nome — Marca", com estoque e preço da marca', async () => {
+    const t = await comCatalogo();
+
+    expect(t.nomes()).toEqual([
+      'Água 20L — Indaiá',
+      'Água 20L — Cristal',
+      'Gelo 5kg — Indaiá',
+      'Copo 200ml — sem marca',
+    ]);
+    expect(t.caixa().placeholder).toBe('Buscar por nome, marca ou categoria…');
+  });
+
+  it('digitar mostra sugestões; sem sugestão escolhida a lista filtra pelo texto', async () => {
+    const t = await comCatalogo();
+
+    await t.buscar('inda');
+
+    expect(t.sugestoes()).toEqual(['Marca: Indaiá']);
+    expect(t.nomes()).toEqual(['Água 20L — Indaiá', 'Gelo 5kg — Indaiá']);
+  });
+
+  it('escolher a sugestão de marca filtra, mostra o chip e esvazia o texto; categoria troca o filtro e marca a pílula; limpar volta a lista inteira', async () => {
+    const t = await comCatalogo();
+
+    await t.buscar('crist');
+    await t.clicar('Marca: Cristal');
+    expect(t.nomes()).toEqual(['Água 20L — Cristal']);
+    expect(t.caixa().value).toBe('');
+    expect(t.sugestoes()).toEqual([]);
+    expect(t.texto(t.el.querySelector('.filtro')!)).toContain('Marca: Cristal');
+
+    await t.buscar('cop');
+    await t.clicar('Categoria: Copos');
+    expect(t.nomes()).toEqual(['Copo 200ml — sem marca']);
+    expect(t.el.querySelector('.pilula--ativa')?.textContent?.trim()).toBe('Copos');
+
+    t.botaoEm(t.el.querySelector('.filtro')!, '').click();
+    await assentar(t.fixture);
+    expect(t.el.querySelector('.filtro')).toBeNull();
+    expect(t.nomes()).toHaveLength(4);
+    expect(t.el.querySelector('.pilula--ativa')?.textContent?.trim()).toBe('Todos');
+  });
+
+  it('sugestão de nome mostra todas as marcas do produto', async () => {
+    const t = await comCatalogo();
+
+    await t.buscar('agua');
+    await t.clicar('Produto: Água 20L');
+
+    expect(t.nomes()).toEqual(['Água 20L — Indaiá', 'Água 20L — Cristal']);
+  });
+
+  it('Enter adiciona a primeira linha produto+marca da lista filtrada', async () => {
+    const t = await comCatalogo();
+    await t.escolherCliente(cliente('c-1', 'Ana'));
+
+    t.abrir.mockReturnValueOnce({ closed: of(undefined) });
+    await t.digitar(t.caixa(), 'cristal');
+    await t.enter(t.caixa());
+
+    expect(t.abrir).toHaveBeenCalledWith(expect.anything(), {
+      produto: AGUA_2,
+      marca: AGUA_2.marcas[1],
+      existente: null,
+      precoVasilhame: 30,
+    });
+  });
+
+  it('duas marcas do mesmo produto são itens distintos do carrinho', async () => {
+    const t = await comCatalogo();
+    await t.escolherCliente(cliente('c-1', 'Ana'));
+
+    await t.tocar(AGUA_2, 1);
+    t.linha(AGUA_2, 'Cristal')
+      .querySelector<HTMLElement>('button[aria-label="Adicionar Água 20L — Cristal"]')!
+      .click();
+    await assentar(t.fixture);
+
+    expect(t.el.querySelectorAll('.prod--sel')).toHaveLength(2);
+    expect(t.barra()).toMatch(/2 itens R\$ 100,00/);
+  });
+});
+
+describe('PdvPage: chip de casco por tipo e vasilhame na edição', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('tocar no chip Casco lista os tipos com saldo ≠ 0; negativo é "a favor do cliente"', async () => {
+    const t = await montar();
+    await t.escolherCliente(cliente('c-1', 'Ana'), {
+      ...SALDOS,
+      saldoCascos: 1,
+      cascosPorTipo: [
+        { tipoCascoId: 't-1', nome: 'Casco 20L', saldo: 3 },
+        { tipoCascoId: 't-2', nome: 'Casco 10L', saldo: -2 },
+        { tipoCascoId: 't-3', nome: 'Casco 5L', saldo: 0 },
+      ],
+    });
+    expect(t.el.querySelector('.casco-lista')).toBeNull();
+
+    await t.clicar('Casco 1');
+
+    const lista = t.texto(t.el.querySelector('.casco-lista')!);
+    expect(lista).toContain('Casco 20L = 3');
+    expect(lista).toContain('Casco 10L = 2 a favor do cliente');
+    expect(lista).not.toContain('Casco 5L');
+
+    await t.clicar('Casco 1');
+    expect(t.el.querySelector('.casco-lista')).toBeNull();
+  });
+
+  it('edição: o vasilhame pago da venda volta marcado e segue no PUT', async () => {
+    const t = await montar('v-1');
+    const venda: VendaDetalheResponse = {
+      ...VENDA_EDICAO,
+      itens: [{ ...VENDA_EDICAO.itens[0], pagouVasilhame: true, precoVasilhame: 30 }],
+    };
+    t.http.expectOne(`${URL_VENDAS}/v-1`).flush(venda);
+    await assentar(t.fixture);
+    t.http.expectOne('/api/clientes/v1/clientes/c-1').flush(cliente('c-1', 'Ana'));
+    await assentar(t.fixture);
+    await t.responderSaldos('c-1');
+
+    expect(t.texto(t.linha(AGUA))).toContain('vasilhame pago');
+    await t.cobrar();
+    await t.clicarNoPainel('Salvar alterações');
+    const req = t.http.expectOne(`${URL_VENDAS}/v-1`);
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body.itens[0]).toMatchObject({
+      produtoId: 'p-agua',
+      marcaId: 'm-1',
+      pagouVasilhame: true,
+    });
+    expect(req.request.body.cascosDevolvidos).toEqual([{ tipoCascoId: 't-1', quantidade: 2 }]);
+    expect(req.request.body.sucataEntregue).toEqual([{ tipoCascoId: 't-1', quantidade: 1 }]);
+    req.flush({});
+    await assentar(t.fixture);
+    t.http.expectOne((r) => r.method === 'GET' && r.url === URL_VENDAS).flush([]);
+    await assentar(t.fixture);
   });
 });

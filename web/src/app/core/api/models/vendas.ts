@@ -15,9 +15,17 @@ export interface DescontoRequest {
 
 export interface ItemVendaRequest {
   produtoId: string;
+  marcaId: string;
   quantidade: number;
   precoUnitario: number;
   desconto: DescontoRequest | null;
+  pagouVasilhame: boolean;
+}
+
+/** Casco devolvido ou sucata entregue, por tipo de casco. */
+export interface CascoPorTipoRequest {
+  tipoCascoId: string;
+  quantidade: number;
 }
 
 export interface PagamentoRequest {
@@ -31,9 +39,8 @@ export interface CreateVendaRequest {
   enderecoEntregaId: string | null;
   itens: ItemVendaRequest[];
   pagamentos: PagamentoRequest[];
-  cascosDevolvidos: number;
-  cascosDevolvidosNaHora: boolean;
-  sucataEntregue: number;
+  cascosDevolvidos: CascoPorTipoRequest[];
+  sucataEntregue: CascoPorTipoRequest[];
   observacao: string | null;
 }
 
@@ -46,10 +53,21 @@ export interface VendaResponse {
   saldoFiadoGerado: number;
   statusPagamento: StatusPagamento;
   saldoCascoCliente: number;
+  saldoCascoClientePorTipo: SaldoCascoPorTipoResponse[];
+}
+
+export interface SaldoCascoPorTipoResponse {
+  tipoCascoId: string;
+  nome: string;
+  saldo: number;
 }
 
 export interface ItemVendaResponse {
   produtoId: string;
+  marcaId: string;
+  tipoCascoId: string | null;
+  pagouVasilhame: boolean;
+  precoVasilhame: number;
   quantidade: number;
   precoUnitario: number;
   descontoTipo: TipoDesconto | null;
@@ -79,8 +97,8 @@ export interface VendaDetalheResponse {
   cupomEmitidoEm: string | null;
   itens: ItemVendaResponse[];
   pagamentos: PagamentoResponse[];
-  cascosDevolvidos: number;
-  sucataEntregue: number;
+  cascosDevolvidos: CascoPorTipoRequest[];
+  sucataEntregue: CascoPorTipoRequest[];
 }
 
 export interface AddPagamentoRequest {

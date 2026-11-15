@@ -30,8 +30,8 @@ function venda(id: string, clienteId = 'c-1'): VendaDetalheResponse {
     cupomEmitidoEm: null,
     itens: [],
     pagamentos: [],
-    cascosDevolvidos: 0,
-    sucataEntregue: 0,
+    cascosDevolvidos: [],
+    sucataEntregue: [],
   };
 }
 

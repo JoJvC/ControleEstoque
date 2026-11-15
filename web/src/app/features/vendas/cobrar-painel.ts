@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, Signal, inject, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
+import { rotuloDaMarca } from '../../core/api/produto-leitura';
 import { mensagemDoErro } from '../../core/http/error-messages';
 import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
@@ -21,20 +22,27 @@ import {
   valorDescontoDe,
   valorDoAtalho,
 } from './carrinho';
+import { TipoCascoDoCarrinho } from './cascos-por-tipo';
+
+/** Um tipo de casco do carrinho, com o que já foi lançado e o feedback de casco na rua. */
+export interface CascoTipoEstado extends TipoCascoDoCarrinho {
+  /** Valor efetivo: com 'na hora' é o vendido em troca; senão o digitado. */
+  readonly devolvidos: number;
+  readonly travado: boolean;
+  readonly sucata: number;
+  readonly naRua: number;
+  readonly aMais: number;
+}
 
 /** Tudo o que o painel mostra; a página é dona do estado (rascunho, regras e API). */
 export interface CobrarEstado {
   readonly itens: readonly ItemCarrinho[];
   readonly totais: TotaisCarrinho;
-  readonly comCascos: boolean;
-  readonly comGalaoCompleto: boolean;
-  readonly cascosDevolvidos: number;
+  /** Só os tipos de casco das linhas retornáveis do carrinho. */
+  readonly cascos: readonly CascoTipoEstado[];
   readonly cascosNaHora: boolean;
-  readonly cascoNaRua: number;
-  readonly cascosAMais: number;
-  /** Primeiro nome do cliente; null quando o número de casco só conta a água desta venda. */
+  /** Primeiro nome do cliente; null quando o número de casco só conta o que vai nesta venda. */
   readonly clienteNome: string | null;
-  readonly sucataEntregue: number;
   readonly pagamentos: readonly PagamentoEdicao[];
   readonly excede: boolean;
   readonly erro: string | null;
@@ -44,9 +52,9 @@ export interface CobrarEstado {
 }
 
 export type CobrarAcao =
-  | { readonly tipo: 'cascos'; readonly valor: number }
+  | { readonly tipo: 'cascos'; readonly tipoCascoId: string; readonly valor: number }
   | { readonly tipo: 'naHora'; readonly valor: boolean }
-  | { readonly tipo: 'sucata'; readonly valor: number }
+  | { readonly tipo: 'sucata'; readonly tipoCascoId: string; readonly valor: number }
   | { readonly tipo: 'pagamentos'; readonly valor: readonly PagamentoEdicao[] }
   | { readonly tipo: 'atalho'; readonly indice: number; readonly qual: 'tudo' | 'metade' }
   | { readonly tipo: 'tudoFiado' }
@@ -64,7 +72,11 @@ export type CobrarAcao =
         @for (item of e.itens; track $index) {
           <div class="linha">
             <span>
-              {{ item.quantidade }}× {{ item.produto.nome }}
+              {{ item.quantidade }}× {{ item.produto.nome }} —
+              {{ rotuloMarca(item.marca.marcaNome) }}
+              @if (item.pagouVasilhame) {
+                <span class="desconto">vasilhame pago</span>
+              }
               @if (item.desconto) {
                 <span class="desconto">
                   desc. {{ descontoDe(item) | cePreco }}
@@ -96,7 +108,7 @@ export type CobrarAcao =
         </div>
       </dl>
 
-      @if (e.comCascos) {
+      @if (e.cascos.length > 0) {
         <section class="casco" aria-label="Cascos">
           <h3 class="titulo">
             <ce-icon nome="casco-na-rua" [tamanho]="20" /> Cascos devolvidos agora
@@ -107,30 +119,46 @@ export type CobrarAcao =
           >
             Devolveu todos na hora
           </ce-checkbox>
-          <ce-form-field rotulo="Cascos devolvidos">
-            <ce-quantity-stepper
-              [ngModel]="e.cascosDevolvidos"
-              (ngModelChange)="acao.emit({ tipo: 'cascos', valor: $event })"
-            />
-          </ce-form-field>
-          <p class="casco__rua" role="status">
-            {{ rotuloCascoNaRua(e.cascoNaRua, e.cascosAMais, e.clienteNome) }}
-          </p>
+          @for (c of e.cascos; track c.tipoCascoId) {
+            <ce-form-field [rotulo]="'Cascos devolvidos — ' + c.nome">
+              <ce-quantity-stepper
+                [rotulo]="'Cascos devolvidos de ' + c.nome"
+                [ngModel]="c.devolvidos"
+                [disabled]="c.travado"
+                (ngModelChange)="
+                  acao.emit({ tipo: 'cascos', tipoCascoId: c.tipoCascoId, valor: $event })
+                "
+              />
+            </ce-form-field>
+            <p class="casco__rua" role="status">
+              {{ c.nome }}: {{ rotuloCascoNaRua(c.naRua, c.aMais, e.clienteNome) }}
+            </p>
+          }
         </section>
-        <section class="sucata" aria-label="Sucata">
-          <h3 class="titulo"><ce-icon nome="sucata" [tamanho]="20" /> Sucata entregue agora</h3>
-          <ce-form-field rotulo="Sucata entregue" dica="Contagem própria, em separado dos cascos.">
-            <ce-quantity-stepper
-              [ngModel]="e.sucataEntregue"
-              (ngModelChange)="acao.emit({ tipo: 'sucata', valor: $event })"
-            />
-          </ce-form-field>
-          <p class="sucata__aviso">
-            <ce-icon nome="info" [tamanho]="18" /> Sucata não abate o débito de casco.
-          </p>
-        </section>
-      } @else if (e.comGalaoCompleto) {
-        <p class="dica">Galão completo não gera casco: nada a devolver.</p>
+        @if (temSucata(e)) {
+          <section class="sucata" aria-label="Sucata">
+            <h3 class="titulo"><ce-icon nome="sucata" [tamanho]="20" /> Sucata entregue agora</h3>
+            @for (c of e.cascos; track c.tipoCascoId) {
+              @if (c.aceitaSucata) {
+                <ce-form-field
+                  [rotulo]="'Sucata entregue — ' + c.nome"
+                  dica="Contagem própria, em separado dos cascos."
+                >
+                  <ce-quantity-stepper
+                    [rotulo]="'Sucata entregue de ' + c.nome"
+                    [ngModel]="c.sucata"
+                    (ngModelChange)="
+                      acao.emit({ tipo: 'sucata', tipoCascoId: c.tipoCascoId, valor: $event })
+                    "
+                  />
+                </ce-form-field>
+              }
+            }
+            <p class="sucata__aviso">
+              <ce-icon nome="info" [tamanho]="18" /> Sucata não abate o débito de casco.
+            </p>
+          </section>
+        }
       }
 
       <h3 class="titulo">Pagamento</h3>
@@ -383,8 +411,13 @@ export class CobrarPainel {
   protected readonly formas = FORMAS;
   protected readonly fiadoDe = fiadoDe;
   protected readonly rotuloCascoNaRua = rotuloCascoNaRua;
+  protected readonly rotuloMarca = rotuloDaMarca;
   protected readonly descontoDe = valorDescontoDe;
   protected readonly totalDe = totalItemDe;
+
+  protected temSucata(e: CobrarEstado): boolean {
+    return e.cascos.some((c) => c.aceitaSucata);
+  }
 
   protected rotuloDe(forma: string): string {
     return FORMAS.find((f) => f.value === forma)?.label ?? forma;

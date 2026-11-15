@@ -346,11 +346,11 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 
 ## 8. Regras Críticas de UI
 
-**As 8 regras que modelos executores mais erram construindo estas telas. Em dúvida, esta seção vence.**
+**As 11 regras que modelos executores mais erram construindo estas telas. Em dúvida, esta seção vence.**
 
 1. **Casco normal ≠ sucata — nunca no mesmo campo, nunca somados.** São dois inputs, dois chips de saldo, duas cores. Toda tela que registra sucata exibe o aviso de que **não abate** o débito de casco. *Erro típico: um campo único "vasilhames devolvidos".*
 
-2. **"Devolvidos na hora" é atalho, não trava.** O toggle preenche `cascosDevolvidos = quantidade de água vendida`, mas o campo **continua editável** (casos parciais). Desligar o toggle não zera o que o usuário digitou.
+2. **"Devolveu todos na hora" trava.** Marcado, a devolução de cada tipo de casco fica **travada** (campo desabilitado) na quantidade vendida em troca daquele tipo e acompanha o carrinho. Desmarcar libera o campo, a partir do valor que tinha, para os casos parciais.
 
 3. **Preço de referência é sugestão.** O preço de referência é por produto+marca (associação). O campo preço vem pré-preenchido e livremente editável; a UI **nunca** bloqueia venda por preço diferente da referência, nem recarrega o preço do servidor ao calcular exibição de total.
 
@@ -363,6 +363,12 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 7. **Fiado é dinheiro; saldo de casco é contagem.** Chips e telas nunca convertem casco em R$ automaticamente — a conversão é uma **ação explícita** (Pagar Casco → conversão em valor). *Erro típico: mostrar "dívida total" somando fiado + casco×preço.*
 
 8. **Componente de `ui/` não fala com o mundo.** Átomo/molécula/organismo com `HttpClient`, store ou `Router` injetado é defeito de arquitetura, mesmo que funcione. Dados entram por `input()`, intenções saem por `output()` — a página faz o resto.
+
+9. **Cascos e sucata são por tipo de casco, só dos tipos do carrinho.** A seção de cascos lista os tipos das linhas retornáveis do carrinho (o tipo vem resolvido do servidor em `tipoCascoResolvidoId`; o front não recalcula). Cada tipo tem seu stepper de devolução e, se aceita sucata, o de sucata. Tipo que sai do carrinho some da seção e do pedido. Descartável não mostra casco.
+
+10. **"Pagou o vasilhame" é por linha.** Só em linha retornável com tipo de casco resolvido; vem desmarcado (troca ou empréstimo). Marcado, o bruto da linha soma `quantidade × preço do vasilhame` do tipo, antes do desconto, e a linha indica o vasilhame pago. Linha descartável não mostra a opção.
+
+11. **Busca por nome, marca ou categoria, com sugestão que filtra.** A API não busca por texto: o filtro é no front, sobre a lista carregada, sem acento e sem diferenciar caixa. As sugestões (nome, marca, categoria; no máximo 8) aparecem sob a caixa; escolher uma filtra a lista, mostra o filtro como chip com botão de limpar e esvazia o texto.
 
 ---
 

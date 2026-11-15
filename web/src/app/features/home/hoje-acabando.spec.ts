@@ -18,8 +18,22 @@ const ITEM = {
 describe('modeloAcabando', () => {
   it('mapeia nome, quantidade, mínimo e ícone', () => {
     expect(modeloAcabando([ITEM])).toEqual([
-      { id: 'p-1', nome: 'Gelo 5kg', quantidade: 2, minimo: 5, icone: 'gelo' },
+      { chave: 'p-1:', id: 'p-1', nome: 'Gelo 5kg', quantidade: 2, minimo: 5, icone: 'gelo' },
     ]);
+  });
+
+  it('duas marcas do mesmo produto dão duas linhas com a marca', () => {
+    const linhas = modeloAcabando([
+      { ...ITEM, marca: 'Indaiá' },
+      { ...ITEM, marca: 'Cristal', quantidade: 1 },
+    ]);
+    expect(linhas.map((l) => l.nome)).toEqual(['Gelo 5kg — Indaiá', 'Gelo 5kg — Cristal']);
+    expect(new Set(linhas.map((l) => l.chave)).size).toBe(2);
+    expect(linhas.map((l) => l.id)).toEqual(['p-1', 'p-1']);
+  });
+
+  it('marca Genérica aparece como "sem marca"', () => {
+    expect(modeloAcabando([{ ...ITEM, marca: 'Genérica' }])[0].nome).toBe('Gelo 5kg — sem marca');
   });
 });
 

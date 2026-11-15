@@ -141,6 +141,11 @@ export class ClienteDetalhePage {
     this.store.carregarHistorico(this.id());
   }
 
+  /** Venda com casco por tipo: aqui só o total das quantidades. */
+  protected somaPorTipo(lista: readonly { quantidade: number }[]): number {
+    return lista.reduce((soma, c) => soma + c.quantidade, 0);
+  }
+
   protected galoes(saldo: number) {
     return galoesVisiveis(saldo, MAX_GALOES);
   }

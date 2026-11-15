@@ -45,7 +45,7 @@ const FRETES: { value: TipoFrete; label: string }[] = [
     PrecoPipe,
   ],
   template: `
-    <ce-app-header titulo="Abastecimento" [mostrarVoltar]="true" (voltar)="voltar()" />
+    <ce-app-header titulo="Chegou mercadoria" [mostrarVoltar]="true" (voltar)="voltar()" />
 
     <form class="form" (submit)="$event.preventDefault(); salvar()">
       <section class="itens">
@@ -112,9 +112,7 @@ const FRETES: { value: TipoFrete; label: string }[] = [
         <p class="form__erro" role="alert">{{ erro }}</p>
       }
 
-      <ce-button tipo="submit" [block]="true" [loading]="salvando()">
-        Registrar abastecimento
-      </ce-button>
+      <ce-button tipo="submit" [block]="true" [loading]="salvando()"> Chegou mercadoria </ce-button>
     </form>
   `,
   styles: `
@@ -149,7 +147,7 @@ const FRETES: { value: TipoFrete; label: string }[] = [
       gap: var(--ce-space-3);
       padding: var(--ce-space-3);
       border: 1px solid var(--ce-border);
-      border-radius: var(--ce-radius-md);
+      border-radius: 18px;
       background: var(--ce-surface);
     }
 

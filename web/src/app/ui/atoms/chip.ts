@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { Icon, IconeNome } from './icon';
 
-export type ChipTom = 'casco' | 'sucata' | 'fiado' | 'pago';
+export type ChipTom = 'casco' | 'sucata' | 'fiado' | 'pago' | 'agua';
 
 /**
  * Chip de função (DESIGN.md §3): um único valor de um único tom.
@@ -61,6 +61,11 @@ export type ChipTom = 'casco' | 'sucata' | 'fiado' | 'pago';
     .chip--fiado {
       --chip-cor: var(--ce-fiado);
       --chip-fundo: var(--ce-fiado-soft);
+    }
+
+    .chip--agua {
+      --chip-cor: var(--ce-agua);
+      --chip-fundo: var(--ce-agua-soft);
     }
 
     .chip--pago {

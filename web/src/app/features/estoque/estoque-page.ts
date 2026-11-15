@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
@@ -7,28 +7,34 @@ import { SheetService } from '../../core/overlay/sheet-service';
 import { CePermissao } from '../../core/permissions/ce-permissao';
 import { PermissionService } from '../../core/permissions/permission-service';
 import { ToastService } from '../../core/toast/toast-service';
-import { Badge } from '../../ui/atoms/badge';
 import { Button } from '../../ui/atoms/button';
-import { Icon } from '../../ui/atoms/icon';
-import { ListItem } from '../../ui/molecules/list-item';
+import { Chip, ChipTom } from '../../ui/atoms/chip';
+import { Icon, IconeNome } from '../../ui/atoms/icon';
+import { iconeDoProduto } from '../../ui/atoms/icone-do-produto';
+import { Skeleton } from '../../ui/atoms/skeleton';
+import { BarraEstoque } from '../../ui/molecules/barra-estoque';
+import { EmptyState } from '../../ui/molecules/empty-state';
+import { GalaoNivel } from '../../ui/molecules/galao-nivel';
 import { AppHeader } from '../../ui/organisms/app-header';
-import { DataList } from '../../ui/organisms/data-list';
 import { AjusteSheet, AjusteSheetDados } from './ajuste-sheet';
 import { BaixaCascoSheet } from './baixa-casco-sheet';
+import { agruparEstoque, maiorEstoque } from './estoque-grupos';
 import { EstoqueStore } from './estoque-store';
-
-const TIPO_LABEL: Record<string, string> = {
-  AGUA: 'Água',
-  GALAO_COMPLETO: 'Galão completo',
-  CASCO: 'Casco',
-  SUCATA: 'Sucata',
-  DESCARTAVEL: 'Descartável',
-};
 
 @Component({
   selector: 'ce-estoque-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CePermissao, AppHeader, Badge, Button, Icon, ListItem, DataList],
+  imports: [
+    CePermissao,
+    AppHeader,
+    Button,
+    Chip,
+    EmptyState,
+    Icon,
+    Skeleton,
+    GalaoNivel,
+    BarraEstoque,
+  ],
   template: `
     <ce-app-header
       titulo="Estoque"
@@ -38,33 +44,87 @@ const TIPO_LABEL: Record<string, string> = {
     />
 
     <div class="conteudo">
-      <ce-data-list
-        [itens]="store.itens()"
-        [status]="store.status()"
-        vazioTitulo="Estoque vazio"
-        vazioDescricao="Registre um abastecimento para começar."
-        (recarregar)="store.carregar()"
-      >
-        <ng-template let-item>
-          <ce-list-item (click)="ajustar(item)">
-            <span class="nome">{{ item.nome }}</span>
-            <span class="detalhe">{{ detalheDe(item) }}</span>
-            @if (item.abaixoMinimo) {
-              <ce-badge cor="warning">
-                <ce-icon nome="alerta" [tamanho]="14" /> abaixo do mínimo ({{ item.estoqueMinimo }})
-              </ce-badge>
-            }
-            <span ce-trailing class="quantidade" [class.quantidade--alerta]="item.abaixoMinimo">{{
-              item.quantidade
-            }}</span>
-          </ce-list-item>
-        </ng-template>
-      </ce-data-list>
+      @switch (store.status()) {
+        @case ('error') {
+          <ce-empty-state
+            icone="alerta"
+            titulo="Não foi possível carregar"
+            descricao="Verifique a conexão e tente novamente."
+          >
+            <ce-button variante="ghost" (click)="store.carregar()">Tentar novamente</ce-button>
+          </ce-empty-state>
+        }
+        @case ('ok') {
+          @if (store.itens().length === 0) {
+            <ce-empty-state
+              titulo="Estoque vazio"
+              descricao="Registre um abastecimento para começar."
+            />
+          } @else {
+            <div class="grade">
+              @if (grupos().agua.length > 0) {
+                <section class="secao" aria-labelledby="sec-agua">
+                  <h2 id="sec-agua">Água</h2>
+                  <div class="galoes">
+                    @for (item of grupos().agua; track item.produtoId) {
+                      <button type="button" class="alvo" (click)="ajustar(item)">
+                        <ce-galao-nivel [item]="item" [maiorDoGrupo]="maiorAgua()" />
+                      </button>
+                    }
+                  </div>
+                </section>
+              }
+              @if (grupos().vasilhames.length > 0) {
+                <section class="secao" aria-labelledby="sec-vasilhames">
+                  <h2 id="sec-vasilhames">Vasilhames</h2>
+                  <div class="chips">
+                    @for (item of grupos().vasilhames; track item.produtoId) {
+                      <button
+                        type="button"
+                        class="alvo"
+                        [attr.data-abaixo-minimo]="item.abaixoMinimo ? '' : null"
+                        (click)="ajustar(item)"
+                      >
+                        <ce-chip [tom]="tomDe(item)" [icone]="iconeDe(item)">
+                          {{ rotuloDe(item) }}: {{ item.quantidade }}
+                          @if (item.abaixoMinimo) {
+                            · abaixo do mínimo ({{ item.estoqueMinimo }})
+                          }
+                        </ce-chip>
+                      </button>
+                    }
+                  </div>
+                </section>
+              }
+              @if (grupos().descartaveis.length > 0) {
+                <section class="secao secao--larga" aria-labelledby="sec-descartaveis">
+                  <h2 id="sec-descartaveis">Descartáveis</h2>
+                  @for (grupo of grupos().descartaveis; track grupo.categoria) {
+                    <h3>{{ grupo.categoria }}</h3>
+                    <div class="barras">
+                      @for (item of grupo.itens; track item.produtoId) {
+                        <button type="button" class="alvo" (click)="ajustar(item)">
+                          <ce-barra-estoque [item]="item" [maiorDoGrupo]="maiorDe(grupo.itens)" />
+                        </button>
+                      }
+                    </div>
+                  }
+                </section>
+              }
+            </div>
+          }
+        }
+        @default {
+          <div aria-busy="true">
+            <ce-skeleton altura="96px" />
+          </div>
+        }
+      }
     </div>
 
     <div class="acoes">
       <ce-button *cePermissao="'estoque.editar'" [block]="true" (click)="abastecer()">
-        <ce-icon nome="caixa" [tamanho]="18" /> Abastecer
+        <ce-icon nome="caixa" [tamanho]="18" /> Chegou mercadoria
       </ce-button>
       <ce-button *cePermissao="'estoque.editar'" variante="ghost" (click)="baixaCasco()"
         >Baixa de casco</ce-button
@@ -78,39 +138,73 @@ const TIPO_LABEL: Record<string, string> = {
       padding: var(--ce-space-4);
     }
 
-    .nome {
-      font-weight: 600;
+    .grade {
+      display: grid;
+      gap: var(--ce-space-5);
+
+      @include mixins.from-desktop {
+        grid-template-columns: 1fr 1fr;
+      }
     }
 
-    .detalhe {
-      font-size: var(--ce-font-sm);
+    .secao--larga {
+      @include mixins.from-desktop {
+        grid-column: 1 / -1;
+      }
+    }
+
+    h2 {
+      font-size: var(--ce-font-lg);
+      margin-bottom: var(--ce-space-3);
+    }
+
+    h3 {
+      font-size: var(--ce-font-md);
       color: var(--ce-text-muted);
+      margin: var(--ce-space-3) 0 var(--ce-space-2);
     }
 
-    ce-badge {
-      margin-top: var(--ce-space-1);
-      align-self: flex-start;
+    .galoes,
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--ce-space-3);
     }
 
-    .quantidade {
-      @include mixins.tabular-numbers;
+    .barras {
+      display: grid;
+      gap: var(--ce-space-2);
 
-      font-size: var(--ce-font-xl);
-      font-weight: 700;
-      color: var(--ce-text);
+      @include mixins.from-desktop {
+        grid-template-columns: 1fr 1fr;
+      }
     }
 
-    .quantidade--alerta {
-      color: var(--ce-warning);
+    .alvo {
+      @include mixins.touch-target;
+
+      display: block;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
     }
 
-    // Ações primárias ao alcance do polegar: gruda logo acima da bottom-nav (plano §4.3)
+    .barras .alvo {
+      width: 100%;
+    }
+
+    // Barra fixa do botão principal (DESIGN.md §5), acima da bottom-nav
     .acoes {
       position: sticky;
       bottom: calc(var(--ce-nav-height) + env(safe-area-inset-bottom, 0px));
       display: flex;
+      align-items: center;
       gap: var(--ce-space-3);
-      padding: var(--ce-space-3) var(--ce-space-4);
+      min-height: 56px;
+      padding: var(--ce-space-2) var(--ce-space-4);
       background: var(--ce-bg);
       border-top: 1px solid var(--ce-border);
 
@@ -131,10 +225,25 @@ export class EstoquePage {
     this.store.carregar();
   }
 
-  protected detalheDe(item: EstoqueItemResponse): string {
-    return [TIPO_LABEL[item.tipo] ?? item.tipo, item.marca, item.tamanho, item.categoria]
+  protected readonly grupos = computed(() => agruparEstoque(this.store.itens()));
+  protected readonly maiorAgua = computed(() => maiorEstoque(this.grupos().agua));
+
+  protected maiorDe(itens: readonly EstoqueItemResponse[]): number {
+    return maiorEstoque(itens);
+  }
+
+  protected tomDe(item: EstoqueItemResponse): ChipTom {
+    return item.tipo === 'CASCO' ? 'casco' : item.tipo === 'SUCATA' ? 'sucata' : 'agua';
+  }
+
+  protected iconeDe(item: EstoqueItemResponse): IconeNome {
+    return iconeDoProduto(item);
+  }
+
+  protected rotuloDe(item: EstoqueItemResponse): string {
+    return [item.nome, item.marca, item.tamanho]
       .filter((parte): parte is string => !!parte)
-      .join(' · ');
+      .join(' ');
   }
 
   protected async ajustar(item: EstoqueItemResponse): Promise<void> {

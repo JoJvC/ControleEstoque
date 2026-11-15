@@ -86,6 +86,19 @@
   --bloco-cor: var(--ce-fiado);
 }
 
+.bloco--pago {
+  --bloco-soft: var(--ce-pago-soft);
+  --bloco-cor: var(--ce-pago);
+}
+
+.casco-lista {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--ce-font-sm);
+  color: var(--ce-text);
+}
+
 .bloco__valor {
   font-size: 2rem;
   font-weight: 700;

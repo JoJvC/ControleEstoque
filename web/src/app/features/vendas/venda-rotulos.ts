@@ -44,6 +44,7 @@ const FORMAS: Record<FormaPagamento, string> = {
   CARTAO_DEBITO: 'Cartão de débito',
   DINHEIRO: 'Dinheiro',
   OUTRO: 'Outro',
+  CREDITO_CLIENTE: 'Crédito do cliente',
 };
 
 export function rotuloForma(forma: FormaPagamento): string {

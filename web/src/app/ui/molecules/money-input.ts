@@ -84,6 +84,8 @@ export class MoneyInput implements ControlValueAccessor {
   readonly rotulo = input<string | null>(null);
   /** Só zeros digitados viram 0 (e "0,00" na tela) em vez de null; vazio continua null. */
   readonly zeroComoValor = input(false);
+  /** Teto em reais: o que for digitado acima dele fica no teto (campo e valor). */
+  readonly maximo = input<number | null>(null);
 
   protected readonly exibicao = signal('');
   protected readonly desabilitado = signal(false);
@@ -128,7 +130,8 @@ export class MoneyInput implements ControlValueAccessor {
       return;
     }
 
-    const reais = Number(digitos) / 100;
+    const teto = this.maximo();
+    const reais = teto === null ? Number(digitos) / 100 : Math.min(Number(digitos) / 100, teto);
     const formatado = FORMATADOR.format(reais);
     this.exibicao.set(formatado);
     alvo.value = formatado;

@@ -46,15 +46,30 @@
               </div>
             }
           }
+          @if (linhasCasco(s.cascosPorTipo); as linhas) {
+            @if (linhas.length > 0) {
+              <ul class="casco-lista" aria-label="Cascos por tipo">
+                @for (linha of linhas; track linha) {
+                  <li>{{ linha }}</li>
+                }
+              </ul>
+            }
+          }
           <p class="bloco__legenda">contagem de galões</p>
           <ce-button variante="ghost" [disabled]="s.saldoCascos <= 0" (click)="pagarCasco()">
             Recolher cascos
           </ce-button>
         </section>
-        <section class="bloco bloco--fiado" aria-label="Fiado">
-          <h2 class="secao__titulo"><ce-icon nome="dinheiro" [tamanho]="16" /> Fiado</h2>
-          <p class="bloco__valor">{{ s.saldoFiado | cePreco }}</p>
-          <p class="bloco__legenda">dinheiro a receber</p>
+        @let saldo = classificarSaldo(s.saldo);
+        <section
+          class="bloco"
+          [class.bloco--fiado]="saldo.tipo === 'fiado'"
+          [class.bloco--pago]="saldo.tipo !== 'fiado'"
+          aria-label="Saldo"
+        >
+          <h2 class="secao__titulo"><ce-icon nome="dinheiro" [tamanho]="16" /> Saldo</h2>
+          <p class="bloco__valor">{{ rotuloSaldo(saldo) }}</p>
+          <p class="bloco__legenda">{{ legendaSaldo[saldo.tipo] }}</p>
           <ce-button variante="ghost" [disabled]="s.saldoFiado <= 0" (click)="receberFiado()">
             Receber fiado
           </ce-button>

@@ -51,6 +51,9 @@ export interface SaldosResponse {
   saldoCascos: number;
   sucataEntregue: number;
   saldoFiado: number;
+  /** Saldo único: negativo é fiado, positivo é crédito. */
+  saldo: number;
+  creditoDisponivel: number;
   cascosPorTipo: CascoClientePorTipo[];
   sucataPorTipo: SucataClientePorTipo[];
 }

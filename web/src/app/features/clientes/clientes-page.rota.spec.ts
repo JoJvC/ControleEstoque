@@ -37,7 +37,9 @@ async function responder(t: Awaited<ReturnType<typeof navegar>>, todos: object[]
   t.http.match((r) => r.url === CLIENTES).forEach((r) => r.flush(todos));
   t.http
     .match(FIADO_REL)
-    .forEach((r) => r.flush([{ clienteId: 'f', nome: 'Fátima', saldoDevedor: 42.5 }]));
+    .forEach((r) =>
+      r.flush([{ clienteId: 'f', nome: 'Fátima', saldoDevedor: 42.5, saldo: -42.5 }]),
+    );
   t.http
     .match(CASCOS_REL)
     .forEach((r) => r.flush([{ clienteId: 'c', nome: 'Caio', saldoCascos: 6 }]));

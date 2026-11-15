@@ -1,4 +1,5 @@
 import { TipoCascoResponse } from '../../core/api/models/estoque';
+import { CascoClientePorTipo } from '../../core/api/models/clientes';
 import { CascoPorTipoRequest } from '../../core/api/models/vendas';
 import type { ItemCarrinho } from './carrinho';
 
@@ -67,4 +68,13 @@ export function cascosParaRequest(
     }
   }
   return { cascosDevolvidos, sucataEntregue };
+}
+
+/** Saldo de casco do cliente por tipo: só os com saldo ≠ 0; negativo é casco a favor do cliente. */
+export function linhasCascoPorTipo(cascos: readonly CascoClientePorTipo[]): string[] {
+  return cascos
+    .filter((c) => c.saldo !== 0)
+    .map((c) =>
+      c.saldo < 0 ? `${c.nome} = ${-c.saldo} a favor do cliente` : `${c.nome} = ${c.saldo}`,
+    );
 }

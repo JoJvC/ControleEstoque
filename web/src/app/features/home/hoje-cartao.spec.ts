@@ -26,6 +26,32 @@ describe('HojeCartao', () => {
     expect(el.textContent).toContain('Fiado a receber');
   });
 
+  it('fiado com total > 0 fica no tom fiado', () => {
+    const el = montar('fiado');
+    expect(el.querySelector('.cartao--pago')).toBeNull();
+  });
+
+  it('fiado zerado fica no tom pago', () => {
+    const f = TestBed.createComponent(HojeCartao);
+    f.componentRef.setInput('variante', 'fiado');
+    f.componentRef.setInput('valor', 'Em dia');
+    f.componentRef.setInput('zerado', true);
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+    expect(el.querySelector('.cartao--pago')).not.toBeNull();
+    expect(el.querySelector('.cartao--fiado')).toBeNull();
+    expect(el.textContent).toContain('Em dia');
+  });
+
+  it('zerado sem o dado carregado não vira tom pago', () => {
+    const f = TestBed.createComponent(HojeCartao);
+    f.componentRef.setInput('variante', 'fiado');
+    f.componentRef.setInput('zerado', true);
+    f.componentRef.setInput('status', 'error');
+    f.detectChanges();
+    expect((f.nativeElement as HTMLElement).querySelector('.cartao--pago')).toBeNull();
+  });
+
   it('modeloCartao', () => {
     expect(modeloCartao('casco').icone).toBe('casco-na-rua');
     expect(modeloCartao('fiado').icone).toBeNull();

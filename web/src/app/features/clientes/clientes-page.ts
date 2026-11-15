@@ -21,12 +21,12 @@ import { Chip } from '../../ui/atoms/chip';
 import { Icon } from '../../ui/atoms/icon';
 import { ListItem } from '../../ui/molecules/list-item';
 import { SearchBox } from '../../ui/molecules/search-box';
-import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { DataList } from '../../ui/organisms/data-list';
 import { ClienteDetalhePage } from './cliente-detalhe-page';
 import { FiltroClientes, LinhaCliente, normalizarFiltro, urlLista } from './clientes-linhas';
 import { ClientesStore } from './clientes-store';
+import { classificarSaldo, rotuloSaldo } from './saldo-cliente';
 
 @Component({
   selector: 'ce-clientes-page',
@@ -43,7 +43,6 @@ import { ClientesStore } from './clientes-store';
     DataList,
     ClienteDetalhePage,
     NgTemplateOutlet,
-    PrecoPipe,
   ],
   template: `
     <ng-template #lista>
@@ -100,8 +99,9 @@ import { ClientesStore } from './clientes-store';
                     {{ linha.saldoCascos }} {{ linha.saldoCascos === 1 ? 'casco' : 'cascos' }}
                   </ce-chip>
                 }
-                @if (linha.saldoFiado) {
-                  <ce-chip tom="fiado">{{ linha.saldoFiado | cePreco }} fiado</ce-chip>
+                @if (linha.saldo) {
+                  @let saldo = classificarSaldo(linha.saldo);
+                  <ce-chip [tom]="saldo.tom">{{ rotuloSaldo(saldo) }}</ce-chip>
                 }
               </span>
             </ce-list-item>
@@ -231,6 +231,8 @@ export class ClientesPage implements OnInit {
     transform: normalizarFiltro,
   });
 
+  protected readonly classificarSaldo = classificarSaldo;
+  protected readonly rotuloSaldo = rotuloSaldo;
   protected readonly store = inject(ClientesStore);
   private readonly router = inject(Router);
   private readonly breakpoints = inject(BreakpointObserver);

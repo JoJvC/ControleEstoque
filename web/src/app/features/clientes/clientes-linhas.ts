@@ -8,7 +8,8 @@ export interface LinhaCliente {
   nome: string;
   secundario?: string;
   saldoCascos?: number;
-  saldoFiado?: number;
+  /** Saldo único do relatório: negativo é fiado, positivo é crédito; ausente = em dia. */
+  saldo?: number;
 }
 
 /** Valor de `?filtro=`: só 'fiado' e 'casco' valem; ausente (undefined/null) ou desconhecido é 'todos'. */
@@ -33,7 +34,7 @@ export function montarLinhas(
   cascos: readonly SaldoCascoRelatorio[],
   termo: string,
 ): LinhaCliente[] {
-  const saldoFiado = new Map(fiado.map((f) => [f.clienteId, f.saldoDevedor]));
+  const saldos = new Map(fiado.map((f) => [f.clienteId, f.saldo]));
   const saldoCascos = new Map(cascos.map((c) => [c.clienteId, c.saldoCascos]));
   // Saldo 0 ou fora do relatório: sem selo (undefined). Negativo passa como vem.
   const selo = (n: number | undefined) => (n === 0 ? undefined : n);
@@ -42,7 +43,7 @@ export function montarLinhas(
     nome,
     secundario,
     saldoCascos: selo(saldoCascos.get(id)),
-    saldoFiado: selo(saldoFiado.get(id)),
+    saldo: selo(saldos.get(id)),
   });
 
   if (filtro === 'todos') {
@@ -52,7 +53,9 @@ export function montarLinhas(
     });
   }
   const busca = termo.trim().toLowerCase();
-  const itens: readonly { clienteId: string; nome: string }[] = filtro === 'fiado' ? fiado : cascos;
+  // 'Com fiado' fica só com saldo negativo: o relatório também traz quem tem crédito.
+  const itens: readonly { clienteId: string; nome: string }[] =
+    filtro === 'fiado' ? fiado.filter((f) => f.saldo < 0) : cascos;
   return itens
     .filter((i) => i.nome.toLowerCase().includes(busca))
     .map((i) => comSaldos(i.clienteId, i.nome));

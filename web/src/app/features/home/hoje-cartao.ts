@@ -30,7 +30,8 @@ export function modeloCartao(variante: CartaoVariante): {
       class="cartao"
       (click)="abrir.emit()"
       [class.cartao--casco]="variante() === 'casco'"
-      [class.cartao--fiado]="variante() === 'fiado'"
+      [class.cartao--fiado]="variante() === 'fiado' && !emDia()"
+      [class.cartao--pago]="variante() === 'fiado' && emDia()"
       [attr.aria-label]="m().rotulo"
     >
       <p class="cartao__rotulo">
@@ -81,6 +82,11 @@ export function modeloCartao(variante: CartaoVariante): {
       background: var(--ce-fiado-soft);
     }
 
+    .cartao--pago {
+      border: 2px solid var(--ce-pago);
+      background: var(--ce-pago-soft);
+    }
+
     .cartao__rotulo {
       display: flex;
       align-items: center;
@@ -101,6 +107,9 @@ export class HojeCartao {
   readonly variante = input.required<CartaoVariante>();
   readonly valor = input('');
   readonly status = input<HojeStatus>('ok');
+  /** Total do fiado em 0: o cartão fica no tom pago ('Em dia'); só vale com o dado carregado. */
+  readonly zerado = input(false);
   readonly abrir = output<void>();
+  protected readonly emDia = computed(() => this.zerado() && this.status() === 'ok');
   protected readonly m = computed(() => modeloCartao(this.variante()));
 }

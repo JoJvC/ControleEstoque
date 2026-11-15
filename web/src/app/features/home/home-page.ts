@@ -59,7 +59,8 @@ import { HojeUltimas, modeloUltimas, rotaVenda, UltimaVenda } from './hoje-ultim
         />
         <ce-hoje-cartao
           variante="fiado"
-          [valor]="totalFiado() | cePreco"
+          [valor]="totalFiado() === 0 ? 'Em dia' : (totalFiado() | cePreco)"
+          [zerado]="totalFiado() === 0"
           [status]="fiadoStatus()"
           (abrir)="ir(rotaClientes('fiado'))"
         />

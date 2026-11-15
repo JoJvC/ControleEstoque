@@ -146,6 +146,18 @@ describe('HomePage', () => {
     expect(el.textContent?.replace(/\s/g, ' ')).toContain('R$ 350,00');
   });
 
+  it('fiado total > 0 fica no tom fiado', async () => {
+    const { el } = await montar();
+    expect(el.querySelector('.cartao--fiado')).not.toBeNull();
+    expect(el.querySelector('.cartao--pago')).toBeNull();
+  });
+
+  it('fiado total 0 mostra "Em dia" no tom pago', async () => {
+    const { el } = await montar({ fiado: { totalAReceber: 0 } });
+    expect(el.querySelector('.cartao--pago')?.textContent).toContain('Em dia');
+    expect(el.querySelector('.cartao--fiado')).toBeNull();
+  });
+
   it('carregando antes de responder', async () => {
     const { el } = await montar({ pendentes: true });
     expect(el.querySelectorAll('ce-skeleton').length).toBe(5);

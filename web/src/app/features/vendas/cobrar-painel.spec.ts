@@ -46,6 +46,7 @@ const ESTADO: CobrarEstado = {
   cascosNaHora: false,
   clienteNome: 'Ana',
   pagamentos: [{ forma: 'PIX', valor: 200 }],
+  creditoDisponivel: null,
   excede: false,
   erro: null,
   enviando: false,

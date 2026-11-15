@@ -1,5 +1,13 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, Signal, inject, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  Signal,
+  computed,
+  inject,
+  input,
+  output,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { rotuloDaMarca } from '../../core/api/produto-leitura';
@@ -10,7 +18,7 @@ import { Icon } from '../../ui/atoms/icon';
 import { FormField } from '../../ui/molecules/form-field';
 import { MoneyInput } from '../../ui/molecules/money-input';
 import { QuantityStepper } from '../../ui/molecules/quantity-stepper';
-import { FORMAS, PagamentoEdicao } from '../../ui/organisms/pagamento-lista';
+import { PagamentoEdicao } from '../../ui/organisms/pagamento-lista';
 import { SheetShell } from '../../ui/organisms/sheet-shell';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import {
@@ -23,6 +31,9 @@ import {
   valorDoAtalho,
 } from './carrinho';
 import { TipoCascoDoCarrinho } from './cascos-por-tipo';
+import { FORMA_CREDITO, formasDaVenda, limitarCredito } from './pagamento-credito';
+import { rotuloForma } from './venda-rotulos';
+import { FormaPagamento } from '../../core/api/models/vendas';
 
 /** Um tipo de casco do carrinho, com o que já foi lançado e o feedback de casco na rua. */
 export interface CascoTipoEstado extends TipoCascoDoCarrinho {
@@ -44,6 +55,8 @@ export interface CobrarEstado {
   /** Primeiro nome do cliente; null quando o número de casco só conta o que vai nesta venda. */
   readonly clienteNome: string | null;
   readonly pagamentos: readonly PagamentoEdicao[];
+  /** Crédito do cliente da venda; null sem cliente ou sem saldos carregados. */
+  readonly creditoDisponivel: number | null;
   readonly excede: boolean;
   readonly erro: string | null;
   readonly enviando: boolean;
@@ -163,7 +176,7 @@ export type CobrarAcao =
 
       <h3 class="titulo">Pagamento</h3>
       <div class="formas" role="group" aria-label="Formas de pagamento">
-        @for (forma of formas; track forma.value) {
+        @for (forma of formas(); track forma.value) {
           <button
             type="button"
             class="forma"
@@ -182,6 +195,7 @@ export type CobrarAcao =
             class="forma-linha__campo"
             [rotulo]="'Valor em ' + rotuloDe(pagamento.forma)"
             [ngModel]="pagamento.valor"
+            [maximo]="pagamento.forma === formaCredito ? (e.creditoDisponivel ?? 0) : null"
             (ngModelChange)="mudarValor(indice, $event)"
           />
         </div>
@@ -408,7 +422,8 @@ export class CobrarPainel {
   readonly acao = output<CobrarAcao>();
 
   protected readonly mensagemExcede = mensagemDoErro('PAGAMENTO_EXCEDE_TOTAL', 422);
-  protected readonly formas = FORMAS;
+  protected readonly formas = computed(() => formasDaVenda(this.estado().creditoDisponivel));
+  protected readonly formaCredito = FORMA_CREDITO;
   protected readonly fiadoDe = fiadoDe;
   protected readonly rotuloCascoNaRua = rotuloCascoNaRua;
   protected readonly rotuloMarca = rotuloDaMarca;
@@ -420,7 +435,7 @@ export class CobrarPainel {
   }
 
   protected rotuloDe(forma: string): string {
-    return FORMAS.find((f) => f.value === forma)?.label ?? forma;
+    return rotuloForma(forma as FormaPagamento);
   }
 
   protected selecionada(forma: string): boolean {
@@ -444,13 +459,13 @@ export class CobrarPainel {
   }
 
   protected temOutraForma(): boolean {
-    return this.estado().pagamentos.length < FORMAS.length;
+    return this.estado().pagamentos.length < this.formas().length;
   }
 
   /** Divide o pagamento: acrescenta a primeira forma livre já com o que falta pagar. */
   protected outraForma(): void {
     const { pagamentos, totais } = this.estado();
-    const livre = FORMAS.find((f) => !pagamentos.some((p) => p.forma === f.value));
+    const livre = this.formas().find((f) => !pagamentos.some((p) => p.forma === f.value));
     if (!livre) {
       return;
     }
@@ -462,9 +477,18 @@ export class CobrarPainel {
   }
 
   protected mudarValor(indice: number, valor: number | null): void {
+    const { pagamentos, creditoDisponivel } = this.estado();
     this.acao.emit({
       tipo: 'pagamentos',
-      valor: this.estado().pagamentos.map((p, i) => (i === indice ? { ...p, valor } : p)),
+      valor: pagamentos.map((p, i) => {
+        if (i !== indice) {
+          return p;
+        }
+        if (p.forma !== FORMA_CREDITO || valor === null) {
+          return { ...p, valor };
+        }
+        return { ...p, valor: limitarCredito(valor, creditoDisponivel ?? 0, 0) };
+      }),
     });
   }
 

@@ -8,6 +8,15 @@ import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { ClientesStore } from './clientes-store';
 
 const CLIENTES = '/api/clientes/v1/clientes';
+const SALDOS = {
+  saldoCascos: 3,
+  sucataEntregue: 1,
+  saldoFiado: 50,
+  saldo: -50,
+  creditoDisponivel: 0,
+  cascosPorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', saldo: 3 }],
+  sucataPorTipo: [],
+};
 const FIADO = '/api/financeiro/v1/clientes/c-1/fiado/pagamentos';
 
 describe('ClientesStore — saldos e operações', () => {
@@ -31,10 +40,8 @@ describe('ClientesStore — saldos e operações', () => {
   it('carregarSaldos põe os saldos e status ok', () => {
     store.carregarSaldos('c-1');
     expect(store.statusSaldos()).toBe('loading');
-    http
-      .expectOne(`${CLIENTES}/c-1/saldos`)
-      .flush({ saldoCascos: 3, sucataEntregue: 1, saldoFiado: 50 });
-    expect(store.saldos()).toEqual({ saldoCascos: 3, sucataEntregue: 1, saldoFiado: 50 });
+    http.expectOne(`${CLIENTES}/c-1/saldos`).flush(SALDOS);
+    expect(store.saldos()).toEqual(SALDOS);
     expect(store.statusSaldos()).toBe('ok');
     expect(store.erroSaldos()).toBeNull();
   });
@@ -54,16 +61,14 @@ describe('ClientesStore — saldos e operações', () => {
 
   it('trocar de cliente zera os saldos antes da resposta', () => {
     store.carregarSaldos('c-1');
-    http
-      .expectOne(`${CLIENTES}/c-1/saldos`)
-      .flush({ saldoCascos: 3, sucataEntregue: 1, saldoFiado: 50 });
+    http.expectOne(`${CLIENTES}/c-1/saldos`).flush(SALDOS);
 
     store.carregarSaldos('c-2');
     expect(store.saldos()).toBeNull();
     expect(store.statusSaldos()).toBe('loading');
     http
       .expectOne(`${CLIENTES}/c-2/saldos`)
-      .flush({ saldoCascos: 0, sucataEntregue: 0, saldoFiado: 0 });
+      .flush({ ...SALDOS, saldoCascos: 0, saldoFiado: 0, saldo: 0 });
     expect(store.saldos()?.saldoCascos).toBe(0);
   });
 
@@ -74,7 +79,7 @@ describe('ClientesStore — saldos e operações', () => {
     expect(antiga.cancelled).toBe(true);
     http
       .expectOne(`${CLIENTES}/c-2/saldos`)
-      .flush({ saldoCascos: 7, sucataEntregue: 0, saldoFiado: 0 });
+      .flush({ ...SALDOS, saldoCascos: 7, sucataEntregue: 0, saldoFiado: 0 });
     expect(store.saldos()?.saldoCascos).toBe(7);
     expect(store.statusSaldos()).toBe('ok');
   });
@@ -212,9 +217,9 @@ describe('ClientesStore — filtros e relatórios', () => {
   it('abrir carrega os dois relatórios uma vez e trocar de chip não refaz as cargas', () => {
     store.abrir('todos');
     http.expectOne((r) => r.url === CLIENTES).flush([ANA]);
-    http.expectOne(FIADO_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoDevedor: 5 }]);
+    http.expectOne(FIADO_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoDevedor: 5, saldo: -5 }]);
     http.expectOne(CASCOS_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoCascos: 2 }]);
-    expect(store.linhas()).toMatchObject([{ id: 'a', saldoFiado: 5, saldoCascos: 2 }]);
+    expect(store.linhas()).toMatchObject([{ id: 'a', saldo: -5, saldoCascos: 2 }]);
 
     store.definirFiltro('fiado');
     store.definirFiltro('casco');
@@ -228,7 +233,7 @@ describe('ClientesStore — filtros e relatórios', () => {
     store.abrir('fiado');
     http.expectNone((r) => r.url === CLIENTES);
     http.expectOne(CASCOS_REL).flush([]);
-    http.expectOne(FIADO_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoDevedor: 5 }]);
+    http.expectOne(FIADO_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoDevedor: 5, saldo: -5 }]);
     expect(store.linhas().map((l) => l.nome)).toEqual(['Ana']);
     expect(store.temMaisLista()).toBe(false);
   });
@@ -259,7 +264,7 @@ describe('ClientesStore — filtros e relatórios', () => {
     http.expectOne(CASCOS_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoCascos: 2 }]);
     expect(store.statusLista()).toBe('ok');
     expect(store.linhas()).toMatchObject([{ id: 'a', saldoCascos: 2 }]);
-    expect(store.linhas()[0].saldoFiado).toBeUndefined();
+    expect(store.linhas()[0].saldo).toBeUndefined();
   });
 
   it('relatório do chip atual com falha vira erro da lista e recarregar tenta de novo', () => {

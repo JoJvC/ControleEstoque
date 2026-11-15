@@ -100,6 +100,8 @@ const SALDOS: SaldosResponse = {
   saldoCascos: 3,
   sucataEntregue: 0,
   saldoFiado: 40,
+  saldo: -40,
+  creditoDisponivel: 0,
   cascosPorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', saldo: 3 }],
   sucataPorTipo: [],
 };
@@ -107,9 +109,12 @@ const SALDOS_ZERO: SaldosResponse = {
   saldoCascos: 0,
   sucataEntregue: 0,
   saldoFiado: 0,
+  saldo: 0,
+  creditoDisponivel: 0,
   cascosPorTipo: [],
   sucataPorTipo: [],
 };
+const SALDOS_CREDITO: SaldosResponse = { ...SALDOS_ZERO, saldo: 30, creditoDisponivel: 30 };
 
 // A sheet Cobrar é a SheetService de verdade (Esc e Fechar valem); só a sheet do item é dublê.
 async function montar(
@@ -537,6 +542,7 @@ describe('PdvPage: venda em uma tela', () => {
     expect(t.texto(topo)).toContain('Ana');
     expect(t.texto(topo)).toMatch(/Casco 3/);
     expect(t.texto(topo)).toMatch(/Fiado R\$ 40,00/);
+    expect(topo.querySelector('.chip--fiado')).not.toBeNull();
 
     await t.clicar('Trocar');
     expect(t.el.querySelector('.cliente-fixo')).toBeNull();
@@ -621,6 +627,23 @@ describe('PdvPage: cobrar no celular (sheet)', () => {
     expect(t.barra()).toContain('1 item');
   });
 
+  it('chip de saldo positivo é "Crédito R$ x" em tom pago', async () => {
+    const t = await montar();
+    await t.escolherCliente(cliente('c-1', 'Ana'), SALDOS_CREDITO);
+    const topo = t.el.querySelector<HTMLElement>('.cliente-fixo')!;
+    expect(t.texto(topo)).toMatch(/Crédito R\$ 30,00/);
+    expect(topo.querySelector('.chip--pago')).not.toBeNull();
+    expect(topo.querySelector('.chip--fiado')).toBeNull();
+  });
+
+  it('chip de saldo zerado é "Em dia" em tom pago', async () => {
+    const t = await montar();
+    await t.escolherCliente(cliente('c-1', 'Ana'), SALDOS_ZERO);
+    const topo = t.el.querySelector<HTMLElement>('.cliente-fixo')!;
+    expect(t.texto(topo)).toContain('Em dia');
+    expect(topo.querySelector('.chip--pago')).not.toBeNull();
+  });
+
   it('o painel da sheet reage ao que se digita; ao ir para o desktop a sheet fecha e o painel fica na tela', async () => {
     const t = await montar();
     await t.escolherCliente(cliente('c-1', 'Ana'));
@@ -681,6 +704,8 @@ describe('PdvPage: cobrar no celular (sheet)', () => {
       saldoCascos: 2,
       sucataEntregue: 1,
       saldoFiado: 90,
+      saldo: -90,
+      creditoDisponivel: 0,
       cascosPorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', saldo: 2 }],
       sucataPorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', quantidade: 1 }],
     });
@@ -983,6 +1008,76 @@ describe('PdvPage: cobrar no desktop (painel à direita)', () => {
 
     expect(t.exato(t.painel(), 'Dinheiro')[0].getAttribute('aria-pressed')).toBe('false');
     expect(t.valores()).toEqual(['250,00']);
+  });
+
+  describe('pagar com Crédito do cliente', () => {
+    const comCredito = async (saldos: SaldosResponse = SALDOS_CREDITO) => {
+      const t = await montar(undefined, { desktop: true });
+      await t.escolherCliente(cliente('c-1', 'Ana'), saldos);
+      await t.tocar(AGUA, 5);
+      return t;
+    };
+
+    it('crédito 30, digitar 80 no campo: fica em 30 e o pedido leva CREDITO_CLIENTE 30', async () => {
+      const t = await comCredito();
+      t.exato(t.painel(), 'Crédito do cliente')[0].click();
+      await assentar(t.fixture);
+      expect(t.valores()).toEqual(['30,00']);
+
+      await t.digitar(t.campoDoPainel('ce-money-input input'), '1000');
+      expect(t.valores()).toEqual(['10,00']);
+      await t.digitar(t.campoDoPainel('ce-money-input input'), '8000');
+      expect(t.valores()).toEqual(['30,00']);
+      expect(t.texto(t.painel())).toMatch(/Vai para fiado: R\$ 220,00/);
+
+      await t.clicarNoPainel('Confirmar venda');
+      const req = t.http.expectOne(URL_VENDAS);
+      expect(req.request.body.pagamentos).toEqual([{ forma: 'CREDITO_CLIENTE', valor: 30 }]);
+    });
+
+    it('Trocar de cliente tira a forma e a linha de crédito; "Vai para fiado" volta ao total', async () => {
+      const t = await comCredito();
+      t.exato(t.painel(), 'Crédito do cliente')[0].click();
+      await assentar(t.fixture);
+      await t.digitar(t.campoDoPainel('ce-money-input input'), '3000');
+      expect(t.valores()).toEqual(['30,00']);
+      expect(t.texto(t.painel())).toMatch(/Vai para fiado: R\$ 220,00/);
+
+      await t.clicar('Trocar');
+      expect(t.el.querySelector('ce-cobrar-painel')).toBeNull(); // sem cliente não há cobrança
+
+      await t.escolherCliente(cliente('c-2', 'Bia'), SALDOS_ZERO);
+      expect(t.valores()).toEqual([]);
+      expect(t.exato(t.painel(), 'Crédito do cliente')).toHaveLength(0);
+      expect(t.texto(t.painel())).toMatch(/Vai para fiado: R\$ 250,00/);
+    });
+
+    it('sem crédito disponível a forma não é oferecida', async () => {
+      const t = await comCredito(SALDOS_ZERO);
+      expect(t.exato(t.painel(), 'Crédito do cliente')).toHaveLength(0);
+      expect(t.exato(t.painel(), 'PIX')).toHaveLength(1);
+    });
+
+    it('CREDITO_INSUFICIENTE mostra a mensagem e recarrega os saldos', async () => {
+      const t = await comCredito();
+      t.exato(t.painel(), 'Crédito do cliente')[0].click();
+      await assentar(t.fixture);
+
+      await t.clicarNoPainel('Confirmar venda');
+      t.http
+        .expectOne(URL_VENDAS)
+        .flush(
+          { code: 'CREDITO_INSUFICIENTE', message: 'x', traceId: 't' },
+          { status: 422, statusText: 'Unprocessable Entity' },
+        );
+      await assentar(t.fixture);
+      t.http.expectOne('/api/clientes/v1/clientes/c-1/saldos').flush(SALDOS_ZERO);
+      await assentar(t.fixture);
+
+      expect(t.alertas()).toContain('Crédito do cliente insuficiente');
+      expect(t.exato(t.painel(), 'Crédito do cliente')).toHaveLength(0);
+      expect(t.valores()).toEqual([]);
+    });
   });
 
   it('o número de cascos na rua soma o saldo do cliente (3) à água da venda e tira os devolvidos', async () => {
@@ -1321,6 +1416,27 @@ describe('PdvPage em modo edição', () => {
     await t.responderSaldos('c-1');
     return t;
   }
+
+  it('teto do crédito na edição: saldo 20 + estorno da venda (20 de crédito + 60 de fiado) = 100', async () => {
+    const t = await montar('v-1');
+    t.http.expectOne(`${URL_VENDAS}/v-1`).flush({
+      ...VENDA_EDICAO,
+      totalLiquido: 80,
+      pagamentos: [{ forma: 'CREDITO_CLIENTE', valor: 20 }],
+    });
+    await assentar(t.fixture);
+    t.http.expectOne('/api/clientes/v1/clientes/c-1').flush(cliente('c-1', 'Ana'));
+    await assentar(t.fixture);
+    t.http
+      .expectOne('/api/clientes/v1/clientes/c-1/saldos')
+      .flush({ ...SALDOS_ZERO, saldo: 20, creditoDisponivel: 20 });
+    await assentar(t.fixture);
+    await t.cobrar();
+
+    expect(t.valores()).toEqual(['20,00']);
+    await t.digitar(t.campoDoPainel('ce-money-input input'), '15000');
+    expect(t.valores()).toEqual(['100,00']);
+  });
 
   async function responderLista(t: T) {
     t.http.expectOne((r) => r.method === 'GET' && r.url === URL_VENDAS).flush([]);

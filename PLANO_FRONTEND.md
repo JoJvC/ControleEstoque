@@ -346,7 +346,7 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 
 ## 8. Regras Críticas de UI
 
-**As 11 regras que modelos executores mais erram construindo estas telas. Em dúvida, esta seção vence.**
+**As 14 regras que modelos executores mais erram construindo estas telas. Em dúvida, esta seção vence.**
 
 1. **Casco normal ≠ sucata — nunca no mesmo campo, nunca somados.** São dois inputs, dois chips de saldo, duas cores. Toda tela que registra sucata exibe o aviso de que **não abate** o débito de casco. *Erro típico: um campo único "vasilhames devolvidos".*
 
@@ -369,6 +369,12 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 10. **"Pagou o vasilhame" é por linha.** Só em linha retornável com tipo de casco resolvido; vem desmarcado (troca ou empréstimo). Marcado, o bruto da linha soma `quantidade × preço do vasilhame` do tipo, antes do desconto, e a linha indica o vasilhame pago. Linha descartável não mostra a opção.
 
 11. **Busca por nome, marca ou categoria, com sugestão que filtra.** A API não busca por texto: o filtro é no front, sobre a lista carregada, sem acento e sem diferenciar caixa. As sugestões (nome, marca, categoria; no máximo 8) aparecem sob a caixa; escolher uma filtra a lista, mostra o filtro como chip com botão de limpar e esvazia o texto.
+
+12. **Saldo único: fiado, crédito ou em dia, com a cor de cada um.** O servidor manda um só `saldo` (negativo = fiado, positivo = crédito, zero = em dia). A tela só classifica (`classificarSaldo`) e mostra o módulo: "Fiado R$ x" no tom `fiado`, "Crédito R$ x" e "Em dia" no tom `pago`. Vale para os chips do cliente na venda, a ficha, a lista de clientes e o cartão "Fiado a receber" de Hoje (total 0 = "Em dia", tom pago). Só tokens existentes (`--ce-fiado*`, `--ce-pago*`); o front não soma nem recalcula saldo. A lista "Com fiado" fica só com saldo negativo.
+
+13. **Casco por tipo: só saldo ≠ 0, e negativo é "a favor do cliente".** O chip de casco da venda (ao tocar) e o tile "Cascos com ele" da ficha listam `nome = saldo` por tipo (função `linhasCascoPorTipo`), sem tipo zerado. Saldo negativo vira "Casco 5L = 1 a favor do cliente". O total vem do campo do servidor.
+
+14. **"Crédito do cliente" é forma de pagamento da venda, limitada ao crédito disponível.** A forma só aparece na cobrança com cliente e `creditoDisponivel > 0` (`formasDaVenda`); `FORMAS` não a contém, então receber fiado e pagar venda lançada não a oferecem. O valor digitado nela é limitado a `max(0, min(digitado, disponível − já usado em outra linha de crédito))` (`limitarCredito`), no campo e no pedido. Erro `CREDITO_INSUFICIENTE` (422): mensagem "Crédito do cliente insuficiente" e recarga dos saldos. Na edição da venda o limite soma o crédito que a própria venda já usava.
 
 ---
 

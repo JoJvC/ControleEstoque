@@ -4,6 +4,7 @@ import { ItemCarrinho } from './carrinho';
 import {
   TipoCascoDoCarrinho,
   cascosParaRequest,
+  linhasCascoPorTipo,
   quantidadeDevolvida,
   tiposCascoDoCarrinho,
 } from './cascos-por-tipo';
@@ -122,5 +123,21 @@ describe('cascosParaRequest', () => {
   it('sucata só entra para tipo que aceita sucata', () => {
     const r = cascosParaRequest(tipos, false, {}, { 't-1': 2, 't-2': 3 });
     expect(r.sucataEntregue).toEqual([{ tipoCascoId: 't-1', quantidade: 2 }]);
+  });
+});
+
+describe('linhasCascoPorTipo', () => {
+  it('só tipos com saldo ≠ 0; negativo aparece como "a favor do cliente"', () => {
+    expect(
+      linhasCascoPorTipo([
+        { tipoCascoId: 't-1', nome: 'Casco 20L', saldo: 3 },
+        { tipoCascoId: 't-2', nome: 'Casco 10L', saldo: 0 },
+        { tipoCascoId: 't-3', nome: 'Casco 5L', saldo: -1 },
+      ]),
+    ).toEqual(['Casco 20L = 3', 'Casco 5L = 1 a favor do cliente']);
+  });
+
+  it('sem nenhum saldo: lista vazia', () => {
+    expect(linhasCascoPorTipo([{ tipoCascoId: 't-1', nome: 'Casco 20L', saldo: 0 }])).toEqual([]);
   });
 });

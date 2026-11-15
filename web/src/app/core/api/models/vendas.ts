@@ -1,7 +1,8 @@
 // Espelho manual de src/vendas/ControleEstoque.Vendas.Contracts — não inventar campos.
 // Enums serializam como string (JsonStringEnumConverter).
 
-export type FormaPagamento = 'PIX' | 'CARTAO_CREDITO' | 'CARTAO_DEBITO' | 'DINHEIRO' | 'OUTRO';
+export type FormaPagamento =
+  'PIX' | 'CARTAO_CREDITO' | 'CARTAO_DEBITO' | 'DINHEIRO' | 'OUTRO' | 'CREDITO_CLIENTE';
 
 export type StatusPagamento = 'PENDENTE' | 'PARCIAL' | 'PAGA';
 

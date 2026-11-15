@@ -18,7 +18,7 @@ const CASCOS_REL = '/api/clientes/v1/relatorios/cascos';
 
 const ANA = { id: 'a', nome: 'Ana', telefone: '11', observacoes: null, enderecos: [] };
 const BIA = { id: 'b', nome: 'Bia', telefone: null, observacoes: null, enderecos: [] };
-const FIADO = [{ clienteId: 'f', nome: 'Fátima', saldoDevedor: 42.5 }];
+const FIADO = [{ clienteId: 'f', nome: 'Fátima', saldoDevedor: 42.5, saldo: -42.5 }];
 const CASCOS = [{ clienteId: 'c', nome: 'Caio', saldoCascos: 6 }];
 
 interface Opcoes {
@@ -68,7 +68,18 @@ async function montar(opcoes: Opcoes = {}) {
       [(u) => u === CLIENTES, opcoes.clientes ?? [ANA, BIA]],
       [(u) => u === FIADO_REL, FIADO],
       [(u) => u === CASCOS_REL, CASCOS],
-      [(u) => u.endsWith('/saldos'), { saldoCascos: 1, sucataEntregue: 0, saldoFiado: 1 }],
+      [
+        (u) => u.endsWith('/saldos'),
+        {
+          saldoCascos: 1,
+          sucataEntregue: 0,
+          saldoFiado: 1,
+          saldo: -1,
+          creditoDisponivel: 0,
+          cascosPorTipo: [],
+          sucataPorTipo: [],
+        },
+      ],
       [(u) => u === '/api/vendas/v1/vendas', []],
       [
         (u) => u.startsWith(`${CLIENTES}/`),
@@ -132,7 +143,7 @@ describe('ClientesPage — lista e chips', () => {
     expect(t.chip('Com fiado').getAttribute('aria-pressed')).toBe('true');
     expect(t.chip('Todos').getAttribute('aria-pressed')).toBe('false');
     expect(t.nomes()).toEqual(['Fátima']);
-    expect(t.texto()).toContain('R$ 42,50 fiado');
+    expect(t.texto()).toContain('Fiado R$ 42,50');
 
     t.chip('Com casco').click();
     await assentar(t.fixture);
@@ -166,7 +177,7 @@ describe('ClientesPage — lista e chips', () => {
     });
     const ana = (t.linha('Ana').textContent ?? '').replace(/\s+/g, ' ');
     expect(ana).toContain('11');
-    expect(ana).toContain('R$ 42,50 fiado');
+    expect(ana).toContain('Fiado R$ 42,50');
     expect(t.linha('Bia').textContent).not.toContain('fiado');
   });
 

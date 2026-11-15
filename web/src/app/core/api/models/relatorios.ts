@@ -66,6 +66,8 @@ export interface SaldoFiadoCliente {
   clienteId: string;
   nome: string;
   saldoDevedor: number;
+  /** Saldo único: negativo é fiado, positivo é crédito. */
+  saldo: number;
 }
 
 export interface TotalFiadoResponse {

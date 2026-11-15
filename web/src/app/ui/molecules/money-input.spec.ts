@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 
@@ -6,10 +6,11 @@ import { MoneyInput } from './money-input';
 
 @Component({
   imports: [MoneyInput, ReactiveFormsModule],
-  template: `<ce-money-input [formControl]="control" />`,
+  template: `<ce-money-input [formControl]="control" [maximo]="maximo()" />`,
 })
 class Host {
   readonly control = new FormControl<number | null>(null);
+  readonly maximo = signal<number | null>(null);
 }
 
 async function montar() {
@@ -26,6 +27,17 @@ function digitar(input: HTMLInputElement, texto: string): void {
 }
 
 describe('MoneyInput', () => {
+  it('com teto, o digitado acima dele fica no teto (campo e valor)', async () => {
+    const { fixture, input, control } = await montar();
+    fixture.componentInstance.maximo.set(30);
+    await fixture.whenStable();
+
+    digitar(input, '8000');
+
+    expect(control.value).toBe(30);
+    expect(input.value).toBe('30,00');
+  });
+
   it('dígitos preenchem centavos: "1234" → 12,34 reais', async () => {
     const { input, control } = await montar();
 

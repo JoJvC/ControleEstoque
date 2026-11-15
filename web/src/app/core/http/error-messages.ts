@@ -10,6 +10,7 @@ const MENSAGENS: Record<string, string> = {
   CLIENTE_NAO_ENCONTRADO: 'Cliente não encontrado.',
   PAGAMENTO_EXCEDE_TOTAL: 'A soma dos pagamentos ultrapassa o total da venda.',
   PAGAMENTO_EXCEDE_SALDO: 'O valor do pagamento é maior que o saldo devedor.',
+  CREDITO_INSUFICIENTE: 'Crédito do cliente insuficiente',
   DESCONTO_SEM_MOTIVO: 'Informe o motivo do desconto.',
   DESCONTO_INVALIDO: 'Valor do desconto inválido.',
   DESCONTO_MAIOR_QUE_ITEM: 'O desconto não pode exceder o valor do item.',

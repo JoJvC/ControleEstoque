@@ -21,7 +21,19 @@ import { ReceberFiadoSheet } from './receber-fiado-sheet';
 const CLIENTE_URL = '/api/clientes/v1/clientes/c-1';
 const SALDOS_URL = `${CLIENTE_URL}/saldos`;
 const CLIENTE = { id: 'c-1', nome: 'Maria', telefone: null, observacoes: null, enderecos: [] };
-const SALDOS = { saldoCascos: 3, sucataEntregue: 2, saldoFiado: 50 };
+const SALDOS = {
+  saldoCascos: 3,
+  sucataEntregue: 2,
+  saldoFiado: 50,
+  saldo: -50,
+  creditoDisponivel: 0,
+  cascosPorTipo: [
+    { tipoCascoId: 't-1', nome: 'Casco 20L', saldo: 3 },
+    { tipoCascoId: 't-2', nome: 'Casco 10L', saldo: 0 },
+    { tipoCascoId: 't-3', nome: 'Casco 5L', saldo: -1 },
+  ],
+  sucataPorTipo: [],
+};
 
 async function assentar(fixture: ComponentFixture<unknown>): Promise<void> {
   await new Promise((r) => setTimeout(r, 0));
@@ -41,7 +53,7 @@ const VENDA = {
 async function montar(
   permissoes: string[] = ['*'],
   historico: unknown[] = [VENDA],
-  opcoes: { desktop?: boolean; filtro?: string; cliente?: unknown } = {},
+  opcoes: { desktop?: boolean; filtro?: string; cliente?: unknown; saldos?: unknown } = {},
 ) {
   const abrir = vi.fn();
   TestBed.configureTestingModule({
@@ -69,7 +81,7 @@ async function montar(
   fixture.detectChanges();
   await assentar(fixture);
   http.expectOne(CLIENTE_URL).flush(opcoes.cliente ?? CLIENTE);
-  http.expectOne(SALDOS_URL).flush(SALDOS);
+  http.expectOne(SALDOS_URL).flush(opcoes.saldos ?? SALDOS);
   http.expectOne(HISTORICO).flush(historico);
   await assentar(fixture);
   const el = fixture.nativeElement as HTMLElement;
@@ -148,12 +160,35 @@ describe('ClienteDetalhePage — saldos', () => {
     const chips = t.chips();
     expect(chips).toHaveLength(3);
     expect(chips[0].texto).toContain('Cascos com ele 3');
-    expect(chips[1].texto).toMatch(/^Fiado R\$\s50,00$/);
+    expect(chips[1].texto).toMatch(/^Saldo Fiado R\$\s50,00$/);
     expect(chips[2].texto).toContain('Sucata entregue 2');
     expect(chips[0].classe).toContain('bloco--casco');
     expect(chips[1].classe).toContain('bloco--fiado');
     expect(chips[2].classe).toContain('bloco--sucata');
     expect(t.el.textContent).not.toMatch(/\b5\b/); // 3 + 2: nada somado
+  });
+
+  it('Cascos com ele lista por tipo só os saldos ≠ 0, com negativo "a favor do cliente"', async () => {
+    const t = await montar();
+    const itens = Array.from(t.el.querySelectorAll('.casco-lista li')).map((li) => li.textContent);
+    expect(itens).toEqual(['Casco 20L = 3', 'Casco 5L = 1 a favor do cliente']);
+  });
+
+  it('saldo positivo é crédito no tom pago; zerado é "Em dia" no tom pago', async () => {
+    const credito = await montar(['*'], [VENDA], {
+      saldos: { ...SALDOS, saldoFiado: 0, saldo: 25, creditoDisponivel: 25 },
+    });
+    const [, c] = credito.chips();
+    expect(c.texto).toMatch(/^Saldo Crédito R\$\s25,00$/);
+    expect(c.classe).toContain('bloco--pago');
+    expect(c.classe).not.toContain('bloco--fiado');
+  });
+
+  it('saldo 0 mostra "Em dia" no tom pago', async () => {
+    const t = await montar(['*'], [VENDA], { saldos: { ...SALDOS, saldoFiado: 0, saldo: 0 } });
+    const [, c] = t.chips();
+    expect(c.texto).toBe('Saldo Em dia');
+    expect(c.classe).toContain('bloco--pago');
   });
 
   it('cada tile mostra legenda e botão: texto fixo dos 3 rótulos e das duas legendas', async () => {
@@ -175,7 +210,9 @@ describe('ClienteDetalhePage — saldos', () => {
     t.abrir.mockReturnValue({ closed: of({ novoSaldoCascos: 0, novoSaldoFiado: 0 }) });
     t.botao('Receber fiado').click();
     await assentar(t.fixture);
-    t.http.expectOne(SALDOS_URL).flush({ saldoCascos: 0, sucataEntregue: 0, saldoFiado: 0 });
+    t.http
+      .expectOne(SALDOS_URL)
+      .flush({ ...SALDOS, saldoCascos: 0, saldoFiado: 0, saldo: 0, cascosPorTipo: [] });
     t.historicoPendente().forEach((r) => r.flush([]));
     await assentar(t.fixture);
     expect(t.botao('Recolher cascos').disabled).toBe(true);
@@ -201,10 +238,10 @@ describe('ClienteDetalhePage — saldos', () => {
     t.botao('Receber fiado').click();
     await assentar(t.fixture);
     expect(t.toasts()).toContain('Pagamento registrado. Fiado: R$ 0,00.');
-    t.http.expectOne(SALDOS_URL).flush({ ...SALDOS, saldoFiado: 0 });
+    t.http.expectOne(SALDOS_URL).flush({ ...SALDOS, saldoFiado: 0, saldo: 0 });
     t.historicoPendente().forEach((r) => r.flush([]));
     await assentar(t.fixture);
-    expect(t.chips()[1].texto).toMatch(/R\$\s0,00$/);
+    expect(t.chips()[1].texto).toBe('Saldo Em dia');
   });
 
   it('fechar sem resposta não faz GET nem toast', async () => {
@@ -243,22 +280,22 @@ describe('ClienteDetalhePage — saldos', () => {
       {
         botao: 'Recolher cascos',
         resposta: { novoSaldoCascos: 2 },
-        saldos: { saldoCascos: 2, sucataEntregue: 2, saldoFiado: 50 },
+        saldos: { ...SALDOS, saldoCascos: 2, sucataEntregue: 2, saldoFiado: 50, saldo: -50 },
       },
       {
         botao: 'Recolher cascos',
         resposta: { novoSaldoCascos: 0, novoSaldoFiado: 110 },
-        saldos: { saldoCascos: 0, sucataEntregue: 2, saldoFiado: 110 },
+        saldos: { ...SALDOS, saldoCascos: 0, sucataEntregue: 2, saldoFiado: 110, saldo: -110 },
       },
       {
         botao: 'Entregar sucata',
         resposta: { totalSucataEntregue: 5, novoSaldoFiado: 95 },
-        saldos: { saldoCascos: 0, sucataEntregue: 5, saldoFiado: 95 },
+        saldos: { ...SALDOS, saldoCascos: 0, sucataEntregue: 5, saldoFiado: 95, saldo: -95 },
       },
       {
         botao: 'Receber fiado',
         resposta: { novoSaldoFiado: 45 },
-        saldos: { saldoCascos: 0, sucataEntregue: 5, saldoFiado: 45 },
+        saldos: { ...SALDOS, saldoCascos: 0, sucataEntregue: 5, saldoFiado: 45, saldo: -45 },
       },
     ];
     for (const passo of passos) {
@@ -271,7 +308,7 @@ describe('ClienteDetalhePage — saldos', () => {
     }
     const chips = t.chips();
     expect(chips[0].texto).toContain('Cascos com ele 0');
-    expect(chips[1].texto).toMatch(/^Fiado R\$\s45,00$/);
+    expect(chips[1].texto).toMatch(/^Saldo Fiado R\$\s45,00$/);
     expect(chips[2].texto).toContain('Sucata entregue 5');
     expect(t.toasts()).toHaveLength(4);
   });

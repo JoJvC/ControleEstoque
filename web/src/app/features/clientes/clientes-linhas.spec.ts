@@ -33,8 +33,8 @@ function cliente(id: string, nome: string, bairro: string | null, telefone: stri
 }
 
 const FIADO = [
-  { clienteId: 'a', nome: 'Ana', saldoDevedor: 42.5 },
-  { clienteId: 'z', nome: 'ZÉ', saldoDevedor: -10 },
+  { clienteId: 'a', nome: 'Ana', saldoDevedor: 42.5, saldo: -42.5 },
+  { clienteId: 'z', nome: 'ZÉ', saldoDevedor: -10, saldo: 10 },
 ];
 const CASCOS = [
   { clienteId: 'a', nome: 'Ana', saldoCascos: 6 },
@@ -58,7 +58,6 @@ describe('montarLinhas', () => {
   });
 
   it('fiado e casco filtram por termo sem diferenciar maiúsculas e minúsculas', () => {
-    expect(montarLinhas('fiado', [], FIADO, CASCOS, 'zé').map((l) => l.id)).toEqual(['z']);
     expect(montarLinhas('fiado', [], FIADO, CASCOS, ' AN ').map((l) => l.id)).toEqual(['a']);
     expect(montarLinhas('casco', [], FIADO, CASCOS, 'bIa').map((l) => l.id)).toEqual(['b']);
     expect(montarLinhas('casco', [], FIADO, CASCOS, 'zzz')).toEqual([]);
@@ -71,21 +70,32 @@ describe('montarLinhas', () => {
       nome: 'Ana',
       secundario: undefined,
       saldoCascos: 6,
-      saldoFiado: 42.5,
+      saldo: -42.5,
     });
   });
 
   it('selo ausente com saldo 0 ou cliente fora do relatório', () => {
     const [ana] = montarLinhas('todos', [cliente('a', 'Ana', null, null)], [], CASCOS, '');
-    expect(ana.saldoFiado).toBeUndefined();
+    expect(ana.saldo).toBeUndefined();
     expect(ana.saldoCascos).toBe(6);
     const [bia] = montarLinhas('casco', [], [], CASCOS, 'bia');
     expect(bia.saldoCascos).toBeUndefined();
   });
 
-  it('saldo negativo passa como vem', () => {
-    const [ze] = montarLinhas('fiado', [], FIADO, CASCOS, 'zé');
-    expect(ze.saldoFiado).toBe(-10);
+  it('o saldo passa como vem: fiado negativo, crédito positivo', () => {
+    const [ana, ze] = montarLinhas(
+      'todos',
+      [cliente('a', 'Ana', null, null), cliente('z', 'ZÉ', null, null)],
+      FIADO,
+      CASCOS,
+      '',
+    );
+    expect(ana.saldo).toBe(-42.5);
+    expect(ze.saldo).toBe(10);
+  });
+
+  it('"com fiado" deixa de fora quem tem crédito', () => {
+    expect(montarLinhas('fiado', [], FIADO, CASCOS, '').map((l) => l.id)).toEqual(['a']);
   });
 });
 

@@ -40,6 +40,8 @@ import { EnderecoSheet, EnderecoSheetDados } from './endereco-sheet';
 import { EntregarSucataSheet, EntregarSucataSheetDados } from './entregar-sucata-sheet';
 import { PagarCascoSheet, PagarCascoSheetDados } from './pagar-casco-sheet';
 import { ReceberFiadoSheet, ReceberFiadoSheetDados } from './receber-fiado-sheet';
+import { classificarSaldo, rotuloSaldo } from './saldo-cliente';
+import { linhasCascoPorTipo } from '../vendas/cascos-por-tipo';
 
 const preco = new PrecoPipe();
 const MAX_GALOES = 10;
@@ -145,6 +147,15 @@ export class ClienteDetalhePage {
   protected somaPorTipo(lista: readonly { quantidade: number }[]): number {
     return lista.reduce((soma, c) => soma + c.quantidade, 0);
   }
+
+  protected readonly classificarSaldo = classificarSaldo;
+  protected readonly rotuloSaldo = rotuloSaldo;
+  protected readonly linhasCasco = linhasCascoPorTipo;
+  protected readonly legendaSaldo = {
+    fiado: 'dinheiro a receber',
+    credito: 'a favor do cliente',
+    zerado: 'sem pendência',
+  };
 
   protected galoes(saldo: number) {
     return galoesVisiveis(saldo, MAX_GALOES);

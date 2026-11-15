@@ -19,6 +19,7 @@ import { firstValueFrom, forkJoin, map } from 'rxjs';
 
 import { ClientesApi } from '../../core/api/clientes-api';
 import { EstoqueApi } from '../../core/api/estoque-api';
+import { classificarSaldo, rotuloSaldo } from '../clientes/saldo-cliente';
 import { ClienteResponse, EnderecoResponse } from '../../core/api/models/clientes';
 import { SaldosResponse } from '../../core/api/models/clientes';
 import {
@@ -70,7 +71,12 @@ import {
   linhasDoCatalogo,
   sugestoesDaBusca,
 } from './busca-produto';
-import { QuantidadesPorTipo, quantidadeDevolvida, tiposCascoDoCarrinho } from './cascos-por-tipo';
+import {
+  QuantidadesPorTipo,
+  linhasCascoPorTipo,
+  quantidadeDevolvida,
+  tiposCascoDoCarrinho,
+} from './cascos-por-tipo';
 import {
   CascoTipoEstado,
   CobrarAcao,
@@ -81,6 +87,7 @@ import {
 } from './cobrar-painel';
 import { ItemVendaSheet, ItemVendaSheetDados, ItemVendaSheetResultado } from './item-venda-sheet';
 import { VendaStore } from './venda-store';
+import { creditoNaEdicao, limitarPagamentos } from './pagamento-credito';
 import { rotuloStatusPagamento } from './venda-rotulos';
 
 // Uma forma já escolhida, sem valor (protótipo): "Tudo fiado" a limpa e a venda sem valor vai toda para fiado.
@@ -223,15 +230,13 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
               >
                 <ce-chip tom="casco" icone="casco">Casco {{ s.saldoCascos }}</ce-chip>
               </button>
-              <ce-chip tom="fiado" icone="dinheiro">Fiado {{ s.saldoFiado | cePreco }}</ce-chip>
+              @let saldo = classificarSaldo(s.saldo);
+              <ce-chip [tom]="saldo.tom" icone="dinheiro">{{ rotuloSaldo(saldo) }}</ce-chip>
             </div>
             @if (cascosAbertos()) {
               <ul class="casco-lista" aria-label="Cascos por tipo">
-                @for (c of cascosComSaldo(); track c.tipoCascoId) {
-                  <li>
-                    {{ c.nome }} = {{ c.saldo < 0 ? -c.saldo : c.saldo
-                    }}{{ c.saldo < 0 ? ' a favor do cliente' : '' }}
-                  </li>
+                @for (linha of cascosComSaldo(); track linha) {
+                  <li>{{ linha }}</li>
                 } @empty {
                   <li>Nenhum casco com ele.</li>
                 }
@@ -853,8 +858,10 @@ export class PdvPage implements OnInit {
   });
   protected readonly cascosAbertos = signal(false);
   protected readonly cascosComSaldo = computed(() =>
-    (this.saldos()?.cascosPorTipo ?? []).filter((c) => c.saldo !== 0),
+    linhasCascoPorTipo(this.saldos()?.cascosPorTipo ?? []),
   );
+  protected readonly classificarSaldo = classificarSaldo;
+  protected readonly rotuloSaldo = rotuloSaldo;
 
   // Saldos do cliente vêm do servidor e são exibidos como chegaram (Regra 8.6): sem soma local.
   protected readonly saldos = signal<SaldosResponse | null>(null);
@@ -887,6 +894,17 @@ export class PdvPage implements OnInit {
     return this.enderecoOk() ? 'Cobrar' : 'Escolha o endereço';
   });
 
+  // Crédito para pagar a venda: o disponível do servidor; na edição, o que o servidor devolveria
+  // com os lançamentos da própria venda estornados (usa o saldo, não o disponível, que já é ≥ 0).
+  private readonly creditoDisponivel = computed(() => {
+    const saldos = this.saldos();
+    if (saldos === null) {
+      return null;
+    }
+    const original = this.vendaCarregada();
+    return original === null ? saldos.creditoDisponivel : creditoNaEdicao(saldos.saldo, original);
+  });
+
   protected readonly cobrarEstado = computed<CobrarEstado>(() => ({
     itens: this.itens(),
     totais: this.totais(),
@@ -894,6 +912,7 @@ export class PdvPage implements OnInit {
     cascosNaHora: this.cascosNaHora(),
     clienteNome: this.saldoBaseDeCascos() === null ? null : (this.clienteSelecionado()?.nome ?? ''),
     pagamentos: this.pagamentos(),
+    creditoDisponivel: this.creditoDisponivel(),
     excede: this.excede(),
     erro: this.erro(),
     enviando: this.enviando(),
@@ -1044,9 +1063,15 @@ export class PdvPage implements OnInit {
     this.clienteSelecionado.set(cliente);
     this.enderecoId.set(cliente.enderecos.length === 1 ? cliente.enderecos[0].id : null);
     this.saldos.set(null);
+    this.removerCredito();
     this.cascosAbertos.set(false);
     this.repetir.set({ estado: 'ocioso' });
     this.carregarSaldos(cliente.id);
+  }
+
+  // O crédito é do cliente: sem saldos carregados (troca ou remoção de cliente) a linha de crédito sai.
+  private removerCredito(): void {
+    this.pagamentos.update((atual) => limitarPagamentos(atual, null));
   }
 
   private carregarSaldos(clienteId: string): void {
@@ -1054,6 +1079,8 @@ export class PdvPage implements OnInit {
       next: (saldos) => {
         if (this.clienteSelecionado()?.id === clienteId) {
           this.saldos.set(saldos);
+          // O crédito pode ter mudado: a linha de crédito não passa do que o servidor diz agora.
+          this.pagamentos.update((atual) => limitarPagamentos(atual, this.creditoDisponivel()));
         }
       },
       error: () => undefined, // sem saldo, os chips ficam ocultos; o resto da venda segue
@@ -1064,6 +1091,7 @@ export class PdvPage implements OnInit {
     this.clienteSelecionado.set(null);
     this.enderecoId.set(null);
     this.saldos.set(null);
+    this.removerCredito();
     this.cascosAbertos.set(false);
     this.repetir.set({ estado: 'ocioso' });
   }
@@ -1267,7 +1295,7 @@ export class PdvPage implements OnInit {
         this.sucataEntregue.update((m) => ({ ...m, [acao.tipoCascoId]: acao.valor }));
         break;
       case 'pagamentos':
-        this.pagamentos.set(acao.valor);
+        this.pagamentos.set(limitarPagamentos(acao.valor, this.creditoDisponivel()));
         break;
       case 'atalho':
         this.aplicarAtalho(acao);
@@ -1299,9 +1327,12 @@ export class PdvPage implements OnInit {
   protected aplicarAtalho({ indice, qual }: { indice: number; qual: 'tudo' | 'metade' }): void {
     const valor = valorDoAtalho(qual, this.totais().liquido, this.pagamentos(), indice);
     this.pagamentos.update((atual) =>
-      indice < atual.length
-        ? atual.map((p, i) => (i === indice ? { ...p, valor } : p))
-        : [...atual, { forma: 'DINHEIRO', valor }],
+      limitarPagamentos(
+        indice < atual.length
+          ? atual.map((p, i) => (i === indice ? { ...p, valor } : p))
+          : [...atual, { forma: 'DINHEIRO', valor }],
+        this.creditoDisponivel(),
+      ),
     );
   }
 
@@ -1347,6 +1378,9 @@ export class PdvPage implements OnInit {
       }
       if (e.status >= 400 && e.status < 500) {
         this.erro.set(e.userMessage);
+      }
+      if (e.code === 'CREDITO_INSUFICIENTE') {
+        this.carregarSaldos(cliente.id); // o crédito mudou fora desta tela: o teto vem do servidor
       }
     } finally {
       this.enviando.set(false);

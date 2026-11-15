@@ -14,6 +14,22 @@ export interface CreateMarcaRequest {
   nome: string;
 }
 
+export interface TipoCascoResponse {
+  id: string;
+  nome: string;
+  marcaId: string | null;
+  marca: string | null;
+  precoVasilhame: number;
+  aceitaSucata: boolean;
+}
+
+export interface TipoCascoRequest {
+  nome: string;
+  marcaId: string | null;
+  precoVasilhame: number;
+  aceitaSucata: boolean;
+}
+
 export interface CreateProdutoRequest {
   tipo: TipoProduto;
   nome: string;

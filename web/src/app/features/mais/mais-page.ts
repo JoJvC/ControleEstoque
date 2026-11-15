@@ -40,6 +40,7 @@ export class MaisPage {
     { path: '/financeiro/caixa', label: 'Caixa do dia', icon: '💵' },
     { path: '/produtos', label: 'Produtos', icon: '🫙' },
     { path: '/marcas', label: 'Marcas', icon: '🏷️' },
+    { path: '/tipos-casco', label: 'Tipos de casco', icon: '🫙', iconeNome: 'casco' },
     { path: '/mais/aparencia', label: 'Aparência', icon: '🎨' },
     {
       path: '/rh',

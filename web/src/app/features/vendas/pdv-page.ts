@@ -1,3 +1,4 @@
+import { DialogRef } from '@angular/cdk/dialog';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { NgTemplateOutlet } from '@angular/common';
 import {
@@ -5,6 +6,7 @@ import {
   Component,
   computed,
   DestroyRef,
+  effect,
   inject,
   input,
   OnInit,
@@ -23,23 +25,19 @@ import { EstoqueItemResponse, ProdutoResponse } from '../../core/api/models/esto
 import { StatusPagamento, VendaDetalheResponse, VendaResponse } from '../../core/api/models/vendas';
 import { VendasApi } from '../../core/api/vendas-api';
 import { ApiError } from '../../core/http/api-error';
-import { mensagemDoErro } from '../../core/http/error-messages';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { SheetService } from '../../core/overlay/sheet-service';
 import { semAcento } from '../../core/util/sem-acento';
 import { Badge } from '../../ui/atoms/badge';
 import { Button } from '../../ui/atoms/button';
-import { Checkbox } from '../../ui/atoms/checkbox';
 import { Chip } from '../../ui/atoms/chip';
-import { Icon } from '../../ui/atoms/icon';
-import { FormField } from '../../ui/molecules/form-field';
+import { Icon, IconeNome } from '../../ui/atoms/icon';
+import { iconeDoProduto } from '../../ui/atoms/icone-do-produto';
 import { QuantityStepper } from '../../ui/molecules/quantity-stepper';
 import { SearchBox } from '../../ui/molecules/search-box';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { DataList, DataListStatus } from '../../ui/organisms/data-list';
-import { ItemVendaCard } from '../../ui/organisms/item-venda-card';
-import { PagamentoEdicao, PagamentoLista } from '../../ui/organisms/pagamento-lista';
-import { ProdutoLinha } from '../../ui/organisms/produto-linha';
+import { PagamentoEdicao } from '../../ui/organisms/pagamento-lista';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import {
   ItemCarrinho,
@@ -47,6 +45,7 @@ import {
   categoriasDe,
   fiadoDe,
   filtrarPorCategoria,
+  itensDaUltimaVenda,
   pagamentoExcede,
   paraCreateVendaRequest,
   produtosComEstoque,
@@ -59,19 +58,19 @@ import {
   valorDoAtalho,
   valorDescontoDe,
 } from './carrinho';
+import {
+  CobrarAcao,
+  CobrarEstado,
+  CobrarPainel,
+  CobrarSheet,
+  CobrarSheetDados,
+} from './cobrar-painel';
 import { ItemVendaSheet, ItemVendaSheetDados, ItemVendaSheetResultado } from './item-venda-sheet';
 import { VendaStore } from './venda-store';
 import { rotuloStatusPagamento } from './venda-rotulos';
 
-type Passo = 'cliente' | 'itens' | 'cascos' | 'pagamento' | 'revisao';
-
-const ROTULOS: Record<Passo, string> = {
-  cliente: 'Cliente',
-  itens: 'Itens',
-  cascos: 'Cascos',
-  pagamento: 'Pagamento',
-  revisao: 'Revisão',
-};
+// Uma forma já escolhida, sem valor (protótipo): "Tudo fiado" a limpa e a venda sem valor vai toda para fiado.
+const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor: null }];
 
 @Component({
   selector: 'ce-pdv-page',
@@ -81,16 +80,12 @@ const ROTULOS: Record<Passo, string> = {
     AppHeader,
     Badge,
     Button,
-    Checkbox,
     Chip,
+    CobrarPainel,
     DataList,
-    FormField,
     Icon,
-    ItemVendaCard,
     NgTemplateOutlet,
-    PagamentoLista,
     PrecoPipe,
-    ProdutoLinha,
     QuantityStepper,
     SearchBox,
   ],
@@ -100,25 +95,30 @@ const ROTULOS: Record<Passo, string> = {
     <div class="conteudo">
       @if (venda(); as v) {
         <section class="sucesso" aria-label="Venda registrada">
-          <h2>Venda registrada!</h2>
+          <h2>Venda registrada</h2>
+          <ce-badge [cor]="v.statusPagamento === 'PAGA' ? 'success' : 'warning'">{{
+            rotuloStatus(v.statusPagamento)
+          }}</ce-badge>
+          <p class="sucesso__total">{{ v.totalLiquido | cePreco }}</p>
+          <p class="dica">{{ clienteSelecionado()?.nome }} · pago {{ v.totalPago | cePreco }}</p>
+          <p class="dica">Saldos devolvidos pelo servidor, cada um na sua unidade:</p>
           <dl class="resumo">
-            <div class="resumo__linha">
-              <dt>Status do pagamento</dt>
-              <dd>
-                <ce-badge [cor]="v.statusPagamento === 'PAGA' ? 'success' : 'warning'">{{
-                  rotuloStatus(v.statusPagamento)
-                }}</ce-badge>
-              </dd>
-            </div>
-            <div class="resumo__linha resumo__linha--fiado">
-              <dt>Fiado gerado</dt>
-              <dd>{{ v.saldoFiadoGerado | cePreco }}</dd>
-            </div>
             <div class="resumo__linha">
               <dt>Saldo de cascos do cliente</dt>
               <dd>{{ v.saldoCascoCliente }}</dd>
             </div>
+            @if (saldos(); as s) {
+              <div class="resumo__linha resumo__linha--fiado">
+                <dt>Fiado do cliente</dt>
+                <dd>{{ s.saldoFiado | cePreco }}</dd>
+              </div>
+            }
+            <div class="resumo__linha resumo__linha--fiado">
+              <dt>Fiado gerado</dt>
+              <dd>{{ v.saldoFiadoGerado | cePreco }}</dd>
+            </div>
           </dl>
+          <ce-button [block]="true" (click)="reiniciar()">Nova venda</ce-button>
           @if (cupom(); as c) {
             <p class="cupom">Cupom fiscal nº {{ c.numero }}</p>
           } @else {
@@ -134,6 +134,9 @@ const ROTULOS: Record<Passo, string> = {
           @if (erroCupom(); as mensagem) {
             <p class="erro" role="alert">{{ mensagem }}</p>
           }
+          <ce-button variante="ghost" [block]="true" (click)="voltarAoHoje()">
+            Voltar ao Hoje
+          </ce-button>
         </section>
       } @else if (carga() === 'carregando') {
         <p class="dica">Carregando venda…</p>
@@ -150,73 +153,46 @@ const ROTULOS: Record<Passo, string> = {
           [class.venda--desktop]="desktop()"
           [attr.inert]="somenteLeitura() ? '' : null"
         >
-          @if (!desktop()) {
-            <nav class="trilho" aria-label="Etapas da venda">
-              <p class="trilho__texto" data-testid="trilho-texto">
-                {{ indice() + 1 }} de {{ passos().length }}
-              </p>
-              <ol class="passos">
-                @for (p of passos(); track p; let i = $index) {
-                  <li class="passo" [class.passo--ativo]="p === passo()">
-                    <button
-                      type="button"
-                      class="passo__cabecalho"
-                      [disabled]="i >= indice()"
-                      [attr.aria-current]="p === passo() ? 'step' : null"
-                      (click)="passo.set(p)"
-                    >
-                      <span class="passo__numero">{{ i + 1 }}</span>
-                      <span class="passo__rotulo">{{ rotulo(p) }}</span>
-                    </button>
-                  </li>
-                }
-              </ol>
-            </nav>
-            @if (passo() === 'cliente') {
+          <div class="grade">
+            <div class="grade__catalogo">
               <ng-container *ngTemplateOutlet="tplCliente" />
-            } @else {
-              <ng-container *ngTemplateOutlet="tplBarraCliente" />
-            }
-            @switch (passo()) {
-              @case ('itens') {
-                <ng-container *ngTemplateOutlet="tplProdutos" />
-                <ng-container *ngTemplateOutlet="tplCarrinho" />
-              }
-              @case ('cascos') {
-                <ng-container *ngTemplateOutlet="tplCascos" />
-              }
-              @case ('pagamento') {
-                <ng-container *ngTemplateOutlet="tplPagamento" />
-              }
-              @case ('revisao') {
-                <ng-container *ngTemplateOutlet="tplRevisao" />
-              }
-            }
-          } @else {
-            <div class="grade">
-              <div class="grade__produtos">
-                <ng-container *ngTemplateOutlet="tplProdutos" />
-              </div>
-              <div class="grade__venda">
-                <ng-container *ngTemplateOutlet="tplCliente" />
-                <ng-container *ngTemplateOutlet="tplCarrinho" />
-                @if (comCascos()) {
-                  <ng-container *ngTemplateOutlet="tplCascos" />
-                }
-                <ng-container *ngTemplateOutlet="tplPagamento" />
-                <ng-container *ngTemplateOutlet="tplRevisao" />
-              </div>
+              <ng-container *ngTemplateOutlet="tplCatalogo" />
             </div>
+            @if (desktop()) {
+              <aside class="grade__venda" aria-label="Venda atual">
+                <h2 class="grade__titulo">
+                  Venda
+                  @if (quantidadeTotal() > 0) {
+                    <span class="dica">· {{ rotuloItens() }}</span>
+                  }
+                </h2>
+                @if (clienteSelecionado() && itens().length > 0) {
+                  <ce-cobrar-painel [estado]="cobrarEstado()" (acao)="agir($event)" />
+                } @else {
+                  <p class="dica">
+                    {{
+                      clienteSelecionado()
+                        ? 'Toque nos produtos para montar a venda.'
+                        : 'Escolha o cliente e os produtos. O total aparece aqui, ao vivo.'
+                    }}
+                  </p>
+                  <p class="grade__total">
+                    <span>Total</span>
+                    <strong>{{ totais().liquido | cePreco }}</strong>
+                  </p>
+                }
+              </aside>
+            }
+          </div>
+
+          @if (!id()) {
+            <ce-button variante="ghost" (click)="cancelar()">Cancelar venda</ce-button>
           }
         </div>
-
-        @if (!id()) {
-          <ce-button variante="ghost" (click)="cancelar()">Cancelar venda</ce-button>
-        }
       }
     </div>
 
-    <ng-template #tplBarraCliente>
+    <ng-template #tplCliente>
       @if (clienteSelecionado(); as c) {
         <section class="cliente-fixo" aria-label="Cliente da venda">
           <div class="cliente-fixo__linha">
@@ -229,13 +205,33 @@ const ROTULOS: Record<Passo, string> = {
               <ce-chip tom="fiado" icone="dinheiro">Fiado {{ s.saldoFiado | cePreco }}</ce-chip>
             </div>
           }
+          @if (podeRepetir()) {
+            <button
+              type="button"
+              class="repetir"
+              [disabled]="repetir().estado === 'carregando'"
+              (click)="repetirUltimaVenda()"
+            >
+              <ce-icon nome="atualizar" [tamanho]="18" />
+              {{ repetir().estado === 'carregando' ? 'Carregando…' : 'Repetir última venda' }}
+            </button>
+          }
+          @let r = repetir();
+          @if (r.estado === 'sem-venda') {
+            <p class="dica" role="status">Este cliente ainda não tem venda anterior.</p>
+          } @else if (r.estado === 'erro') {
+            <p class="erro" role="alert">{{ r.mensagem }}</p>
+          } @else if (r.estado === 'pulados') {
+            <p class="dica" role="status">
+              {{
+                r.pulados === 1
+                  ? '1 item da última venda não está mais no catálogo e ficou de fora.'
+                  : r.pulados +
+                    ' itens da última venda não estão mais no catálogo e ficaram de fora.'
+              }}
+            </p>
+          }
         </section>
-      }
-    </ng-template>
-
-    <ng-template #tplCliente>
-      @if (clienteSelecionado(); as c) {
-        <ng-container *ngTemplateOutlet="tplBarraCliente" />
         @if (c.enderecos.length > 1) {
           <div role="radiogroup" aria-label="Endereço de entrega" class="lista">
             @for (e of c.enderecos; track e.id) {
@@ -258,30 +254,33 @@ const ROTULOS: Record<Passo, string> = {
           <p class="dica">Entrega: {{ enderecoTexto(c.enderecos[0]) }}</p>
         }
       } @else {
-        <ce-search-box
-          rotulo="Buscar cliente"
-          placeholder="Buscar cliente por nome…"
-          (buscar)="buscarClientes($event)"
-          (keydown.enter)="enterCliente($event)"
-        />
-        @if (erroClientes(); as mensagem) {
-          <p class="erro" role="alert">{{ mensagem }}</p>
-        }
-        <div class="lista">
-          @for (c of clientes(); track c.id) {
-            <button type="button" class="opcao" (click)="selecionarCliente(c)">
-              {{ c.nome }}
-              @if (c.telefone) {
-                <span class="dica">{{ c.telefone }}</span>
-              }
-            </button>
+        <section class="cliente-vazio" aria-label="Cliente da venda">
+          <strong>Quem está comprando?</strong>
+          <span class="dica">Escolha o cliente para vender</span>
+          <ce-search-box
+            rotulo="Buscar cliente"
+            placeholder="Buscar cliente por nome…"
+            (buscar)="buscarClientes($event)"
+            (keydown.enter)="enterCliente($event)"
+          />
+          @if (erroClientes(); as mensagem) {
+            <p class="erro" role="alert">{{ mensagem }}</p>
           }
-        </div>
+          <div class="lista">
+            @for (c of clientes(); track c.id) {
+              <button type="button" class="opcao" (click)="selecionarCliente(c)">
+                {{ c.nome }}
+                @if (c.telefone) {
+                  <span class="dica">{{ c.telefone }}</span>
+                }
+              </button>
+            }
+          </div>
+        </section>
       }
     </ng-template>
 
-    <ng-template #tplProdutos>
-      <h3>Produtos</h3>
+    <ng-template #tplCatalogo>
       <div class="pilulas" role="group" aria-label="Filtrar por categoria">
         <button
           type="button"
@@ -290,7 +289,7 @@ const ROTULOS: Record<Passo, string> = {
           [attr.aria-pressed]="categoria() === null"
           (click)="categoria.set(null)"
         >
-          Todas
+          Todos
         </button>
         @for (c of categorias(); track c) {
           <button
@@ -317,142 +316,69 @@ const ROTULOS: Record<Passo, string> = {
         (recarregar)="carregarProdutos()"
       >
         <ng-template let-linha>
-          <ce-produto-linha
-            [nome]="linha.produto.nome"
-            [detalhe]="detalheDe(linha.produto)"
-            [tipo]="linha.produto.tipo"
-            [categoria]="linha.produto.categoria"
-            [preco]="precoDe(linha.produto)"
-            [estoque]="linha.estoque"
-            [quantidade]="quantidadeDe(linha.produto)"
-            (quantidadeChange)="mudarQuantidade(linha.produto, $event)"
-            (editarPreco)="editarPreco(linha.produto)"
-          />
+          @let p = linha.produto;
+          @let item = itemDe(p);
+          <div class="prod" [class.prod--sel]="item !== undefined">
+            <button
+              type="button"
+              class="prod__corpo"
+              [attr.aria-label]="'Adicionar ' + p.nome"
+              (click)="mudarQuantidade(p, (item?.quantidade ?? 0) + 1)"
+            >
+              <ce-icon class="prod__icone" [nome]="iconeDe(p)" [tamanho]="32" />
+              <span class="prod__info">
+                <span class="prod__nome">{{ p.nome }}</span>
+                <span class="dica">
+                  @if (detalheDe(p)) {
+                    {{ detalheDe(p) }} ·
+                  }
+                  @if (linha.estoque !== null) {
+                    Estoque: {{ linha.estoque }} ·
+                  }
+                  <span class="prod__preco">{{ precoDe(p) | cePreco }}</span>
+                </span>
+              </span>
+            </button>
+            @if (item) {
+              <ce-quantity-stepper
+                [rotulo]="'Quantidade de ' + p.nome"
+                [item]="p.nome"
+                [ngModel]="item.quantidade"
+                (ngModelChange)="mudarQuantidade(p, $event)"
+              />
+              <div class="prod__extra">
+                <button type="button" class="prod__link" (click)="editarPreco(p)">
+                  Preço e desconto
+                </button>
+                @if (item.desconto) {
+                  <span class="dica">desc. {{ descontoDe(item) | cePreco }}</span>
+                } @else if (item.precoUnitario !== p.precoReferencia) {
+                  <span class="dica">preço editado</span>
+                }
+                <span class="prod__total">{{ totalDe(item) | cePreco }}</span>
+              </div>
+            }
+          </div>
         </ng-template>
       </ce-data-list>
     </ng-template>
 
-    <ng-template #tplCarrinho>
-      @if (itens().length > 0) {
-        <h3>Carrinho ({{ itens().length }})</h3>
-        <div class="lista">
-          @for (item of itens(); track $index; let n = $index) {
-            <ce-item-venda-card
-              [nome]="item.produto.nome"
-              [quantidade]="item.quantidade"
-              [precoUnitario]="item.precoUnitario"
-              [valorDesconto]="descontoDe(item)"
-              [motivoDesconto]="item.desconto?.motivo ?? null"
-              [totalItem]="totalDe(item)"
-              (editar)="editarItem(n)"
-              (remover)="removerItem(n)"
-            />
-          }
+    @if (!desktop() && !venda() && carga() === 'ok' && !somenteLeitura()) {
+      <div class="barra">
+        <div class="barra__resumo">
+          <small>
+            {{ rotuloItens() }}
+            @if (totais().desconto > 0) {
+              · desc. {{ totais().desconto | cePreco }}
+            }
+          </small>
+          <strong>{{ totais().liquido | cePreco }}</strong>
         </div>
-      }
-    </ng-template>
-
-    <ng-template #tplCascos>
-      <ce-checkbox [ngModel]="cascosNaHora()" (ngModelChange)="alternarNaHora($event)">
-        Devolveu todos na hora
-      </ce-checkbox>
-      <ce-form-field rotulo="Cascos devolvidos">
-        <ce-quantity-stepper
-          [ngModel]="cascosDevolvidos()"
-          (ngModelChange)="cascosDevolvidos.set($event)"
-        />
-      </ce-form-field>
-      <p class="casco-na-rua" role="status">
-        <ce-icon nome="casco-na-rua" [tamanho]="20" />
-        Fica {{ cascoNaRua() }} casco na rua
-      </p>
-      <section class="sucata" aria-label="Sucata">
-        <ce-form-field rotulo="Sucata entregue">
-          <ce-quantity-stepper
-            [ngModel]="sucataEntregue()"
-            (ngModelChange)="sucataEntregue.set($event)"
-          />
-        </ce-form-field>
-        <p class="sucata__aviso">Sucata não abate o débito de casco</p>
-      </section>
-    </ng-template>
-
-    <ng-template #tplPagamento>
-      <ce-pagamento-lista
-        [total]="totais().liquido"
-        [(pagamentos)]="pagamentos"
-        (atalho)="aplicarAtalho($event)"
-      />
-      @if (excede()) {
-        <p class="erro" role="alert">{{ mensagemExcede }}</p>
-      }
-    </ng-template>
-
-    <ng-template #tplRevisao>
-      <dl class="resumo">
-        <div class="resumo__linha">
-          <dt>Cliente</dt>
-          <dd>{{ clienteSelecionado()?.nome }}</dd>
-        </div>
-        <div class="resumo__linha">
-          <dt>Bruto</dt>
-          <dd>{{ totais().bruto | cePreco }}</dd>
-        </div>
-        <div class="resumo__linha">
-          <dt>Desconto</dt>
-          <dd>− {{ totais().desconto | cePreco }}</dd>
-        </div>
-        <div class="resumo__linha resumo__linha--total">
-          <dt>Líquido</dt>
-          <dd>{{ totais().liquido | cePreco }}</dd>
-        </div>
-        <div class="resumo__linha">
-          <dt>Pago</dt>
-          <dd>{{ pago() | cePreco }}</dd>
-        </div>
-        <div class="resumo__linha resumo__linha--fiado">
-          <dt>Vai para fiado</dt>
-          <dd>{{ fiado() | cePreco }}</dd>
-        </div>
-        @if (comCascos()) {
-          <div class="resumo__linha">
-            <dt>Cascos devolvidos</dt>
-            <dd>{{ cascosDevolvidos() }}</dd>
-          </div>
-          <div class="resumo__linha">
-            <dt>Sucata entregue</dt>
-            <dd>{{ sucataEntregue() }}</dd>
-          </div>
-        }
-      </dl>
-      @if (erro(); as mensagem) {
-        <p class="erro" role="alert">{{ mensagem }}</p>
-      }
-    </ng-template>
-
-    <div class="acoes">
-      @if (venda()) {
-        <ce-button [block]="true" (click)="reiniciar()">Nova venda</ce-button>
-      } @else if (carga() === 'ok' && !somenteLeitura()) {
-        @if (!desktop() && indice() > 0) {
-          <ce-button variante="ghost" (click)="voltar()">Voltar</ce-button>
-        }
-        @if (desktop() || passo() === 'revisao') {
-          <ce-button
-            [block]="true"
-            [loading]="enviando()"
-            [disabled]="desktop() ? !podeRegistrar() : excede()"
-            (click)="registrar()"
-          >
-            {{ id() ? 'Salvar alterações' : 'Registrar venda' }}
-          </ce-button>
-        } @else {
-          <ce-button [block]="true" [disabled]="!podeAvancar()" (click)="avancar()">
-            Avançar
-          </ce-button>
-        }
-      }
-    </div>
+        <ce-button [disabled]="!podeCobrar()" (click)="abrirCobrar()">
+          {{ rotuloCobrar() }}
+        </ce-button>
+      </div>
+    }
   `,
   styles: `
     @use 'mixins';
@@ -478,75 +404,33 @@ const ROTULOS: Record<Passo, string> = {
     }
 
     .venda,
-    .trilho {
+    .grade__catalogo,
+    .grade__venda {
       display: flex;
       flex-direction: column;
       gap: var(--ce-space-3);
     }
 
-    .trilho__texto {
-      font-size: var(--ce-font-sm);
-      font-weight: 600;
-      color: var(--ce-text-muted);
-    }
-
-    .passos {
-      list-style: none;
-      padding: 0;
-      display: flex;
-      gap: var(--ce-space-1);
-    }
-
-    .passo {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .passo__cabecalho {
-      @include mixins.touch-target;
-
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--ce-space-1);
-      width: 100%;
-      font-size: var(--ce-font-sm);
-      font-weight: 600;
-      color: var(--ce-text-muted);
-    }
-
-    .passo--ativo .passo__cabecalho {
-      color: var(--ce-text);
-    }
-
-    .passo__numero {
-      display: grid;
-      place-items: center;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: var(--ce-surface-muted);
-      border: 1px solid var(--ce-border);
-    }
-
-    .passo--ativo .passo__numero {
-      background: var(--ce-primary);
-      border-color: var(--ce-primary);
-      color: var(--ce-text-on-primary);
-    }
-
     // abaixo do header fixo do shell (56 px), que não rola
-    .cliente-fixo {
-      position: sticky;
-      top: calc(56px + env(safe-area-inset-top, 0px));
-      z-index: 1;
+    .cliente-fixo,
+    .cliente-vazio {
       display: flex;
       flex-direction: column;
       gap: var(--ce-space-2);
       padding: var(--ce-space-3);
-      border: 1px solid var(--ce-border);
       border-radius: 20px;
       background: var(--ce-surface);
+    }
+
+    .cliente-fixo {
+      position: sticky;
+      top: calc(56px + env(safe-area-inset-top, 0px));
+      z-index: 1;
+      border: 1px solid var(--ce-border);
+    }
+
+    .cliente-vazio {
+      border: 2px solid var(--ce-primary);
     }
 
     .cliente-fixo__linha {
@@ -568,7 +452,8 @@ const ROTULOS: Record<Passo, string> = {
       overflow-x: auto;
     }
 
-    .pilula {
+    .pilula,
+    .repetir {
       @include mixins.touch-target;
 
       flex-shrink: 0;
@@ -579,58 +464,108 @@ const ROTULOS: Record<Passo, string> = {
       font-weight: 600;
     }
 
+    .repetir {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--ce-space-2);
+      background: var(--ce-agua-soft);
+      color: var(--ce-acao-texto);
+    }
+
     .pilula--ativa {
       border-color: var(--ce-primary);
       background: var(--ce-primary);
       color: var(--ce-text-on-primary);
     }
 
-    .casco-na-rua {
+    // linha do catálogo: 64 px, toque na linha adiciona, −/+ aparece com o item no carrinho
+    .prod {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: var(--ce-space-1) var(--ce-space-3);
+      min-height: 64px;
+      padding: var(--ce-space-2) var(--ce-space-3);
+      border: 1px solid var(--ce-border);
+      border-radius: 16px;
+      background: var(--ce-surface);
+    }
+
+    .prod--sel {
+      border: 2px solid var(--ce-primary);
+    }
+
+    .prod__corpo {
       display: flex;
       align-items: center;
-      gap: var(--ce-space-2);
-      font-weight: 600;
-      color: var(--ce-casco);
+      gap: var(--ce-space-3);
+      min-height: 48px;
+      text-align: left;
+      color: inherit;
     }
 
-    .sucata {
+    .prod__info {
       display: flex;
       flex-direction: column;
-      gap: var(--ce-space-2);
-      padding: var(--ce-space-3);
-      border: 1px solid var(--ce-sucata);
-      border-radius: 20px;
-      background: var(--ce-sucata-soft);
+      min-width: 0;
     }
 
-    .sucata__aviso {
-      font-size: var(--ce-font-sm);
+    .prod__nome {
       font-weight: 600;
     }
 
-    // ≥960 px: produtos à esquerda, a venda à direita, numa tela só
+    .prod__preco,
+    .prod__total {
+      @include mixins.tabular-numbers;
+
+      font-weight: 700;
+    }
+
+    .prod__extra {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--ce-space-2);
+    }
+
+    .prod__link {
+      @include mixins.touch-target;
+
+      padding: 0;
+      color: var(--ce-primary-strong);
+      font-size: var(--ce-font-sm);
+      font-weight: 600;
+      text-decoration: underline;
+    }
+
+    .prod__total {
+      margin-left: auto;
+    }
+
+    // ≥960 px: catálogo à esquerda, a venda (o mesmo conteúdo da sheet) à direita
     .grade {
       display: grid;
       gap: var(--ce-space-4);
       align-items: start;
     }
 
-    .grade__produtos,
-    .grade__venda {
-      display: flex;
-      flex-direction: column;
-      gap: var(--ce-space-3);
+    .venda--desktop .grade {
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     }
 
-    @include mixins.from-desktop {
-      .grade {
-        grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-      }
+    .grade__venda {
+      position: sticky;
+      top: calc(56px + env(safe-area-inset-top, 0px) + var(--ce-space-4));
+    }
 
-      .grade__venda {
-        position: sticky;
-        top: calc(56px + env(safe-area-inset-top, 0px) + var(--ce-space-4));
-      }
+    .grade__total,
+    .sucesso__total {
+      display: flex;
+      justify-content: space-between;
+      font-size: var(--ce-font-xl);
+      font-weight: 700;
     }
 
     .lista {
@@ -639,8 +574,7 @@ const ROTULOS: Record<Passo, string> = {
       gap: var(--ce-space-2);
     }
 
-    .opcao,
-    .selecionado {
+    .opcao {
       @include mixins.touch-target;
 
       display: flex;
@@ -676,28 +610,17 @@ const ROTULOS: Record<Passo, string> = {
       padding: var(--ce-space-3);
       border-radius: 20px;
       background: var(--ce-surface-muted);
-      border: 1px solid var(--ce-border);
     }
 
     .resumo__linha {
       display: flex;
       justify-content: space-between;
       gap: var(--ce-space-2);
-
-      dd {
-        @include mixins.tabular-numbers;
-
-        font-weight: 700;
-      }
-    }
-
-    .resumo__linha--total {
-      font-size: var(--ce-font-lg);
+      font-weight: 600;
     }
 
     .resumo__linha--fiado {
       color: var(--ce-warning);
-      font-weight: 600;
     }
 
     .sucesso {
@@ -706,18 +629,25 @@ const ROTULOS: Record<Passo, string> = {
       gap: var(--ce-space-3);
     }
 
-    .acoes {
+    // barra fixa do celular, acima da bottom-nav
+    .barra {
       position: sticky;
       bottom: calc(var(--ce-nav-height) + env(safe-area-inset-bottom, 0px));
       display: flex;
+      align-items: center;
       gap: var(--ce-space-3);
-      padding: var(--ce-space-3) var(--ce-space-4);
-      background: var(--ce-bg);
-      border-top: 1px solid var(--ce-border);
+      margin: 0 var(--ce-space-3) var(--ce-space-2);
+      padding: var(--ce-space-2) var(--ce-space-2) var(--ce-space-2) var(--ce-space-4);
+      border-radius: 20px;
+      background: var(--ce-topo);
+      color: var(--ce-texto-sobre-topo);
+    }
 
-      @include mixins.from-desktop {
-        bottom: 0;
-      }
+    .barra__resumo {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      font-weight: 700;
     }
   `,
 })
@@ -732,13 +662,11 @@ export class PdvPage implements OnInit {
   private readonly router = inject(Router);
   private readonly breakpoints = inject(BreakpointObserver);
 
-  // PDV numa tela só a partir de 960 px (DESIGN.md §5); abaixo disso, etapas.
+  // A partir de 960 px a cobrança é o painel à direita (DESIGN.md §5); abaixo, a sheet Cobrar.
   protected readonly desktop = toSignal(
     this.breakpoints.observe('(min-width: 960px)').pipe(map((r) => r.matches)),
     { initialValue: false },
   );
-
-  protected readonly mensagemExcede = mensagemDoErro('PAGAMENTO_EXCEDE_TOTAL', 422);
 
   // Rascunho
   protected readonly clienteSelecionado = signal<ClienteResponse | null>(null);
@@ -747,7 +675,7 @@ export class PdvPage implements OnInit {
   protected readonly cascosDevolvidos = signal(0);
   protected readonly cascosNaHora = signal(false);
   protected readonly sucataEntregue = signal(0);
-  protected readonly pagamentos = signal<readonly PagamentoEdicao[]>([]);
+  protected readonly pagamentos = signal<readonly PagamentoEdicao[]>(PAGAMENTO_PADRAO);
 
   // Edição: com `id` (rota editar/:id) a página pré-carrega a venda e salva por PUT.
   readonly id = input<string>();
@@ -759,7 +687,6 @@ export class PdvPage implements OnInit {
   protected readonly somenteLeitura = computed(() => this.vendaCarregada()?.cupomEmitido === true);
 
   // Fluxo
-  protected readonly passo = signal<Passo>('cliente');
   protected readonly erro = signal<string | null>(null);
   protected readonly enviando = signal(false);
   protected readonly venda = signal<VendaResponse | null>(null);
@@ -800,45 +727,96 @@ export class PdvPage implements OnInit {
     pagamentoExcede(this.totais().liquido, this.pagamentos()),
   );
   protected readonly comCascos = computed(() => temAgua(this.itens()));
+  // Feedback ao vivo (Regra 8.6): em venda nova com saldo carregado, o saldo do cliente entra na
+  // conta; na edição o saldo já inclui a venda original, então só conta a água desta venda.
+  private readonly saldoBaseDeCascos = computed(() =>
+    this.id() === undefined ? (this.saldos()?.saldoCascos ?? null) : null,
+  );
   protected readonly cascoNaRua = computed(() =>
-    cascosNaRua(quantidadeAgua(this.itens()), this.cascosDevolvidos()),
+    cascosNaRua(
+      (this.saldoBaseDeCascos() ?? 0) + quantidadeAgua(this.itens()),
+      this.cascosDevolvidos(),
+    ),
   );
 
   // Saldos do cliente vêm do servidor e são exibidos como chegaram (Regra 8.6): sem soma local.
   protected readonly saldos = signal<SaldosResponse | null>(null);
 
-  protected readonly podeRegistrar = computed(() => {
+  private readonly enderecoOk = computed(() => {
     const c = this.clienteSelecionado();
-    const enderecoOk = c !== null && (c.enderecos.length <= 1 || this.enderecoId() !== null);
-    return enderecoOk && this.itens().length > 0 && !this.excede();
+    return c !== null && (c.enderecos.length <= 1 || this.enderecoId() !== null);
   });
 
-  protected readonly passos = computed<Passo[]>(() =>
-    this.comCascos()
-      ? ['cliente', 'itens', 'cascos', 'pagamento', 'revisao']
-      : ['cliente', 'itens', 'pagamento', 'revisao'],
+  protected readonly podeRegistrar = computed(
+    () => this.enderecoOk() && this.itens().length > 0 && !this.excede(),
   );
-  protected readonly indice = computed(() => this.passos().indexOf(this.passo()));
 
-  protected readonly podeAvancar = computed(() => {
-    switch (this.passo()) {
-      case 'cliente': {
-        const c = this.clienteSelecionado();
-        return c !== null && (c.enderecos.length <= 1 || this.enderecoId() !== null);
-      }
-      case 'itens':
-        return this.itens().length > 0;
-      case 'pagamento':
-        return !this.excede();
-      default:
-        return true;
-    }
+  // Barra fixa do celular
+  protected readonly quantidadeTotal = computed(() =>
+    this.itens().reduce((soma, i) => soma + i.quantidade, 0),
+  );
+  protected readonly rotuloItens = computed(() => {
+    const n = this.quantidadeTotal();
+    return `${n} ${n === 1 ? 'item' : 'itens'}`;
   });
+  protected readonly podeCobrar = computed(() => this.enderecoOk() && this.itens().length > 0);
+  protected readonly rotuloCobrar = computed(() => {
+    if (this.clienteSelecionado() === null) {
+      return 'Escolha o cliente';
+    }
+    if (this.itens().length === 0) {
+      return 'Adicione itens';
+    }
+    return this.enderecoOk() ? 'Cobrar' : 'Escolha o endereço';
+  });
+
+  protected readonly cobrarEstado = computed<CobrarEstado>(() => ({
+    itens: this.itens(),
+    totais: this.totais(),
+    comCascos: this.comCascos(),
+    comGalaoCompleto: this.itens().some((i) => i.produto.tipo === 'GALAO_COMPLETO'),
+    cascosDevolvidos: this.cascosDevolvidos(),
+    cascosNaHora: this.cascosNaHora(),
+    cascoNaRua: this.cascoNaRua(),
+    cascosAMais: Math.max(
+      0,
+      this.cascosDevolvidos() - (this.saldoBaseDeCascos() ?? 0) - quantidadeAgua(this.itens()),
+    ),
+    clienteNome:
+      this.saldoBaseDeCascos() === null
+        ? null
+        : (this.clienteSelecionado()?.nome ?? '').split(' ')[0],
+    sucataEntregue: this.sucataEntregue(),
+    pagamentos: this.pagamentos(),
+    excede: this.excede(),
+    erro: this.erro(),
+    enviando: this.enviando(),
+    podeRegistrar: this.podeRegistrar(),
+    rotuloConfirmar: this.id() ? 'Salvar alterações' : 'Confirmar venda',
+  }));
+
+  // Repetir última venda (só em venda nova, com cliente e carrinho vazio)
+  protected readonly repetir = signal<
+    | { readonly estado: 'ocioso' | 'carregando' | 'sem-venda' }
+    | { readonly estado: 'erro'; readonly mensagem: string }
+    | { readonly estado: 'pulados'; readonly pulados: number }
+  >({ estado: 'ocioso' });
+  protected readonly podeRepetir = computed(
+    () =>
+      this.id() === undefined && this.itens().length === 0 && this.repetir().estado !== 'sem-venda',
+  );
+
+  private cobrarRef: DialogRef<void> | null = null;
 
   private produtosPronto: Promise<void> = Promise.resolve();
 
   constructor() {
     this.carregarProdutos();
+    effect(() => {
+      if (this.desktop()) {
+        this.cobrarRef?.close();
+      }
+    });
     // Só informativo: sem estoque a linha omite a quantidade.
     this.estoqueApi
       .obterEstoque()
@@ -883,16 +861,11 @@ export class PdvPage implements OnInit {
       this.cascosNaHora.set(rascunho.cascosDevolvidosNaHora);
       this.sucataEntregue.set(rascunho.sucataEntregue);
       this.vendaCarregada.set(venda);
-      this.passo.set('revisao');
       this.carga.set('ok');
     } catch (e) {
       this.erroCarga.set(e instanceof ApiError ? e.userMessage : 'Erro ao carregar a venda.');
       this.carga.set('erro');
     }
-  }
-
-  protected rotulo(passo: Passo): string {
-    return ROTULOS[passo];
   }
 
   protected rotuloStatus(status: StatusPagamento): string {
@@ -908,22 +881,6 @@ export class PdvPage implements OnInit {
 
   protected detalheDe(p: ProdutoResponse): string {
     return [p.marca, p.tamanho].filter((parte) => !!parte).join(' · ');
-  }
-
-  // Navegação
-
-  protected avancar(): void {
-    const proximo = this.passos()[this.indice() + 1];
-    if (this.podeAvancar() && proximo) {
-      this.passo.set(proximo);
-    }
-  }
-
-  protected voltar(): void {
-    const anterior = this.passos()[this.indice() - 1];
-    if (anterior) {
-      this.passo.set(anterior);
-    }
   }
 
   // Cliente
@@ -972,9 +929,14 @@ export class PdvPage implements OnInit {
     this.clienteSelecionado.set(cliente);
     this.enderecoId.set(cliente.enderecos.length === 1 ? cliente.enderecos[0].id : null);
     this.saldos.set(null);
-    this.clientesApi.obterSaldos(cliente.id).subscribe({
+    this.repetir.set({ estado: 'ocioso' });
+    this.carregarSaldos(cliente.id);
+  }
+
+  private carregarSaldos(clienteId: string): void {
+    this.clientesApi.obterSaldos(clienteId).subscribe({
       next: (saldos) => {
-        if (this.clienteSelecionado()?.id === cliente.id) {
+        if (this.clienteSelecionado()?.id === clienteId) {
           this.saldos.set(saldos);
         }
       },
@@ -986,7 +948,7 @@ export class PdvPage implements OnInit {
     this.clienteSelecionado.set(null);
     this.enderecoId.set(null);
     this.saldos.set(null);
-    this.passo.set('cliente');
+    this.repetir.set({ estado: 'ocioso' });
   }
 
   // Itens
@@ -1023,9 +985,57 @@ export class PdvPage implements OnInit {
     }
   }
 
-  /** Quantidade do produto no carrinho (o contador da linha); 0 se ele não está nele. */
-  protected quantidadeDe(produto: ProdutoResponse): number {
-    return this.itens().find((i) => i.produto.id === produto.id)?.quantidade ?? 0;
+  protected itemDe(produto: ProdutoResponse): ItemCarrinho | undefined {
+    return this.itens().find((i) => i.produto.id === produto.id);
+  }
+
+  protected iconeDe(produto: ProdutoResponse): IconeNome {
+    return iconeDoProduto(produto);
+  }
+
+  /** Repetir última venda: itens e quantidades da última venda do cliente, a preço de hoje. */
+  protected async repetirUltimaVenda(): Promise<void> {
+    const cliente = this.clienteSelecionado();
+    if (!cliente || this.repetir().estado === 'carregando') {
+      return;
+    }
+    this.repetir.set({ estado: 'carregando' });
+    try {
+      const ultima = await this.vendaStore.ultimaVendaDoCliente(cliente.id);
+      await this.produtosPronto;
+      if (this.clienteSelecionado()?.id !== cliente.id) {
+        return;
+      }
+      if (ultima !== null && this.produtosStatus() === 'error') {
+        this.repetir.set({ estado: 'erro', mensagem: 'Não foi possível carregar o catálogo.' });
+        return;
+      }
+      // O operador tocou no catálogo com a consulta em voo: o carrinho dele não é substituído.
+      if (this.itens().length > 0) {
+        this.repetir.set({ estado: 'ocioso' });
+        return;
+      }
+      const catalogo = new Map(this.produtos().map((p) => [p.id, p]));
+      if (ultima === null) {
+        this.repetir.set({ estado: 'sem-venda' });
+        return;
+      }
+      const { itens, pulados } = itensDaUltimaVenda(ultima, catalogo);
+      if (itens.length > 0) {
+        this.mudarItens(() => itens);
+      }
+      this.repetir.set(
+        pulados > 0
+          ? { estado: 'pulados', pulados }
+          : { estado: itens.length > 0 ? 'ocioso' : 'sem-venda' },
+      );
+    } catch (e) {
+      if (this.clienteSelecionado()?.id === cliente.id) {
+        const mensagem =
+          e instanceof ApiError ? e.userMessage : 'Não foi possível carregar a última venda.';
+        this.repetir.set({ estado: 'erro', mensagem });
+      }
+    }
   }
 
   /** Preço vivo: o do item no carrinho (editável) ou a sugestão do produto. */
@@ -1096,6 +1106,48 @@ export class PdvPage implements OnInit {
     return firstValueFrom(ref.closed);
   }
 
+  // Cobrança: sheet no celular, painel no desktop (mesmo componente, mesmas ações)
+
+  protected abrirCobrar(): void {
+    const dados: CobrarSheetDados = {
+      estado: this.cobrarEstado,
+      agir: (acao) => this.agir(acao),
+    };
+    const ref = this.sheet.abrir<void, CobrarSheetDados>(CobrarSheet, dados);
+    this.cobrarRef = ref;
+    ref.closed.subscribe(() => {
+      if (this.cobrarRef === ref) {
+        this.cobrarRef = null;
+      }
+    });
+  }
+
+  protected agir(acao: CobrarAcao): void {
+    switch (acao.tipo) {
+      case 'cascos':
+        this.cascosDevolvidos.set(acao.valor);
+        break;
+      case 'naHora':
+        this.alternarNaHora(acao.valor);
+        break;
+      case 'sucata':
+        this.sucataEntregue.set(acao.valor);
+        break;
+      case 'pagamentos':
+        this.pagamentos.set(acao.valor);
+        break;
+      case 'atalho':
+        this.aplicarAtalho(acao);
+        break;
+      case 'tudoFiado':
+        this.pagamentos.set([]);
+        break;
+      case 'registrar':
+        void this.registrar();
+        break;
+    }
+  }
+
   // Cascos
 
   protected alternarNaHora(ligado: boolean): void {
@@ -1110,7 +1162,11 @@ export class PdvPage implements OnInit {
 
   protected aplicarAtalho({ indice, qual }: { indice: number; qual: 'tudo' | 'metade' }): void {
     const valor = valorDoAtalho(qual, this.totais().liquido, this.pagamentos(), indice);
-    this.pagamentos.update((atual) => atual.map((p, i) => (i === indice ? { ...p, valor } : p)));
+    this.pagamentos.update((atual) =>
+      indice < atual.length
+        ? atual.map((p, i) => (i === indice ? { ...p, valor } : p))
+        : [...atual, { forma: 'DINHEIRO', valor }],
+    );
   }
 
   // Registro
@@ -1142,7 +1198,9 @@ export class PdvPage implements OnInit {
         await this.router.navigateByUrl(`/vendas/detalhe/${original.id}`);
       } else {
         this.venda.set(await this.vendaStore.criar(request));
+        this.carregarSaldos(cliente.id); // Regra 8.6: saldos novos vêm do servidor
       }
+      this.cobrarRef?.close();
     } catch (e) {
       // Rede/5xx já viraram toast no interceptor; 4xx (CAIXA_FECHADO, 400/422) fica inline.
       if (!(e instanceof ApiError)) {
@@ -1154,6 +1212,10 @@ export class PdvPage implements OnInit {
     } finally {
       this.enviando.set(false);
     }
+  }
+
+  protected voltarAoHoje(): void {
+    void this.router.navigateByUrl('/home');
   }
 
   protected async emitirCupom(vendaId: string): Promise<void> {
@@ -1195,7 +1257,7 @@ export class PdvPage implements OnInit {
     this.cascosDevolvidos.set(0);
     this.cascosNaHora.set(false);
     this.sucataEntregue.set(0);
-    this.pagamentos.set([]);
+    this.pagamentos.set(PAGAMENTO_PADRAO);
     this.erro.set(null);
     this.venda.set(null);
     this.cupom.set(null);
@@ -1204,6 +1266,6 @@ export class PdvPage implements OnInit {
     this.buscaClientes = null;
     this.saldos.set(null);
     this.categoria.set(null);
-    this.passo.set('cliente');
+    this.repetir.set({ estado: 'ocioso' });
   }
 }

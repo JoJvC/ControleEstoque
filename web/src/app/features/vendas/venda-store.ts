@@ -55,6 +55,15 @@ export class VendaStore {
   /** Cache produtoId → nome (detalhe); nunca é limpo. */
   readonly produtos = this.produtosInterno.asReadonly();
 
+  /**
+   * Última venda do cliente (a listagem vem por data DESC); null se ele nunca comprou.
+   * A listagem traz só o resumo (itens: []): os itens vêm do detalhe, por obter(id).
+   */
+  async ultimaVendaDoCliente(clienteId: string): Promise<VendaDetalheResponse | null> {
+    const [resumo] = await firstValueFrom(this.api.listar({ clienteId, page: 1, pageSize: 1 }));
+    return resumo ? firstValueFrom(this.api.obter(resumo.id)) : null;
+  }
+
   buscar(filtros: Omit<VendaFiltros, 'page' | 'pageSize'>): void {
     this.filtros = filtros;
     this.page = 1;

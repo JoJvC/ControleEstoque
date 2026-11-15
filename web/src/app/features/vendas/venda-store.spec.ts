@@ -1,6 +1,8 @@
 import { HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
+import { vi } from 'vitest';
 
 import { ClienteResponse } from '../../core/api/models/clientes';
 import {
@@ -8,6 +10,7 @@ import {
   CupomFiscalResponse,
   VendaDetalheResponse,
 } from '../../core/api/models/vendas';
+import { VendasApi } from '../../core/api/vendas-api';
 import { ConfigStore } from '../../core/config/app-config';
 import { ApiError } from '../../core/http/api-error';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
@@ -425,5 +428,37 @@ describe('VendaStore detalhe aberto: pagamento e cupom', () => {
     http.expectOne(`${URL_VENDAS}/v-1`).flush(venda('v-1', 'c-1'));
     expect(await promessa).toBeNull();
     expect(store.detalhe()).toBeNull();
+  });
+});
+
+describe('VendaStore.ultimaVendaDoCliente', () => {
+  // Como o servidor real: a listagem traz o resumo (itens: []), o detalhe traz os itens.
+  const resumo = { id: 'v-9', clienteId: 'c-1', itens: [] } as unknown as VendaDetalheResponse;
+  const detalhe = {
+    id: 'v-9',
+    clienteId: 'c-1',
+    itens: [{ produtoId: 'p-1', quantidade: 2 }],
+  } as unknown as VendaDetalheResponse;
+
+  function criarComApi(lista: VendaDetalheResponse[]) {
+    const listar = vi.fn().mockReturnValue(of(lista));
+    const obter = vi.fn().mockReturnValue(of(detalhe));
+    TestBed.configureTestingModule({
+      providers: [{ provide: VendasApi, useValue: { listar, obter } }],
+    });
+    return { store: TestBed.inject(VendaStore), listar, obter };
+  }
+
+  it('lista com clienteId, page 1 e pageSize 1 e busca os itens por obter(id)', async () => {
+    const { store, listar, obter } = criarComApi([resumo]);
+    expect(await store.ultimaVendaDoCliente('c-1')).toBe(detalhe);
+    expect(listar).toHaveBeenCalledWith({ clienteId: 'c-1', page: 1, pageSize: 1 });
+    expect(obter).toHaveBeenCalledWith('v-9');
+  });
+
+  it('devolve null, sem chamar obter, quando o cliente nunca comprou', async () => {
+    const { store, obter } = criarComApi([]);
+    expect(await store.ultimaVendaDoCliente('c-1')).toBeNull();
+    expect(obter).not.toHaveBeenCalled();
   });
 });

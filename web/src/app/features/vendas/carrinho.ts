@@ -118,6 +118,15 @@ export function cascosNaRua(quantidadeDeAgua: number, devolvidos: number): numbe
   return Math.max(0, quantidadeDeAgua - devolvidos);
 }
 
+/** Linha de feedback do casco no fechamento: o que fica na rua com o cliente ou quanto veio a mais. */
+export function rotuloCascoNaRua(naRua: number, aMais: number, cliente: string | null): string {
+  if (aMais > 0) {
+    return `Devolveu ${aMais} a mais`;
+  }
+  const com = cliente ? ` com ${cliente}` : '';
+  return naRua === 1 ? `Fica 1 casco na rua${com}` : `Ficam ${naRua} cascos na rua${com}`;
+}
+
 /**
  * Valor do atalho de pagamento para a linha `indice` (ou uma linha nova, se fora da lista):
  * restante = total − o que as outras linhas já pagam. "Tudo fiado" não tem valor: a página zera os pagamentos.
@@ -217,4 +226,33 @@ export function rascunhoDeVenda(
     cascosDevolvidosNaHora: false,
     sucataEntregue: venda.sucataEntregue ?? 0,
   };
+}
+
+export interface UltimaVendaCarregada {
+  readonly itens: readonly ItemCarrinho[];
+  /** Itens da venda antiga cujo produto não está mais no catálogo. */
+  readonly pulados: number;
+}
+
+/**
+ * Repetir última venda: itens e quantidades da venda antiga ao preço de referência de HOJE
+ * (Regra 8.3: preço é sugestão). Desconto, pagamentos, cascos e sucata não são copiados.
+ */
+export function itensDaUltimaVenda(
+  venda: VendaDetalheResponse,
+  produtos: ReadonlyMap<string, ProdutoResponse>,
+): UltimaVendaCarregada {
+  const itens: ItemCarrinho[] = [];
+  for (const i of venda.itens) {
+    const produto = produtos.get(i.produtoId);
+    if (produto) {
+      itens.push({
+        produto,
+        quantidade: i.quantidade,
+        precoUnitario: produto.precoReferencia,
+        desconto: null,
+      });
+    }
+  }
+  return { itens, pulados: venda.itens.length - itens.length };
 }

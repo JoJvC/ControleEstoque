@@ -3,12 +3,14 @@ import { VendaDetalheResponse } from '../../core/api/models/vendas';
 import {
   ItemCarrinho,
   cascosNaRua,
+  rotuloCascoNaRua,
   categoriaDoProduto,
   categoriasDe,
   filtrarPorCategoria,
   produtosComEstoque,
   valorDoAtalho,
   fiadoDe,
+  itensDaUltimaVenda,
   pagamentoExcede,
   saldoAPagar,
   excedeSaldo,
@@ -253,6 +255,17 @@ describe('rascunhoDeVenda', () => {
   });
 });
 
+describe('rotuloCascoNaRua', () => {
+  it('singular, plural e devolução a mais', () => {
+    expect(rotuloCascoNaRua(1, 0, 'Ana')).toBe('Fica 1 casco na rua com Ana');
+    expect(rotuloCascoNaRua(2, 0, 'Ana')).toBe('Ficam 2 cascos na rua com Ana');
+    expect(rotuloCascoNaRua(0, 0, 'Ana')).toBe('Ficam 0 cascos na rua com Ana');
+    expect(rotuloCascoNaRua(0, 3, 'Ana')).toBe('Devolveu 3 a mais');
+    expect(rotuloCascoNaRua(1, 0, null)).toBe('Fica 1 casco na rua');
+    expect(rotuloCascoNaRua(2, 0, null)).toBe('Ficam 2 cascos na rua');
+  });
+});
+
 describe('cascosNaRua', () => {
   it('água menos devolvidos, nunca negativo', () => {
     expect(cascosNaRua(5, 3)).toBe(2);
@@ -338,5 +351,71 @@ describe('produtosComEstoque', () => {
     const r = produtosComEstoque([produto('AGUA', 'p-1'), produto('AGUA', 'p-2')], estoque);
     expect(r.map((x) => x.estoque)).toEqual([12, null]);
     expect(produtosComEstoque([produto('AGUA', 'p-1')], [])[0].estoque).toBeNull();
+  });
+});
+
+describe('itensDaUltimaVenda', () => {
+  const agua = { ...produto('AGUA', 'p-agua'), precoReferencia: 14 };
+  const gelo = { ...produto('DESCARTAVEL', 'p-gelo'), precoReferencia: 8 };
+  const catalogo = new Map([
+    [agua.id, agua],
+    [gelo.id, gelo],
+  ]);
+  const itemVenda = (produtoId: string, quantidade: number, precoUnitario: number) => ({
+    produtoId,
+    quantidade,
+    precoUnitario,
+    descontoTipo: 'PERCENTUAL' as const,
+    descontoValor: 10,
+    motivoDesconto: 'antigo',
+    totalItem: 0,
+  });
+  const venda = (itens: VendaDetalheResponse['itens']): VendaDetalheResponse => ({
+    id: 'v-0',
+    clienteId: 'c-1',
+    funcionarioId: 'f-1',
+    enderecoEntregaId: null,
+    data: '2026-01-02T10:00:00',
+    totalBruto: 0,
+    totalDesconto: 0,
+    totalLiquido: 0,
+    statusPagamento: 'PAGA',
+    observacao: null,
+    cupomEmitido: false,
+    cupomNumero: null,
+    cupomEmitidoEm: null,
+    itens,
+    pagamentos: [{ forma: 'PIX', valor: 99 }],
+    cascosDevolvidos: 3,
+    sucataEntregue: 2,
+  });
+
+  it('converte produto e quantidade; desconto, pagamentos, cascos e sucata não são copiados', () => {
+    const r = itensDaUltimaVenda(
+      venda([itemVenda('p-agua', 2, 14), itemVenda('p-gelo', 1, 8)]),
+      catalogo,
+    );
+    expect(r).toEqual({
+      itens: [
+        { produto: agua, quantidade: 2, precoUnitario: 14, desconto: null },
+        { produto: gelo, quantidade: 1, precoUnitario: 8, desconto: null },
+      ],
+      pulados: 0,
+    });
+    expect(totaisDe(r.itens)).toEqual({ bruto: 36, desconto: 0, liquido: 36 });
+  });
+
+  it('o preço é o precoReferencia de hoje, não o da venda antiga', () => {
+    const r = itensDaUltimaVenda(venda([itemVenda('p-agua', 1, 12)]), catalogo);
+    expect(r.itens[0].precoUnitario).toBe(14);
+  });
+
+  it('produto fora do catálogo é pulado e contado', () => {
+    const r = itensDaUltimaVenda(
+      venda([itemVenda('p-agua', 2, 12), itemVenda('p-gas', 1, 90)]),
+      catalogo,
+    );
+    expect(r.itens.map((i) => i.produto.id)).toEqual(['p-agua']);
+    expect(r.pulados).toBe(1);
   });
 });

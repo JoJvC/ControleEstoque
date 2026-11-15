@@ -14,6 +14,8 @@ import {
   FotoResponse,
   MarcaResponse,
   ProdutoResponse,
+  TipoCascoRequest,
+  TipoCascoResponse,
   TipoProduto,
 } from './models/estoque';
 import { RelatorioEstoque } from './models/relatorios';
@@ -39,6 +41,18 @@ export class EstoqueApi {
 
   criarMarca(request: CreateMarcaRequest): Observable<MarcaResponse> {
     return this.http.post<MarcaResponse>(`${this.base}/marcas`, request);
+  }
+
+  listarTiposCasco(): Observable<TipoCascoResponse[]> {
+    return this.http.get<TipoCascoResponse[]>(`${this.base}/tipos-casco`);
+  }
+
+  criarTipoCasco(request: TipoCascoRequest): Observable<TipoCascoResponse> {
+    return this.http.post<TipoCascoResponse>(`${this.base}/tipos-casco`, request);
+  }
+
+  atualizarTipoCasco(id: string, request: TipoCascoRequest): Observable<TipoCascoResponse> {
+    return this.http.put<TipoCascoResponse>(`${this.base}/tipos-casco/${id}`, request);
   }
 
   listarProdutos(filtros: ProdutoFiltros = {}): Observable<ProdutoResponse[]> {

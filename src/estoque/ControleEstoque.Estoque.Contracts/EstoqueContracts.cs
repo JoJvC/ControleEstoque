@@ -146,6 +146,38 @@ public sealed record AbastecimentoPendenteResponse(
         p.Id, p.Data, p.TipoFrete, p.TotalUnidades, p.LinhasSemCusto, p.FreteFaltando);
 }
 
+public sealed record LinhaLucroResponse(
+    Guid ProdutoMarcaId,
+    Guid ProdutoId,
+    string ProdutoNome,
+    Guid MarcaId,
+    string MarcaNome,
+    int QuantidadeVendida,
+    decimal Receita,
+    decimal ReceitaVasilhame,
+    decimal? CustoProdutos,
+    decimal? Frete,
+    decimal? Lucro,
+    bool CustoPendente);
+
+public sealed record TotaisLucroResponse(
+    int QuantidadeVendida, decimal Receita, decimal ReceitaVasilhame, decimal CustoProdutos, decimal Frete,
+    decimal Lucro, int LinhasPendentes);
+
+public sealed record RelatorioLucroResponse(
+    DateOnly? Inicio, DateOnly? Fim, IReadOnlyList<LinhaLucroResponse> Linhas, TotaisLucroResponse Totais)
+{
+    public static RelatorioLucroResponse From(RelatorioLucro r) => new(
+        r.Inicio,
+        r.Fim,
+        [.. r.Linhas.Select(l => new LinhaLucroResponse(
+            l.ProdutoMarcaId, l.ProdutoId, l.ProdutoNome, l.MarcaId, l.MarcaNome, l.QuantidadeVendida,
+            l.Receita, l.ReceitaVasilhame, l.CustoProdutos, l.Frete, l.Lucro, l.CustoPendente))],
+        new TotaisLucroResponse(
+            r.Totais.QuantidadeVendida, r.Totais.Receita, r.Totais.ReceitaVasilhame, r.Totais.CustoProdutos,
+            r.Totais.Frete, r.Totais.Lucro, r.Totais.LinhasPendentes));
+}
+
 public sealed record CreateBaixaCascoRequest(
     Guid TipoCascoId, int Quantidade, string? Motivo, List<Guid>? ResponsaveisIds);
 

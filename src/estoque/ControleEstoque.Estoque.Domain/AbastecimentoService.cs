@@ -22,8 +22,6 @@ public interface IAbastecimentoService
 
 public sealed class AbastecimentoService : IAbastecimentoService
 {
-    public const string PermissaoCustos = "estoque.custos";
-
     private readonly IAbastecimentoRepository abastecimentos;
     private readonly IProdutoRepository produtos;
     private readonly ITipoCascoRepository tiposCasco;
@@ -94,7 +92,7 @@ public sealed class AbastecimentoService : IAbastecimentoService
     public async Task<AbastecimentoDetalhe> LancarCustosAsync(
         Guid id, LancamentoCustos custos, CancellationToken cancellationToken)
     {
-        await ExigirPermissaoCustosAsync(custos.FuncionarioId, cancellationToken);
+        await PermissoesEstoque.ExigirCustosAsync(permissoes, custos.FuncionarioId, cancellationToken);
         var carga = await GetOuFalhaAsync(id, cancellationToken);
 
         if (custos.Frete < 0)
@@ -120,14 +118,14 @@ public sealed class AbastecimentoService : IAbastecimentoService
     public async Task<AbastecimentoDetalhe> ObterAsync(
         Guid id, Guid funcionarioId, CancellationToken cancellationToken)
     {
-        await ExigirPermissaoCustosAsync(funcionarioId, cancellationToken);
+        await PermissoesEstoque.ExigirCustosAsync(permissoes, funcionarioId, cancellationToken);
         return Detalhe(await GetOuFalhaAsync(id, cancellationToken));
     }
 
     public async Task<IReadOnlyList<AbastecimentoPendente>> ListarPendentesAsync(
         Guid funcionarioId, CancellationToken cancellationToken)
     {
-        await ExigirPermissaoCustosAsync(funcionarioId, cancellationToken);
+        await PermissoesEstoque.ExigirCustosAsync(permissoes, funcionarioId, cancellationToken);
         return await abastecimentos.ListPendentesAsync(cancellationToken);
     }
 
@@ -151,16 +149,4 @@ public sealed class AbastecimentoService : IAbastecimentoService
     private async Task<Abastecimento> GetOuFalhaAsync(Guid id, CancellationToken cancellationToken) =>
         await abastecimentos.GetAsync(id, cancellationToken)
             ?? throw new EntityNotFoundException("ABASTECIMENTO_NAO_ENCONTRADO", $"Abastecimento {id} não encontrado.");
-
-    private async Task ExigirPermissaoCustosAsync(Guid funcionarioId, CancellationToken cancellationToken)
-    {
-        Validacao.IdPreenchido(funcionarioId, "FuncionarioId");
-        var lista = await permissoes.PermissoesAsync(funcionarioId, cancellationToken)
-            ?? throw new EntityNotFoundException(
-                "FUNCIONARIO_NAO_ENCONTRADO", $"Funcionário {funcionarioId} não encontrado.");
-        if (!lista.Contains(PermissaoCustos) && !lista.Contains("*"))
-        {
-            throw new ForbiddenException($"Funcionário sem a permissão {PermissaoCustos}.");
-        }
-    }
 }

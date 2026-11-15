@@ -67,7 +67,7 @@ npm run e2e
 
 - Outra porta ou host: `E2E_BASE_URL=http://localhost:9090 npm run e2e`.
 - O spec cria os próprios dados pela API (cargo, operadores, cliente, marca, produto, abastecimento), com sufixo único por execução; pode ser repetido.
-- O cargo criado pelo spec recebe as permissões que as rotas exigem: `vendas.registrar`, `rh.gerir`, `relatorios.ver`, `clientes.cadastrar`, `estoque.editar` e `caixa.fechar`.
+- O cargo criado pelo spec recebe as permissões que as rotas exigem: `vendas.registrar`, `rh.gerir`, `relatorios.ver`, `clientes.cadastrar`, `estoque.editar`, `estoque.custos` e `caixa.fechar`.
 - Exige o caixa do dia aberto ou inexistente (abre um se faltar); com o caixa de hoje fechado o teste falha. Rode em base limpa. O teste de Caixa abre o fechamento e cancela: não fecha o caixa do dia, para o smoke rodar de novo no mesmo dia.
 
 ## Capacitor (passo futuro)

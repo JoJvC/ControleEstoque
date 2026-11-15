@@ -236,7 +236,8 @@ CREATE TABLE abastecimentos (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     data            DATE NOT NULL DEFAULT CURRENT_DATE,
     tipo_frete      tipo_frete NOT NULL,
-    custo_total     NUMERIC(19,2) NOT NULL DEFAULT 0, -- vinculado ao caixa como despesa
+    custo_total     NUMERIC(19,2) NOT NULL DEFAULT 0, -- legado: sem escrita nem leitura (custo vem de itens, cascos e frete)
+    frete           NUMERIC(19,2), -- NULL = custo pendente; lançado no momento 2
     funcionario_id  UUID REFERENCES funcionarios(id), -- motorista quando frete PROPRIO
     observacao      TEXT,
     created_by      UUID REFERENCES funcionarios(id),
@@ -252,10 +253,26 @@ CREATE TABLE abastecimento_itens (
     abastecimento_id UUID NOT NULL REFERENCES abastecimentos(id),
     produto_marca_id UUID NOT NULL REFERENCES produto_marcas(id),
     quantidade       INT NOT NULL CHECK (quantidade > 0),
-    custo_unitario   NUMERIC(19,2) NOT NULL DEFAULT 0
+    custo_unitario   NUMERIC(19,2) -- NULL = custo pendente; lançado no momento 2
 );
 
 CREATE INDEX idx_abast_itens_abastecimento ON abastecimento_itens(abastecimento_id);
+
+-- Cascos vazios da carga, por tipo de casco (custo opcional, conta como unidade no rateio do frete).
+CREATE TABLE IF NOT EXISTS abastecimento_cascos (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    abastecimento_id UUID NOT NULL REFERENCES abastecimentos(id),
+    tipo_casco_id    UUID NOT NULL REFERENCES tipos_casco(id),
+    quantidade       INT NOT NULL CHECK (quantidade > 0),
+    custo_unitario   NUMERIC(19,2) CHECK (custo_unitario >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_abast_cascos_abastecimento ON abastecimento_cascos(abastecimento_id);
+
+-- Abastecimento em dois momentos: o frete e o custo unitário passam a ser opcionais (bancos já existentes).
+ALTER TABLE abastecimentos ADD COLUMN IF NOT EXISTS frete NUMERIC(19,2);
+ALTER TABLE abastecimento_itens ALTER COLUMN custo_unitario DROP NOT NULL;
+ALTER TABLE abastecimento_itens ALTER COLUMN custo_unitario DROP DEFAULT;
 
 ALTER TABLE movimentos_estoque
     ADD CONSTRAINT fk_mov_estoque_abastecimento
@@ -269,6 +286,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_abastecimento_itens_custo_unitario_nao_negativo') THEN
         ALTER TABLE abastecimento_itens ADD CONSTRAINT chk_abastecimento_itens_custo_unitario_nao_negativo CHECK (custo_unitario >= 0);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_abastecimentos_frete_nao_negativo') THEN
+        ALTER TABLE abastecimentos ADD CONSTRAINT chk_abastecimentos_frete_nao_negativo CHECK (frete >= 0);
     END IF;
 END
 $$;
@@ -428,11 +448,14 @@ CREATE TABLE IF NOT EXISTS movimentos_estoque_casco (
     tipo            tipo_movimento_estoque NOT NULL,
     quantidade      INT NOT NULL CHECK (quantidade <> 0),
     baixa_casco_id  UUID REFERENCES baixas_casco(id),
+    abastecimento_id UUID REFERENCES abastecimentos(id),
     observacao      TEXT,
     created_by      UUID REFERENCES funcionarios(id),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at      TIMESTAMPTZ
 );
+
+ALTER TABLE movimentos_estoque_casco ADD COLUMN IF NOT EXISTS abastecimento_id UUID REFERENCES abastecimentos(id);
 
 CREATE INDEX IF NOT EXISTS idx_mov_estoque_casco_tipo
     ON movimentos_estoque_casco(tipo_casco_id, situacao) WHERE deleted_at IS NULL;
@@ -493,13 +516,15 @@ CREATE TABLE caixa_despesas (
     tipo_despesa_id  UUID NOT NULL REFERENCES tipos_despesa(id),
     valor            NUMERIC(19,2) NOT NULL CHECK (valor > 0),
     descricao        TEXT,
-    abastecimento_id UUID REFERENCES abastecimentos(id), -- custo de abastecimento
     created_by       UUID REFERENCES funcionarios(id),
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at       TIMESTAMPTZ
 );
 
 CREATE INDEX idx_caixa_despesas_caixa ON caixa_despesas(caixa_id) WHERE deleted_at IS NULL;
+
+-- Abastecimento não lança mais despesa no caixa (a FK sem nome cai junto com a coluna).
+ALTER TABLE caixa_despesas DROP COLUMN IF EXISTS abastecimento_id;
 
 -- ----------------------------------------------------------------------------
 -- RH — CONTA CORRENTE DO FUNCIONÁRIO

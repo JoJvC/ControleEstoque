@@ -49,7 +49,7 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 ### 3.5 Controle de Caixa
 - No fechamento do caixa do dia, é lançada a diária de cada funcionário que trabalhou (não há controle de presença separado — a presença/falta é considerada diretamente no lançamento da diária no fechamento).
 - Diária lançada não é paga imediatamente: ela alimenta a conta corrente do funcionário (ver 3.8), sendo o pagamento normalmente consolidado semanalmente.
-- Registro das vendas (entradas) e despesas (saídas, incluindo diárias de funcionários e custos de abastecimento).
+- Registro das vendas (entradas) e despesas (saídas, incluindo diárias de funcionários). O caixa **não** recebe custo de abastecimento automático: abastecimento pago com dinheiro do caixa é lançado como despesa comum, na categoria 'Abastecimento'.
 - Cada despesa lançada no caixa deve ter um **tipo de despesa** associado, para permitir análise por categoria.
 - Fechamento do caixa no final do dia com saldo consolidado.
 
@@ -60,7 +60,7 @@ O vasilhame é controlado por **tipo de casco** (nome, preço do vasilhame, acei
 - **Venda de produto descartável**: não tem casco e não gera retorno nem débito.
 
 Controles envolvidos:
-- **Entrada no estoque**: o abastecimento dá entrada por produto+marca. O estoque de **vazios** de cada tipo de casco é alimentado por lançamento (ajuste) e pelas devoluções dos clientes. Sucata normalmente não vem do abastecimento — entra por entrega do cliente, por ajuste ou por baixa de casco quebrado.
+- **Entrada no estoque**: o abastecimento dá entrada por produto+marca. O estoque de **vazios** de cada tipo de casco é alimentado pela carga do abastecimento (cascos vazios por tipo), por lançamento (ajuste) e pelas devoluções dos clientes. Sucata normalmente não vem do abastecimento — entra por entrega do cliente, por ajuste ou por baixa de casco quebrado.
 - **Estoque físico de vazios e de sucata, por tipo de casco**: controlados separadamente. Sucata **só** nos tipos que aceitam sucata: entrada ou ajuste de sucata em tipo que não aceita é recusado. Deve existir uma função de **baixa de casco** por tipo para registrar perdas (quebra), atribuída a um ou mais funcionários responsáveis — o casco baixado sai do estoque de vazios do tipo e, **só se o tipo aceita sucata**, passa a compor o estoque de sucata do mesmo tipo; se não aceita, apenas sai do vazio. Sem vazio suficiente no tipo, a baixa é recusada.
 - **Saldo de casco por cliente**: quantos cascos cada cliente está devendo à loja (apenas por vendas de produtos retornáveis). Não há limite de cascos por cliente.
 - **Registro de sucata por cliente**: quantidade de sucata que cada cliente já entregou à loja — não é um débito, apenas um recebimento registrado, independente do saldo de casco.
@@ -72,8 +72,11 @@ Controles envolvidos:
 
 ### 3.7 Abastecimento
 - Registro de abastecimento do estoque da loja, que pode ser feito via frete terceirizado ou com caminhão/funcionário próprio da loja.
-- O abastecimento pode trazer galão completo (casco + água) e/ou casco vazio separadamente, cada um dando entrada no respectivo estoque.
-- Vinculação do custo do abastecimento (terceirizado ou próprio) ao estoque e ao caixa.
+- O abastecimento pode trazer galão completo (casco + água) e/ou casco vazio separadamente, cada um dando entrada no respectivo estoque (produto+marca e vazios por tipo de casco).
+- **Dois momentos**: (1) a carga é lançada só com quantidades, por produto+marca e cascos vazios por tipo, sem valor; (2) quem tem a permissão `estoque.custos` lança o custo unitário de cada linha (produtos e cascos; zero é válido) e o frete da carga. Não há campo de custo total: o servidor calcula total = soma(quantidade × custo unitário) + frete.
+- **Custo pendente**: a carga com frete ou algum custo unitário faltando fica pendente e aparece na listagem de cargas pendentes, até o custo ser completado. Carga anterior a esta regra aparece pendente até o frete ser informado.
+- **Custo da unidade** (base do lucro) = custo unitário + frete ÷ total de unidades da carga; o casco vazio conta como unidade no rateio.
+- O custo do abastecimento não é vinculado ao caixa.
 
 ### 3.8 Conta Corrente de Funcionários
 - Cada diária lançada no fechamento de caixa (ver 3.5) credita a conta corrente do funcionário.
@@ -159,7 +162,7 @@ Controles envolvidos:
 - **Tipo de casco**: cadastro próprio com nome, preço do vasilhame (≥ 0) e se aceita sucata. **Genérico** não tem marca; **específico** tem marca. O produto retornável aponta um casco genérico; a associação produto+marca pode apontar um casco específico, só em produto retornável e da mesma marca da associação. O casco do item é o específico da associação, se houver; senão, o genérico do produto — **o específico vence**. Descartável não tem casco e não gera retorno. Um tipo de casco em uso (apontado por produto ou associação) não troca de marca, e um tipo com saldo de sucata não deixa de aceitar sucata.
 - **Casco x sucata**: a venda de produto retornável **só** empresta e gera débito de casco — sucata nunca é emprestada nem gera débito pela venda. Sucata é somente entregue pelo cliente à loja (avulsa ou junto de uma venda) ou vem de casco quebrado, em estoque físico (por tipo de casco) e registro por cliente próprios, totalmente independentes do saldo de casco.
 - **Casco — sem limite**: não há limite de cascos emprestados por cliente.
-- **Estoque — abastecimento**: dá entrada por produto+marca. O estoque de casco vazio de cada tipo é lançado à parte (ajuste de vazios por tipo). Sucata normalmente não vem do abastecimento; entra por entrega do cliente, por ajuste (só em tipo que aceita sucata) ou por baixa de casco quebrado.
+- **Estoque — abastecimento**: dá entrada por produto+marca e, por tipo de casco, nos vazios da carga; o ajuste de vazios por tipo continua existindo à parte. Sucata normalmente não vem do abastecimento; entra por entrega do cliente, por ajuste (só em tipo que aceita sucata) ou por baixa de casco quebrado.
 - **Produto descartável não gera retorno**: a venda de descartável não empresta casco nem gera débito de casco.
 - **Casco — venda de produto retornável GERA débito**: o casco do item usado para entregar o produto continua sendo da loja; se o cliente não devolver (total ou parcialmente) no ato, o saldo faltante vira débito dele. A venda registra quantidade vendida e quantidade devolvida como campos independentes (não precisam ser iguais); a diferença gera débito (devolveu menos) ou crédito (devolveu mais, abatendo saldo anterior). A tela de venda deve ter uma opção rápida para marcar "cascos devolvidos na hora" (preenche devolvido = vendido), mantendo o campo editável para casos parciais. Se o cliente entregar sucata junto, ela é lançada à parte e **não** abate esse débito.
 - **Pagar Casco**: função para quitar débito de casco do cliente, com duas formas: devolução física do vazio (no ato da venda ou avulsa) ou conversão em débito financeiro (lançando a venda do casco vazio, migrando a pendência para a conta corrente/fiado do cliente).
@@ -170,7 +173,7 @@ Controles envolvidos:
 - **Conta corrente de funcionário**: diárias creditadas, vales debitados; pagamento normalmente feito de uma vez por semana, baixando o saldo acumulado.
 - **Conta corrente de cliente (fiado)**: soma débitos de vendas não totalmente pagas e de conversões de casco normal em valor, menos créditos de conversões de sucata; pagamentos do cliente baixam o saldo.
 - **Estoque**: alerta de estoque mínimo configurável por produto+marca (na associação): alerta quando a quantidade é **menor** que o mínimo e **só se o mínimo for maior que 0** (quantidade igual ao mínimo não alerta; mínimo 0 nunca alerta). O estoque geral do produto é a soma do estoque das marcas, calculado pelo servidor.
-- **Abastecimento**: pode ser via frete terceirizado ou caminhão/funcionário próprio da loja; custo é vinculado ao estoque e ao caixa.
+- **Abastecimento**: pode ser via frete terceirizado ou caminhão/funcionário próprio da loja; lançado em dois momentos (quantidades; depois custo unitário e frete, com `estoque.custos`), com custo pendente enquanto faltar valor e custo da unidade com o frete rateado entre todas as unidades da carga (cascos incluídos). Não gera despesa automática no caixa; pago com dinheiro do caixa, é despesa comum na categoria 'Abastecimento'.
 - **Permissões**: sistema 100% configurável. Existe um cargo nativo (ADM) com acesso total; demais cargos são criados livremente pelo usuário, com permissões granulares atribuíveis, e vinculados aos funcionários.
 
 ## 6. Relatórios e Indicadores
@@ -188,3 +191,4 @@ Controles envolvidos:
 - **ADM**: cargo nativo do sistema, com acesso total (não editável/removível).
 - **Cargos customizados**: criados livremente pelo usuário, com permissões granulares definidas por tela/ação (ex: registrar venda, editar venda, fechar caixa, editar estoque, ver relatórios, cadastrar cliente, etc.).
 - Cada funcionário é vinculado a um cargo, que define suas permissões no sistema.
+- `estoque.custos`: ver e lançar custos do abastecimento (detalhe, cargas pendentes e lançamento de custo/frete). O backend confere pelo cargo do funcionário informado na requisição (query ou corpo); sem a permissão (ou `*`) responde 403 `PERMISSAO_NEGADA`.

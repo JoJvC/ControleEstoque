@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IProdutoRepository, PostgresProdutoRepository>();
         services.AddSingleton<IEstoqueRepository, PostgresEstoqueRepository>();
         services.AddSingleton<IAbastecimentoRepository, PostgresAbastecimentoRepository>();
+        services.AddSingleton<IPermissaoFuncionarioLookup, PostgresPermissaoFuncionarioLookup>();
         services.AddSingleton<IBaixaCascoRepository, PostgresBaixaCascoRepository>();
         services.AddSingleton<IFotoStorage>(sp =>
             new LocalDiskFotoStorage(sp.GetRequiredService<IOptions<EstoqueOptions>>().Value.MediaPath));

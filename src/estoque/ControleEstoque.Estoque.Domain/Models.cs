@@ -62,14 +62,38 @@ public sealed record EstoqueCasco(
     long Vazios,
     long Sucata);
 
-public sealed record AbastecimentoItem(Guid ProdutoMarcaId, int Quantidade, decimal CustoUnitario);
+public sealed record AbastecimentoItem(Guid ProdutoMarcaId, int Quantidade);
+
+public sealed record AbastecimentoCasco(Guid TipoCascoId, int Quantidade);
 
 public sealed record NovoAbastecimento(
     TipoFrete TipoFrete,
-    decimal CustoTotal,
     Guid? FuncionarioId,
     string? Observacao,
-    IReadOnlyList<AbastecimentoItem> Itens);
+    IReadOnlyList<AbastecimentoItem> Itens,
+    IReadOnlyList<AbastecimentoCasco> Cascos);
+
+/// <summary>Linha da carga já gravada (item de produto+marca ou casco); custo nulo = pendente.</summary>
+public sealed record LinhaCarga(Guid Id, Guid ReferenciaId, int Quantidade, decimal? CustoUnitario);
+
+public sealed record Abastecimento(
+    Guid Id,
+    DateOnly Data,
+    TipoFrete TipoFrete,
+    Guid? FuncionarioId,
+    string? Observacao,
+    decimal? Frete,
+    IReadOnlyList<LinhaCarga> Itens,
+    IReadOnlyList<LinhaCarga> Cascos);
+
+public sealed record AbastecimentoPendente(
+    Guid Id, DateOnly Data, TipoFrete TipoFrete, int TotalUnidades, int LinhasSemCusto, bool FreteFaltando);
+
+public sealed record CustoLinha(Guid Id, decimal CustoUnitario);
+
+/// <summary>Momento 2: só o que veio é gravado; <see cref="Frete"/> nulo mantém o frete atual.</summary>
+public sealed record LancamentoCustos(
+    Guid FuncionarioId, decimal? Frete, IReadOnlyList<CustoLinha> Itens, IReadOnlyList<CustoLinha> Cascos);
 
 public sealed record NovaBaixaCasco(
     Guid TipoCascoId, int Quantidade, string? Motivo, IReadOnlyList<Guid> ResponsaveisIds);

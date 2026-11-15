@@ -4,7 +4,7 @@ namespace ControleEstoque.Estoque.Repository;
 
 /// <summary>
 /// Armazena fotos de produto em volume local (montado no container).
-/// O banco guarda apenas o caminho relativo (produtos.foto_url).
+/// O banco guarda apenas o caminho relativo (produto_marcas.foto_url).
 /// </summary>
 public sealed class LocalDiskFotoStorage : IFotoStorage
 {
@@ -13,12 +13,12 @@ public sealed class LocalDiskFotoStorage : IFotoStorage
     public LocalDiskFotoStorage(string mediaPath) => this.mediaPath = mediaPath;
 
     public async Task<string> SaveAsync(
-        Guid produtoId, Stream content, string extension, CancellationToken cancellationToken)
+        Guid produtoMarcaId, Stream content, string extension, CancellationToken cancellationToken)
     {
         var directory = Path.Combine(mediaPath, "produtos");
         Directory.CreateDirectory(directory);
 
-        var fileName = $"{produtoId}{extension}";
+        var fileName = $"{produtoMarcaId}{extension}";
         var fullPath = Path.Combine(directory, fileName);
         await using var file = File.Create(fullPath);
         await content.CopyToAsync(file, cancellationToken);

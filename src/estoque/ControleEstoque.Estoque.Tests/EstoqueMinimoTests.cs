@@ -15,11 +15,7 @@ public class EstoqueMinimoTests
     [Fact]
     public void ViewSql_UsaMenorQueEMinimoPositivo()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "infra", "postgres", "init.sql")))
-            dir = dir.Parent;
-        Assert.NotNull(dir);
-        var sql = File.ReadAllText(Path.Combine(dir!.FullName, "infra", "postgres", "init.sql"));
+        var sql = InitSql.Ler();
 
         var ini = sql.IndexOf("CREATE OR REPLACE VIEW vw_estoque_atual", StringComparison.Ordinal);
         Assert.True(ini >= 0, "vw_estoque_atual deve ser CREATE OR REPLACE VIEW");
@@ -28,7 +24,8 @@ public class EstoqueMinimoTests
 
         Assert.StartsWith("CREATE OR REPLACE VIEW vw_estoque_atual", bloco);
         Assert.Contains("estoque_minimo > 0", bloco);
-        Assert.Contains("< p.estoque_minimo", bloco);
-        Assert.DoesNotContain("<= p.estoque_minimo", bloco);
+        Assert.Contains("< pm.estoque_minimo", bloco);
+        Assert.DoesNotContain("<= pm.estoque_minimo", bloco);
+        Assert.Contains("FROM produto_marcas pm", bloco);
     }
 }

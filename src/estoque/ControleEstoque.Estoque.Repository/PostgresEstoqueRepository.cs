@@ -21,28 +21,51 @@ public sealed class PostgresEstoqueRepository : IEstoqueRepository
         {
             results.Add(new EstoqueItem(
                 reader.GetGuid(0),
-                Enum.Parse<TipoProduto>(reader.GetString(1)),
-                reader.GetString(2),
-                reader.IsDBNull(3) ? null : reader.GetString(3),
-                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.GetGuid(1),
+                Enum.Parse<TipoProduto>(reader.GetString(2)),
+                reader.GetString(3),
+                reader.GetGuid(4),
                 reader.IsDBNull(5) ? null : reader.GetString(5),
-                reader.GetInt64(6),
-                reader.GetInt32(7),
-                reader.GetBoolean(8)));
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.GetInt64(8),
+                reader.GetInt32(9),
+                reader.GetBoolean(10)));
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<EstoqueCasco>> GetEstoqueCascosAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.GetEstoqueCascos, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var results = new List<EstoqueCasco>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(new EstoqueCasco(
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetGuid(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.GetBoolean(4),
+                reader.GetInt64(5),
+                reader.GetInt64(6)));
         }
 
         return results;
     }
 
     public async Task<SaldoInsuficiente?> AddAjusteAsync(
-        Guid produtoId, int quantidade, string? observacao, CancellationToken cancellationToken)
+        Guid produtoMarcaId, int quantidade, string? observacao, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         if (quantidade < 0)
         {
-            var saidas = new Dictionary<Guid, long> { [produtoId] = -(long)quantidade };
+            var saidas = new Dictionary<Guid, long> { [produtoMarcaId] = -(long)quantidade };
             if (await ChecarSaldoAsync(connection, transaction, saidas, cancellationToken) is { } falta)
             {
                 return falta; // sem Commit: o Dispose da transação faz rollback.
@@ -51,7 +74,7 @@ public sealed class PostgresEstoqueRepository : IEstoqueRepository
 
         await using (var command = new NpgsqlCommand(Sql.AddAjuste, connection, transaction))
         {
-            command.Parameters.AddWithValue("produtoId", produtoId);
+            command.Parameters.AddWithValue("produtoMarcaId", produtoMarcaId);
             command.Parameters.AddWithValue("quantidade", quantidade);
             command.Parameters.Add(new NpgsqlParameter("observacao", NpgsqlDbType.Text)
             {
@@ -64,15 +87,98 @@ public sealed class PostgresEstoqueRepository : IEstoqueRepository
         return null;
     }
 
+    public async Task<SaldoInsuficiente?> AddAjusteCascoAsync(
+        Guid tipoCascoId, SituacaoCasco situacao, int quantidade, string? observacao,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        MovimentoCasco[] movimentos = [new(situacao, TipoMovimentoEstoque.AJUSTE, quantidade)];
+        if (quantidade < 0
+            && await ChecarSaldoCascoAsync(connection, transaction, tipoCascoId, movimentos, cancellationToken)
+                is { } falta)
+        {
+            return falta; // sem Commit: o Dispose da transação faz rollback.
+        }
+
+        await InserirMovimentosCascoAsync(
+            connection, transaction, tipoCascoId, movimentos, null, observacao, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return null;
+    }
+
     /// <summary>
-    /// Trava os produtos em ordem de id e, em outra instrução da mesma transação (READ COMMITTED),
+    /// Trava o tipo de casco e, em outra instrução da mesma transação (READ COMMITTED), confere se o saldo
+    /// de cada situação cobre as saídas dos movimentos. O saldo é lido depois da trava.
+    /// </summary>
+    internal static async Task<SaldoInsuficiente?> ChecarSaldoCascoAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Guid tipoCascoId,
+        IReadOnlyList<MovimentoCasco> movimentos, CancellationToken cancellationToken)
+    {
+        await using (var command = new NpgsqlCommand(Sql.TravaTipoCasco, connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", tipoCascoId);
+            await command.ExecuteScalarAsync(cancellationToken);
+        }
+
+        var saldos = new Dictionary<string, long>();
+        await using (var command = new NpgsqlCommand(Sql.GetSaldosCasco, connection, transaction))
+        {
+            command.Parameters.AddWithValue("tipoCascoId", tipoCascoId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                saldos[reader.GetString(0)] = reader.GetInt64(1);
+            }
+        }
+
+        foreach (var porSituacao in movimentos.GroupBy(m => m.Situacao))
+        {
+            var saldo = saldos.GetValueOrDefault(porSituacao.Key.ToString());
+            var delta = porSituacao.Sum(m => (long)m.Quantidade);
+            if (saldo + delta < 0)
+            {
+                return new SaldoInsuficiente(tipoCascoId, saldo, -delta);
+            }
+        }
+
+        return null;
+    }
+
+    internal static async Task InserirMovimentosCascoAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Guid tipoCascoId,
+        IReadOnlyList<MovimentoCasco> movimentos, Guid? baixaCascoId, string? observacao,
+        CancellationToken cancellationToken)
+    {
+        foreach (var movimento in movimentos)
+        {
+            await using var command = new NpgsqlCommand(Sql.InsertMovimentoCasco, connection, transaction);
+            command.Parameters.AddWithValue("tipoCascoId", tipoCascoId);
+            command.Parameters.AddWithValue("situacao", movimento.Situacao.ToString());
+            command.Parameters.AddWithValue("tipo", movimento.Tipo.ToString());
+            command.Parameters.AddWithValue("quantidade", movimento.Quantidade);
+            command.Parameters.Add(new NpgsqlParameter("baixaCascoId", NpgsqlDbType.Uuid)
+            {
+                Value = (object?)baixaCascoId ?? DBNull.Value
+            });
+            command.Parameters.Add(new NpgsqlParameter("observacao", NpgsqlDbType.Text)
+            {
+                Value = (object?)observacao ?? DBNull.Value
+            });
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Trava as linhas de estoque (produto+marca) em ordem de id e, em outra instrução da mesma transação (READ COMMITTED),
     /// confere se o saldo cobre as saídas. O saldo é lido depois da trava para ver o commit de quem a soltou.
     /// </summary>
     internal static async Task<SaldoInsuficiente?> ChecarSaldoAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction,
-        IReadOnlyDictionary<Guid, long> saidasPorProduto, CancellationToken cancellationToken)
+        IReadOnlyDictionary<Guid, long> saidasPorProdutoMarca, CancellationToken cancellationToken)
     {
-        var ids = saidasPorProduto.Keys.ToArray();
+        var ids = saidasPorProdutoMarca.Keys.ToArray();
 
         await using (var command = new NpgsqlCommand(Sql.TravaProdutos, connection, transaction))
         {
@@ -83,15 +189,15 @@ public sealed class PostgresEstoqueRepository : IEstoqueRepository
             }
         }
 
-        return await ConferirSaldoAsync(connection, transaction, saidasPorProduto, cancellationToken);
+        return await ConferirSaldoAsync(connection, transaction, saidasPorProdutoMarca, cancellationToken);
     }
 
-    /// <summary>Confere o saldo das saídas; os produtos já devem estar travados na transação.</summary>
+    /// <summary>Confere o saldo das saídas; as linhas já devem estar travadas na transação.</summary>
     internal static async Task<SaldoInsuficiente?> ConferirSaldoAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction,
-        IReadOnlyDictionary<Guid, long> saidasPorProduto, CancellationToken cancellationToken)
+        IReadOnlyDictionary<Guid, long> saidasPorProdutoMarca, CancellationToken cancellationToken)
     {
-        var ids = saidasPorProduto.Keys.ToArray();
+        var ids = saidasPorProdutoMarca.Keys.ToArray();
         var saldos = new Dictionary<Guid, long>();
         await using (var command = new NpgsqlCommand(Sql.GetSaldos, connection, transaction))
         {
@@ -103,12 +209,12 @@ public sealed class PostgresEstoqueRepository : IEstoqueRepository
             }
         }
 
-        foreach (var (produtoId, saida) in saidasPorProduto)
+        foreach (var (produtoMarcaId, saida) in saidasPorProdutoMarca)
         {
-            var saldo = saldos.GetValueOrDefault(produtoId);
+            var saldo = saldos.GetValueOrDefault(produtoMarcaId);
             if (saldo - saida < 0)
             {
-                return new SaldoInsuficiente(produtoId, saldo, saida);
+                return new SaldoInsuficiente(produtoMarcaId, saldo, saida);
             }
         }
 
@@ -118,26 +224,47 @@ public sealed class PostgresEstoqueRepository : IEstoqueRepository
     private static class Sql
     {
         public const string GetEstoque = """
-            SELECT produto_id, tipo::text, nome, marca, categoria, tamanho,
+            SELECT produto_marca_id, produto_id, tipo::text, nome, marca_id, marca, categoria, tamanho,
                    quantidade, estoque_minimo, abaixo_minimo
             FROM vw_estoque_atual
+            ORDER BY nome, marca
+            """;
+
+        public const string GetEstoqueCascos = """
+            SELECT tipo_casco_id, nome, marca_id, marca, aceita_sucata, vazios, sucata
+            FROM vw_estoque_casco
             ORDER BY nome
             """;
 
         // NO KEY UPDATE não conflita com o FOR KEY SHARE das FKs: lançamentos positivos não esperam.
         public const string TravaProdutos =
-            "SELECT id FROM produtos WHERE id = ANY(@ids) ORDER BY id FOR NO KEY UPDATE";
+            "SELECT id FROM produto_marcas WHERE id = ANY(@ids) ORDER BY id FOR NO KEY UPDATE";
 
         public const string GetSaldos = """
-            SELECT produto_id, COALESCE(SUM(quantidade), 0)::bigint
+            SELECT produto_marca_id, COALESCE(SUM(quantidade), 0)::bigint
             FROM movimentos_estoque
-            WHERE produto_id = ANY(@ids) AND deleted_at IS NULL
-            GROUP BY produto_id
+            WHERE produto_marca_id = ANY(@ids) AND deleted_at IS NULL
+            GROUP BY produto_marca_id
             """;
 
         public const string AddAjuste = """
-            INSERT INTO movimentos_estoque (produto_id, tipo, quantidade, observacao)
-            VALUES (@produtoId, 'AJUSTE', @quantidade, @observacao)
+            INSERT INTO movimentos_estoque (produto_marca_id, tipo, quantidade, observacao)
+            VALUES (@produtoMarcaId, 'AJUSTE', @quantidade, @observacao)
+            """;
+
+        public const string TravaTipoCasco = "SELECT id FROM tipos_casco WHERE id = @id FOR NO KEY UPDATE";
+
+        public const string GetSaldosCasco = """
+            SELECT situacao::text, COALESCE(SUM(quantidade), 0)::bigint
+            FROM movimentos_estoque_casco
+            WHERE tipo_casco_id = @tipoCascoId AND deleted_at IS NULL
+            GROUP BY situacao
+            """;
+
+        public const string InsertMovimentoCasco = """
+            INSERT INTO movimentos_estoque_casco (tipo_casco_id, situacao, tipo, quantidade, baixa_casco_id, observacao)
+            VALUES (@tipoCascoId, @situacao::situacao_casco, @tipo::tipo_movimento_estoque, @quantidade,
+                    @baixaCascoId, @observacao)
             """;
     }
 }

@@ -5,16 +5,17 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 
 ## 2. Entidades Principais
 - **Clientes**: Cadastro de clientes.
-- **Produtos**: Galões de água (por marca, tamanho — ex: 20L e 10L), descartáveis e cascos. Cada produto tem um **preço de referência**, mas o preço final é sempre definido no momento da venda (ver regra em 5), e pode ter **foto** cadastrada. Descartáveis têm controle de estoque simples (entrada/saída), sem regras especiais, com marcas e tamanhos livres; **qualquer outro produto que a loja queira vender e que não envolva casco (ex: carvão, gelo) é cadastrado e tratado como descartável**. O casco é genérico (não há diferenciação por marca) e é emprestado/vendido apenas como **normal**; a **sucata** (quebrado) é uma categoria separada, sem empréstimo — só entra no fluxo por entrega do cliente ou quebra de casco normal.
-- **Marcas**: Cadastro próprio de marcas (obrigatória para água/galão completo; opcional para descartáveis), referenciadas pelos produtos.
-- **Estoque**: Controle das quantidades de produtos, incluindo cascos físicos (quantidade de cascos normais vazios/cheios na loja) e o estoque de sucata, controlados separadamente.
+- **Produtos**: Item de venda com nome, categoria, tamanho (ex: 20L, 10L, 200ml, 5kg) e **tipo**: **RETORNÁVEL** (vendido em vasilhame que volta, com casco) ou **DESCARTÁVEL** (estoque simples, sem casco e sem retorno; **qualquer produto que a loja queira vender e que não envolva casco, ex: carvão, gelo, copos, é cadastrado e tratado como descartável**). Cada produto tem **N marcas** (associação produto+marca): é na associação que ficam o **preço de referência** (o preço final é sempre definido no momento da venda, ver regra em 5), o **estoque**, o **estoque mínimo** e a **foto**. O **estoque geral** do produto é a soma do estoque das marcas (produto sem marca associada tem 0). O produto retornável aponta um **tipo de casco genérico**; a associação produto+marca pode apontar um **tipo de casco específico**, que vence o genérico.
+- **Marcas**: Cadastro próprio de marcas, associadas aos produtos (N por produto). Toda associação tem marca; produto sem marca própria usa uma marca cadastrada (ex: 'Genérica').
+- **Tipos de casco**: Cadastro próprio de vasilhames, com **nome**, **preço do vasilhame** e se **aceita sucata**. Casco **genérico** não tem marca; casco **específico** é de uma marca. Cada tipo tem estoque próprio de **vazios** e de **sucata** (sucata só nos tipos que aceitam).
+- **Estoque**: Quantidades por produto+marca (razão de lançamentos) e, separado, o estoque de cascos por tipo de casco (vazios e sucata). O estoque geral do produto é a soma das marcas.
 - **Vendas**: Registro de cada venda, podendo conter N itens (produtos diferentes e/ou marcas diferentes de galão na mesma venda), vinculada a cliente, funcionário responsável, formas de pagamento e entrega. Pode ser editada após o registro (itens, pagamentos, desconto, devolução) e permite emissão de cupom fiscal.
 - **Pagamentos**: Uma venda pode ter N formas de pagamento simultâneas (pix, cartão de crédito, cartão de débito, dinheiro, etc.), cada uma com valor próprio lançado. A soma dos valores define quanto da venda já foi pago; o que faltar compõe o fiado do cliente.
 - **Caixa**: Controle de entradas e saídas, incluindo diária de funcionários lançada no fechamento diário e despesas do dia categorizadas por tipo.
 - **Funcionários**: Cadastro dos funcionários, vinculação às vendas, diária fixa.
 - **Conta Corrente do Funcionário**: Controle de remuneração — diárias lançadas, vales (adiantamentos) tirados, pagamentos realizados (normalmente semanais) e saldo.
-- **Conta Corrente de Casco do Cliente**: Saldo de cascos normais (vasilhames) que o cliente está devendo à loja, decorrente exclusivamente de vendas de água (a venda de água só empresta casco normal — nunca sucata).
-- **Registro de Sucata do Cliente**: Quantidade de galões sucata (quebrados) entregues pelo cliente à loja ao longo do tempo. **Não é um débito** — é um recebimento independente, que não abate o saldo de casco normal do cliente.
+- **Conta Corrente de Casco do Cliente**: Saldo de cascos (vasilhames) que o cliente está devendo à loja, decorrente exclusivamente de vendas de produtos retornáveis (o descartável não gera retorno e a venda nunca empresta sucata).
+- **Registro de Sucata do Cliente**: Quantidade de vasilhames sucata (quebrados) entregues pelo cliente à loja ao longo do tempo. **Não é um débito** — é um recebimento independente, que não abate o saldo de casco do cliente.
 - **Conta Corrente do Cliente (Fiado)**: Saldo devedor financeiro do cliente, incluindo débitos de casco convertidos em valor, eventual conversão em valor de sucata entregue, e o saldo pendente de vendas ainda não totalmente pagas.
 
 ## 3. Fluxos de Negócio
@@ -23,13 +24,17 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 - Cliente pode ter mais de um endereço cadastrado, usado para entrega.
 
 ### 3.2 Cadastro de Produtos e Marcas
-- Cadastro de marcas de água (entidade própria), vinculadas aos produtos.
-- Inserção de galões (marca, tamanho — 20L, 10L —, preço de referência), descartáveis (marcas e tamanhos livres) e casco (genérico, sem variação por marca).
-- Produtos sem regra de casco (ex: carvão, gelo, copos) são cadastrados livremente e tratados pelo sistema como descartáveis, com uma categoria livre para agrupamento.
-- Cada produto pode ter uma foto cadastrada.
+- Cadastro de marcas (entidade própria), associadas aos produtos.
+- Cadastro de produtos: nome, categoria, tamanho (ex: 20L, 10L, 200ml) e tipo **RETORNÁVEL** ou **DESCARTÁVEL**. Retornável exige um tipo de casco genérico (sem marca); descartável não tem casco.
+- Cada produto tem N marcas (associação produto+marca; marca obrigatória e única por produto). A associação guarda o preço de referência, o estoque mínimo e a foto; o estoque é o saldo dos lançamentos da associação. A associação pode apontar um tipo de casco específico (da mesma marca, só em produto retornável), que vence o genérico do produto.
+- Cadastro de tipos de casco: nome, preço do vasilhame e se aceita sucata; genérico (sem marca) ou específico (de uma marca).
+- Produtos sem regra de casco (ex: carvão, gelo, copos) são cadastrados como descartáveis, com uma categoria livre para agrupamento.
+- Cada associação produto+marca pode ter uma foto cadastrada.
 
 ### 3.3 Controle de Estoque
-- Entrada e saída de produtos, incluindo abastecimento (frete terceirizado ou caminhão/funcionário próprio da loja).
+- Entrada e saída por produto+marca, incluindo abastecimento (frete terceirizado ou caminhão/funcionário próprio da loja) e ajuste manual. O estoque geral do produto é a soma do estoque das marcas, calculado pelo servidor.
+- **Alerta de estoque mínimo**: por produto+marca, quando a quantidade é menor que o estoque mínimo e só se o mínimo for maior que 0 (quantidade igual ao mínimo não alerta; mínimo 0 nunca alerta).
+- Cascos têm estoque próprio por tipo de casco, de vazios e de sucata (ver 3.6).
 
 ### 3.4 Registro de Vendas
 - Uma venda pode conter N itens: água (por marca), galão completo, casco avulso e/ou descartáveis, combinados livremente na mesma venda.
@@ -49,20 +54,20 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 - Fechamento do caixa no final do dia com saldo consolidado.
 
 ### 3.6 Gestão de Cascos e Sucata (Galão Quebrado)
-A loja só empresta e cobra débito de **casco normal** — a venda de água nunca gera empréstimo ou débito de sucata. **Sucata** (vasilhame quebrado) tem estoque físico e registro por cliente próprios, alimentados apenas por entregas do cliente (avulsas ou no ato de uma venda) e por baixas de casco normal quebrado; essas entregas são **independentes** do saldo de casco normal e **não abatem** o débito de casco normal do cliente.
+O vasilhame é controlado por **tipo de casco** (nome, preço do vasilhame, aceita sucata). Cada tipo tem estoque físico de **vazios** e de **sucata**, separados. O casco do item é o específico da associação produto+marca, se houver; senão, o genérico do produto (o específico vence). **Produto descartável não tem casco e não gera retorno.** A venda só empresta e cobra débito de casco de produto retornável — nunca de sucata. **Sucata** (vasilhame quebrado) tem estoque físico por tipo e registro por cliente próprios, alimentados por entregas do cliente (avulsas ou no ato de uma venda) e por baixas de casco quebrado; essas entregas são **independentes** do saldo de casco e **não abatem** o débito de casco do cliente.
 
-- **Venda de galão completo** (sempre com casco normal): o casco é vendido junto com a água, como propriedade do cliente. **Não gera débito** — não há expectativa de devolução.
-- **Venda de água** (sempre com casco normal): o casco usado para entregar a água continua sendo da loja (emprestado). **Gera débito de casco normal** para o cliente, a menos que ele devolva vazio(s) no ato ou depois.
+- **Venda de produto retornável**: o casco do item usado para entregar o produto continua sendo da loja (emprestado). **Gera débito de casco** para o cliente, a menos que ele devolva vazio(s) no ato ou depois.
+- **Venda de produto descartável**: não tem casco e não gera retorno nem débito.
 
 Controles envolvidos:
-- **Entrada no estoque**: o abastecimento pode trazer unidades de **galão completo** (casco + água) e/ou **casco vazio** separadamente. Sucata normalmente não vem do abastecimento — entra no estoque por entrega do cliente ou por baixa de casco normal quebrado.
-- **Estoque físico de vazios**: o estoque de casco normal vazio é alimentado pelo abastecimento e pelas devoluções dos clientes na venda de água. O estoque de sucata é alimentado por entregas avulsas do cliente e por cascos normais baixados por quebra. Ambos são controlados separadamente. Deve existir uma função de **baixa de casco** para registrar perdas (quebra), atribuída a um ou mais funcionários responsáveis — o casco baixado passa a compor o estoque de sucata.
-- **Saldo de casco por cliente**: quantos cascos normais cada cliente está devendo à loja (apenas por vendas de água, nunca por galão completo). Não há limite de cascos por cliente.
-- **Registro de sucata por cliente**: quantidade de sucata que cada cliente já entregou à loja — não é um débito, apenas um recebimento registrado, independente do saldo de casco normal.
-- **Venda de água — registro da devolução**: a venda registra a quantidade de cheios vendidos e a quantidade de vazios (casco normal) devolvidos pelo cliente naquele momento como campos independentes (não precisam ser iguais). Para o caso comum (troca direta, tudo devolvido), a tela de venda deve ter uma opção rápida do tipo "cascos devolvidos na hora" que preenche a devolução igual à quantidade vendida, mas o valor continua editável para os casos parciais. A diferença (vendido − devolvido) ajusta o saldo de casco normal do cliente: gera débito se devolveu menos, gera crédito se devolveu mais (abatendo débito de vendas anteriores). Se o cliente entregar sucata na mesma ocasião, essa quantidade é lançada à parte no registro de sucata e **não** abate o débito de casco normal.
-- **Pagar Casco**: funcionalidade para quitar o débito de casco normal do cliente, de duas formas possíveis:
-  - **Devolução física**: cliente devolve o(s) casco(s) normal(is) vazio(s) (no ato da venda ou avulsa, sem compra associada), abatendo o débito e dando entrada no estoque físico de vazios.
-  - **Conversão em valor**: ao invés de devolver fisicamente, o débito de casco normal é convertido em cobrança em dinheiro, lançando a venda do casco vazio, que migra a pendência para a conta corrente financeira (fiado) do cliente.
+- **Entrada no estoque**: o abastecimento dá entrada por produto+marca. O estoque de **vazios** de cada tipo de casco é alimentado por lançamento (ajuste) e pelas devoluções dos clientes. Sucata normalmente não vem do abastecimento — entra por entrega do cliente, por ajuste ou por baixa de casco quebrado.
+- **Estoque físico de vazios e de sucata, por tipo de casco**: controlados separadamente. Sucata **só** nos tipos que aceitam sucata: entrada ou ajuste de sucata em tipo que não aceita é recusado. Deve existir uma função de **baixa de casco** por tipo para registrar perdas (quebra), atribuída a um ou mais funcionários responsáveis — o casco baixado sai do estoque de vazios do tipo e, **só se o tipo aceita sucata**, passa a compor o estoque de sucata do mesmo tipo; se não aceita, apenas sai do vazio. Sem vazio suficiente no tipo, a baixa é recusada.
+- **Saldo de casco por cliente**: quantos cascos cada cliente está devendo à loja (apenas por vendas de produtos retornáveis). Não há limite de cascos por cliente.
+- **Registro de sucata por cliente**: quantidade de sucata que cada cliente já entregou à loja — não é um débito, apenas um recebimento registrado, independente do saldo de casco.
+- **Venda de produto retornável — registro da devolução**: a venda registra a quantidade de cheios vendidos e a quantidade de vazios devolvidos pelo cliente naquele momento como campos independentes (não precisam ser iguais). Para o caso comum (troca direta, tudo devolvido), a tela de venda deve ter uma opção rápida do tipo "cascos devolvidos na hora" que preenche a devolução igual à quantidade vendida, mas o valor continua editável para os casos parciais. A diferença (vendido − devolvido) ajusta o saldo de casco do cliente: gera débito se devolveu menos, gera crédito se devolveu mais (abatendo débito de vendas anteriores). Se o cliente entregar sucata na mesma ocasião, essa quantidade é lançada à parte no registro de sucata e **não** abate o débito de casco.
+- **Pagar Casco**: funcionalidade para quitar o débito de casco do cliente, de duas formas possíveis:
+  - **Devolução física**: cliente devolve o(s) casco(s) vazio(s) (no ato da venda ou avulsa, sem compra associada), abatendo o débito e dando entrada no estoque físico de vazios.
+  - **Conversão em valor**: ao invés de devolver fisicamente, o débito de casco é convertido em cobrança em dinheiro, lançando a venda do casco vazio, que migra a pendência para a conta corrente financeira (fiado) do cliente.
 - **Entrega de Sucata**: cliente entrega vasilhame(s) quebrado(s) à loja (avulso ou junto de uma venda), dando entrada no estoque físico de sucata e no registro de sucata do cliente. A loja pode, a seu critério, converter essa entrega em valor (crédito ao cliente na conta corrente/fiado).
 
 ### 3.7 Abastecimento
@@ -102,7 +107,7 @@ Controles envolvidos:
 - Cliente devolve casco(s) normal(is) vazio(s) — no ato de uma venda de água ou avulso, sem compra associada — abatendo seu débito de casco normal e dando entrada no estoque físico de vazios.
 
 ### 4.7 Baixa de Casco por Quebra
-- Registro de perda (quebra) de casco normal no estoque físico, atribuída a um ou mais funcionários responsáveis; o casco baixado passa a compor o estoque de sucata.
+- Registro de perda (quebra) de casco de um tipo, atribuída a um ou mais funcionários responsáveis; o casco sai do estoque de vazios do tipo e, se o tipo aceita sucata, passa a compor a sucata do mesmo tipo (se não aceita, só sai do vazio). Sem vazio suficiente no tipo, a baixa é recusada.
 
 ### 4.8 Pagar Casco (Conversão em Débito Financeiro)
 - Débito de casco normal de um cliente é convertido em valor lançando a venda do casco vazio, que passa a compor a conta corrente (fiado) do cliente, ao invés de aguardar devolução física.
@@ -138,7 +143,7 @@ Controles envolvidos:
 - Emissão de relatório de faturado filtrando por intervalo de datas e/ou por produto específico.
 
 ## 5. Regras de Negócio
-- **Preço**: cada produto possui um preço de referência, mas o preço efetivo é sempre definido no momento da venda. Não existe tabela fixa de preço por categoria de cliente (atacado/varejo) — os valores variam conforme acordos individuais feitos com cada cliente.
+- **Preço**: cada produto+marca possui um preço de referência (na associação), mas o preço efetivo é sempre definido no momento da venda. Não existe tabela fixa de preço por categoria de cliente (atacado/varejo) — os valores variam conforme acordos individuais feitos com cada cliente.
 - **Venda com múltiplos itens**: uma venda pode conter N produtos, incluindo múltiplas marcas de galão na mesma venda.
 - **Edição de venda**: a venda pode ser editada após o registro (itens, pagamentos, desconto, devoluções de casco/sucata).
 - **Cupom fiscal**: o sistema permite emitir cupom fiscal referente à venda.
@@ -146,30 +151,32 @@ Controles envolvidos:
 - **Status de pagamento**: a venda só é considerada **paga** quando a soma dos pagamentos cobre integralmente o valor total (já com desconto aplicado); enquanto não cobrir, fica parcial/pendente e a diferença compõe o fiado do cliente.
 - **Desconto**: aplicado por item (produto), digitado manualmente (valor ou percentual) no ato ou na edição da venda, sempre com motivo obrigatório; o sistema recalcula o total automaticamente.
 - **Fiado**: é uma pendência financeira separada do débito físico de casco normal e do registro de sucata; só há lançamento em fiado quando a venda não é totalmente paga, quando um débito de casco normal é explicitamente convertido em valor, ou quando uma entrega de sucata é convertida em crédito. Não há limite de crédito/fiado por cliente — fica a critério de quem lança a venda.
-- **Descartáveis**: controle de estoque simples (entrada/saída), sem regras especiais de troca ou débito; marcas e tamanhos livres. Qualquer produto novo sem regra de casco (ex: carvão, gelo) é cadastrado e tratado como descartável, com categoria livre para agrupamento.
-- **Marca**: cadastro próprio; obrigatória para água e galão completo, opcional para os demais produtos.
-- **Foto de produto**: cada produto pode ter uma foto cadastrada, exibida nas telas de venda e catálogo.
+- **Tipo de produto**: todo produto é **RETORNÁVEL** (vendido em vasilhame que volta, com tipo de casco) ou **DESCARTÁVEL** (sem casco). Retornável exige um tipo de casco genérico; descartável não pode ter casco, nem genérico nem específico.
+- **Descartáveis**: controle de estoque simples (entrada/saída) por produto+marca, sem casco, sem retorno e sem débito de casco; tamanhos livres. Qualquer produto novo sem regra de casco (ex: carvão, gelo) é cadastrado e tratado como descartável, com categoria livre para agrupamento.
+- **Marca**: cadastro próprio. Cada produto tem N marcas (associação produto+marca); a marca é obrigatória e única dentro do produto. Não existe associação sem marca: produto sem marca própria usa uma marca cadastrada (ex: 'Genérica').
+- **Foto de produto**: cada associação produto+marca pode ter uma foto cadastrada, exibida nas telas de venda e catálogo.
 - **Endereço**: cliente pode ter múltiplos endereços cadastrados para entrega; não há controle de rota ou status de entrega no sistema.
-- **Casco normal x sucata**: a venda de água **só** empresta e gera débito de casco normal — sucata nunca é emprestada nem gera débito pela venda. Sucata é somente entregue pelo cliente à loja (avulsa ou junto de uma venda), em estoque físico e registro por cliente próprios, totalmente independentes do saldo de casco normal.
-- **Casco normal — sem limite**: não há limite de cascos normais emprestados por cliente.
-- **Estoque — abastecimento de casco**: pode entrar como unidade de galão completo (casco + água) ou como casco vazio separado. Sucata normalmente não vem do abastecimento; entra no estoque por entrega do cliente ou por baixa de casco normal quebrado.
-- **Casco normal — venda de galão completo NÃO gera débito**: o casco é vendido como propriedade do cliente, sem expectativa de devolução.
-- **Casco normal — venda de água GERA débito**: o casco usado para entregar a água continua sendo da loja; se o cliente não devolver (total ou parcialmente) no ato, o saldo faltante vira débito dele. A venda registra quantidade vendida e quantidade devolvida como campos independentes (não precisam ser iguais); a diferença gera débito (devolveu menos) ou crédito (devolveu mais, abatendo saldo anterior). A tela de venda deve ter uma opção rápida para marcar "cascos devolvidos na hora" (preenche devolvido = vendido), mantendo o campo editável para casos parciais. Se o cliente entregar sucata junto, ela é lançada à parte e **não** abate esse débito.
-- **Pagar Casco**: função para quitar débito de casco normal do cliente, com duas formas: devolução física do vazio (no ato da venda ou avulsa) ou conversão em débito financeiro (lançando a venda do casco vazio, migrando a pendência para a conta corrente/fiado do cliente).
-- **Entrega de Sucata**: cliente entrega vasilhame(s) quebrado(s) à loja (avulso ou junto de uma venda), dando entrada no estoque de sucata e no registro de sucata do cliente, sem qualquer efeito sobre o débito de casco normal; a loja pode, a seu critério, converter a entrega em valor (crédito na conta corrente/fiado).
-- **Casco/sucata — estoque físico e quebra**: casco normal vazio e sucata são controlados como itens de estoque físico separados; perdas por quebra de casco normal são lançadas via função de baixa, atribuída a um ou mais funcionários responsáveis, e o casco baixado passa a compor o estoque de sucata.
+- **Tipo de casco**: cadastro próprio com nome, preço do vasilhame (≥ 0) e se aceita sucata. **Genérico** não tem marca; **específico** tem marca. O produto retornável aponta um casco genérico; a associação produto+marca pode apontar um casco específico, só em produto retornável e da mesma marca da associação. O casco do item é o específico da associação, se houver; senão, o genérico do produto — **o específico vence**. Descartável não tem casco e não gera retorno. Um tipo de casco em uso (apontado por produto ou associação) não troca de marca, e um tipo com saldo de sucata não deixa de aceitar sucata.
+- **Casco x sucata**: a venda de produto retornável **só** empresta e gera débito de casco — sucata nunca é emprestada nem gera débito pela venda. Sucata é somente entregue pelo cliente à loja (avulsa ou junto de uma venda) ou vem de casco quebrado, em estoque físico (por tipo de casco) e registro por cliente próprios, totalmente independentes do saldo de casco.
+- **Casco — sem limite**: não há limite de cascos emprestados por cliente.
+- **Estoque — abastecimento**: dá entrada por produto+marca. O estoque de casco vazio de cada tipo é lançado à parte (ajuste de vazios por tipo). Sucata normalmente não vem do abastecimento; entra por entrega do cliente, por ajuste (só em tipo que aceita sucata) ou por baixa de casco quebrado.
+- **Produto descartável não gera retorno**: a venda de descartável não empresta casco nem gera débito de casco.
+- **Casco — venda de produto retornável GERA débito**: o casco do item usado para entregar o produto continua sendo da loja; se o cliente não devolver (total ou parcialmente) no ato, o saldo faltante vira débito dele. A venda registra quantidade vendida e quantidade devolvida como campos independentes (não precisam ser iguais); a diferença gera débito (devolveu menos) ou crédito (devolveu mais, abatendo saldo anterior). A tela de venda deve ter uma opção rápida para marcar "cascos devolvidos na hora" (preenche devolvido = vendido), mantendo o campo editável para casos parciais. Se o cliente entregar sucata junto, ela é lançada à parte e **não** abate esse débito.
+- **Pagar Casco**: função para quitar débito de casco do cliente, com duas formas: devolução física do vazio (no ato da venda ou avulsa) ou conversão em débito financeiro (lançando a venda do casco vazio, migrando a pendência para a conta corrente/fiado do cliente).
+- **Entrega de Sucata**: cliente entrega vasilhame(s) quebrado(s) à loja (avulso ou junto de uma venda), dando entrada no estoque de sucata e no registro de sucata do cliente, sem qualquer efeito sobre o débito de casco; a loja pode, a seu critério, converter a entrega em valor (crédito na conta corrente/fiado).
+- **Casco/sucata — estoque físico e quebra**: cada tipo de casco tem estoque de vazios e de sucata separados. Sucata só existe em tipo que **aceita sucata**: entrada ou ajuste de sucata em tipo que não aceita é recusado. Perdas por quebra são lançadas via função de baixa, por tipo de casco, atribuída a um ou mais funcionários responsáveis: o casco sai do estoque de vazios do tipo (sem vazio suficiente no tipo, a baixa é recusada) e **só entra na sucata do mesmo tipo se ele aceita sucata**; se não aceita, apenas sai do vazio.
 - **Caixa**: a diária dos funcionários é lançada no fechamento do caixa do dia, considerando quem trabalhou (falta = diária não lançada); vira crédito na conta corrente do funcionário, não é paga diretamente no caixa.
 - **Caixa — despesas**: cada despesa (saída) lançada no caixa deve ter um tipo/categoria associado.
 - **Conta corrente de funcionário**: diárias creditadas, vales debitados; pagamento normalmente feito de uma vez por semana, baixando o saldo acumulado.
 - **Conta corrente de cliente (fiado)**: soma débitos de vendas não totalmente pagas e de conversões de casco normal em valor, menos créditos de conversões de sucata; pagamentos do cliente baixam o saldo.
-- **Estoque**: alerta de estoque mínimo configurável por produto.
+- **Estoque**: alerta de estoque mínimo configurável por produto+marca (na associação): alerta quando a quantidade é **menor** que o mínimo e **só se o mínimo for maior que 0** (quantidade igual ao mínimo não alerta; mínimo 0 nunca alerta). O estoque geral do produto é a soma do estoque das marcas, calculado pelo servidor.
 - **Abastecimento**: pode ser via frete terceirizado ou caminhão/funcionário próprio da loja; custo é vinculado ao estoque e ao caixa.
 - **Permissões**: sistema 100% configurável. Existe um cargo nativo (ADM) com acesso total; demais cargos são criados livremente pelo usuário, com permissões granulares atribuíveis, e vinculados aos funcionários.
 
 ## 6. Relatórios e Indicadores
 - Relatório de Vendas por funcionário.
 - Relatório de Faturamento por período e/ou por produto.
-- Relatório de Estoque (incluindo cascos e sucata físicos e alertas de estoque mínimo).
+- Relatório de Estoque (por produto+marca; cascos vazios e sucata por tipo de casco; e alertas de estoque mínimo por produto+marca).
 - Relatório de Caixa (incluindo diárias lançadas e despesas por tipo).
 - Relatório de Conta Corrente de Clientes (fiado, conversões de casco/sucata, saldo devedor).
 - Relatório de Saldo de Casco Normal por Cliente (emprestados, débitos pendentes).

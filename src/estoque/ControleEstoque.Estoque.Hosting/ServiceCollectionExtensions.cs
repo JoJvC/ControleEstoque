@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
             NpgsqlDataSource.Create(sp.GetRequiredService<IOptions<EstoqueOptions>>().Value.ConnectionString));
 
         services.AddSingleton<IMarcaRepository, PostgresMarcaRepository>();
+        services.AddSingleton<ITipoCascoRepository, PostgresTipoCascoRepository>();
         services.AddSingleton<IProdutoRepository, PostgresProdutoRepository>();
         services.AddSingleton<IEstoqueRepository, PostgresEstoqueRepository>();
         services.AddSingleton<IAbastecimentoRepository, PostgresAbastecimentoRepository>();
@@ -30,6 +31,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFotoStorage>(sp =>
             new LocalDiskFotoStorage(sp.GetRequiredService<IOptions<EstoqueOptions>>().Value.MediaPath));
 
+        services.AddSingleton<ITipoCascoService, TipoCascoService>();
         services.AddSingleton<IProdutoService, ProdutoService>();
         services.AddSingleton<IEstoqueService, EstoqueService>();
         services.AddSingleton<IAbastecimentoService, AbastecimentoService>();

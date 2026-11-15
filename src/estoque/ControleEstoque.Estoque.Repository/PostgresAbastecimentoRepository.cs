@@ -37,7 +37,7 @@ public sealed class PostgresAbastecimentoRepository : IAbastecimentoRepository
             await using (var command = new NpgsqlCommand(Sql.InsertItem, connection, transaction))
             {
                 command.Parameters.AddWithValue("abastecimentoId", id);
-                command.Parameters.AddWithValue("produtoId", item.ProdutoId);
+                command.Parameters.AddWithValue("produtoMarcaId", item.ProdutoMarcaId);
                 command.Parameters.AddWithValue("quantidade", item.Quantidade);
                 command.Parameters.AddWithValue("custoUnitario", item.CustoUnitario);
                 await command.ExecuteNonQueryAsync(cancellationToken);
@@ -45,7 +45,7 @@ public sealed class PostgresAbastecimentoRepository : IAbastecimentoRepository
 
             await using (var command = new NpgsqlCommand(Sql.InsertMovimento, connection, transaction))
             {
-                command.Parameters.AddWithValue("produtoId", item.ProdutoId);
+                command.Parameters.AddWithValue("produtoMarcaId", item.ProdutoMarcaId);
                 command.Parameters.AddWithValue("quantidade", item.Quantidade);
                 command.Parameters.AddWithValue("abastecimentoId", id);
                 await command.ExecuteNonQueryAsync(cancellationToken);
@@ -73,13 +73,13 @@ public sealed class PostgresAbastecimentoRepository : IAbastecimentoRepository
             """;
 
         public const string InsertItem = """
-            INSERT INTO abastecimento_itens (abastecimento_id, produto_id, quantidade, custo_unitario)
-            VALUES (@abastecimentoId, @produtoId, @quantidade, @custoUnitario)
+            INSERT INTO abastecimento_itens (abastecimento_id, produto_marca_id, quantidade, custo_unitario)
+            VALUES (@abastecimentoId, @produtoMarcaId, @quantidade, @custoUnitario)
             """;
 
         public const string InsertMovimento = """
-            INSERT INTO movimentos_estoque (produto_id, tipo, quantidade, abastecimento_id)
-            VALUES (@produtoId, 'ENTRADA_ABASTECIMENTO', @quantidade, @abastecimentoId)
+            INSERT INTO movimentos_estoque (produto_marca_id, tipo, quantidade, abastecimento_id)
+            VALUES (@produtoMarcaId, 'ENTRADA_ABASTECIMENTO', @quantidade, @abastecimentoId)
             """;
 
         public const string InsertDespesaSeCaixaAberto = """

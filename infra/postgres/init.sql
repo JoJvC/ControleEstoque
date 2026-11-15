@@ -15,21 +15,27 @@ BEGIN;
 -- ----------------------------------------------------------------------------
 
 -- O tipo determina o COMPORTAMENTO do produto no sistema, não a natureza dele:
--- AGUA           = refil (empresta casco normal ao cliente — gera débito)
--- GALAO_COMPLETO = casco + água vendidos como propriedade do cliente (sem débito)
--- CASCO          = casco normal vazio (item de estoque e de venda avulsa)
--- SUCATA         = vasilhame quebrado (nunca emprestado; só entra por entrega
---                  do cliente ou baixa de casco normal)
--- DESCARTAVEL    = estoque simples, sem regra de casco. Qualquer produto novo
---                  que a loja queira vender (carvão, copos, tampas, gelo etc.)
---                  é cadastrado como DESCARTAVEL — a categoria de exibição fica
---                  no campo produtos.categoria.
-CREATE TYPE tipo_produto AS ENUM
-    ('AGUA', 'GALAO_COMPLETO', 'CASCO', 'SUCATA', 'DESCARTAVEL');
+-- RETORNAVEL  = vendido em vasilhame que volta (empréstimo de casco ao cliente).
+--               Aponta um tipo de casco GENÉRICO (produtos.tipo_casco_id); a
+--               associação produto+marca pode apontar um casco ESPECÍFICO, que vence.
+-- DESCARTAVEL = estoque simples, sem casco e sem retorno. Qualquer produto novo
+--               que a loja queira vender (carvão, copos, tampas, gelo etc.)
+--               é cadastrado como DESCARTAVEL — a categoria de exibição fica
+--               no campo produtos.categoria.
+CREATE TYPE tipo_produto AS ENUM ('RETORNAVEL', 'DESCARTAVEL');
 
 CREATE TYPE tipo_movimento_estoque AS ENUM
     ('ENTRADA_ABASTECIMENTO', 'SAIDA_VENDA', 'DEVOLUCAO_CLIENTE',
      'ENTRADA_SUCATA', 'BAIXA_QUEBRA', 'AJUSTE');
+
+-- Situação do casco no estoque físico, por tipo de casco (guardado por IF para poder repetir).
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'situacao_casco') THEN
+        CREATE TYPE situacao_casco AS ENUM ('VAZIO', 'SUCATA');
+    END IF;
+END
+$$;
 
 CREATE TYPE forma_pagamento AS ENUM
     ('PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO', 'OUTRO');
@@ -137,7 +143,7 @@ CREATE INDEX idx_cliente_enderecos_cliente ON cliente_enderecos(cliente_id) WHER
 -- PRODUTOS E ESTOQUE
 -- ----------------------------------------------------------------------------
 
--- Marcas cadastráveis (água e também descartáveis que tenham marca).
+-- Marcas cadastráveis; cada produto tem N marcas (produto_marcas).
 CREATE TABLE marcas (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     nome        TEXT NOT NULL UNIQUE,
@@ -148,17 +154,51 @@ CREATE TABLE marcas (
     deleted_at  TIMESTAMPTZ
 );
 
--- Preço de referência é apenas base: o preço efetivo é definido em cada venda.
+-- Tipo de casco (vasilhame): cadastro próprio, com estoque de vazios e de sucata por tipo
+-- (movimentos_estoque_casco). marca_id NULL = casco genérico; preenchido = casco específico da marca.
+-- Sucata só entra em tipo que aceita (regra de domínio; sem trigger).
+CREATE TABLE IF NOT EXISTS tipos_casco (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nome             TEXT NOT NULL,
+    marca_id         UUID REFERENCES marcas(id),
+    preco_vasilhame  NUMERIC(19,2) NOT NULL DEFAULT 0 CHECK (preco_vasilhame >= 0),
+    aceita_sucata    BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by       UUID REFERENCES funcionarios(id),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by       UUID REFERENCES funcionarios(id),
+    updated_at       TIMESTAMPTZ,
+    deleted_at       TIMESTAMPTZ
+);
+
+-- Produto = item com categoria, tamanho e tipo. Marca, preço de referência, estoque, estoque mínimo
+-- e foto ficam na associação produto+marca (produto_marcas). Retornável aponta um casco genérico.
 CREATE TABLE produtos (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tipo           tipo_produto NOT NULL,
+    nome           TEXT NOT NULL,
+    categoria      TEXT,          -- agrupamento livre de exibição/relatório (ex: 'Carvão', 'Copos', 'Gelo')
+    tamanho        TEXT,          -- livre: '20L', '10L', '200ml', '5kg' etc.
+    tipo_casco_id  UUID REFERENCES tipos_casco(id), -- casco genérico (validação de domínio); só RETORNAVEL tem
+    created_by     UUID REFERENCES funcionarios(id),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by     UUID REFERENCES funcionarios(id),
+    updated_at     TIMESTAMPTZ,
+    deleted_at     TIMESTAMPTZ,
+    CONSTRAINT chk_produtos_casco_conforme_tipo CHECK ((tipo = 'RETORNAVEL') = (tipo_casco_id IS NOT NULL))
+);
+
+CREATE INDEX idx_produtos_tipo ON produtos(tipo) WHERE deleted_at IS NULL;
+
+-- Associação produto+marca (N marcas por produto). Preço de referência é apenas base: o preço efetivo
+-- é definido em cada venda. tipo_casco_id preenchido = casco específico, que vence o genérico do produto.
+CREATE TABLE IF NOT EXISTS produto_marcas (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tipo              tipo_produto NOT NULL,
-    nome              TEXT NOT NULL,
-    marca_id          UUID REFERENCES marcas(id), -- obrigatória p/ AGUA/GALAO_COMPLETO (validação de domínio); livre p/ demais
-    categoria         TEXT,          -- agrupamento livre de exibição/relatório (ex: 'Carvão', 'Copos', 'Gelo')
-    tamanho           TEXT,          -- livre: '20L', '10L', '200ml', '5kg' etc.
-    foto_url          TEXT,          -- caminho/URL da foto do produto (upload via API)
-    preco_referencia  NUMERIC(19,2) NOT NULL DEFAULT 0,
-    estoque_minimo    INT NOT NULL DEFAULT 0, -- alerta configurável por produto
+    produto_id        UUID NOT NULL REFERENCES produtos(id),
+    marca_id          UUID NOT NULL REFERENCES marcas(id),
+    tipo_casco_id     UUID REFERENCES tipos_casco(id),
+    preco_referencia  NUMERIC(19,2) NOT NULL DEFAULT 0 CHECK (preco_referencia >= 0),
+    estoque_minimo    INT NOT NULL DEFAULT 0 CHECK (estoque_minimo >= 0), -- alerta por produto+marca; 0 = sem alerta
+    foto_url          TEXT,          -- caminho/URL da foto (upload via API)
     created_by        UUID REFERENCES funcionarios(id),
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by        UUID REFERENCES funcionarios(id),
@@ -166,26 +206,27 @@ CREATE TABLE produtos (
     deleted_at        TIMESTAMPTZ
 );
 
-CREATE INDEX idx_produtos_tipo  ON produtos(tipo)     WHERE deleted_at IS NULL;
-CREATE INDEX idx_produtos_marca ON produtos(marca_id) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_produto_marcas_produto_marca
+    ON produto_marcas(produto_id, marca_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_produto_marcas_marca ON produto_marcas(marca_id) WHERE deleted_at IS NULL;
 
--- Ledger de estoque: saldo = SUM(quantidade). Quantidade é assinada
--- (+entrada / -saída). Casco normal vazio e sucata são produtos como os demais.
+-- Ledger de estoque: saldo = SUM(quantidade) por produto+marca. Quantidade é assinada
+-- (+entrada / -saída). Casco vazio e sucata têm razão próprio (movimentos_estoque_casco).
 CREATE TABLE movimentos_estoque (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    produto_id   UUID NOT NULL REFERENCES produtos(id),
-    tipo         tipo_movimento_estoque NOT NULL,
-    quantidade   INT NOT NULL CHECK (quantidade <> 0),
-    venda_id     UUID,  -- FK adicionada após criação de vendas
-    abastecimento_id UUID, -- FK adicionada após criação de abastecimentos
-    observacao   TEXT,
-    created_by   UUID REFERENCES funcionarios(id),
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at   TIMESTAMPTZ
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    produto_marca_id  UUID NOT NULL REFERENCES produto_marcas(id),
+    tipo              tipo_movimento_estoque NOT NULL,
+    quantidade        INT NOT NULL CHECK (quantidade <> 0),
+    venda_id          UUID,  -- FK adicionada após criação de vendas
+    abastecimento_id  UUID, -- FK adicionada após criação de abastecimentos
+    observacao        TEXT,
+    created_by        UUID REFERENCES funcionarios(id),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at        TIMESTAMPTZ
 );
 
-CREATE INDEX idx_mov_estoque_produto ON movimentos_estoque(produto_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_mov_estoque_venda   ON movimentos_estoque(venda_id)   WHERE venda_id IS NOT NULL;
+CREATE INDEX idx_mov_estoque_produto_marca ON movimentos_estoque(produto_marca_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_mov_estoque_venda         ON movimentos_estoque(venda_id)         WHERE venda_id IS NOT NULL;
 
 -- ----------------------------------------------------------------------------
 -- ABASTECIMENTO
@@ -205,11 +246,11 @@ CREATE TABLE abastecimentos (
     deleted_at      TIMESTAMPTZ
 );
 
--- Itens do abastecimento: galão completo e/ou casco vazio, cada um no seu estoque.
+-- Itens do abastecimento: produto+marca, cada um no seu estoque.
 CREATE TABLE abastecimento_itens (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     abastecimento_id UUID NOT NULL REFERENCES abastecimentos(id),
-    produto_id       UUID NOT NULL REFERENCES produtos(id),
+    produto_marca_id UUID NOT NULL REFERENCES produto_marcas(id),
     quantidade       INT NOT NULL CHECK (quantidade > 0),
     custo_unitario   NUMERIC(19,2) NOT NULL DEFAULT 0
 );
@@ -223,12 +264,6 @@ ALTER TABLE movimentos_estoque
 -- Valores não negativos (acompanham a validação de domínio); guarda por nome para rodar mais de uma vez.
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_produtos_preco_referencia_nao_negativo') THEN
-        ALTER TABLE produtos ADD CONSTRAINT chk_produtos_preco_referencia_nao_negativo CHECK (preco_referencia >= 0);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_produtos_estoque_minimo_nao_negativo') THEN
-        ALTER TABLE produtos ADD CONSTRAINT chk_produtos_estoque_minimo_nao_negativo CHECK (estoque_minimo >= 0);
-    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_abastecimentos_custo_total_nao_negativo') THEN
         ALTER TABLE abastecimentos ADD CONSTRAINT chk_abastecimentos_custo_total_nao_negativo CHECK (custo_total >= 0);
     END IF;
@@ -368,12 +403,13 @@ CREATE INDEX idx_sucata_cliente ON entregas_sucata_cliente(cliente_id) WHERE del
 -- ----------------------------------------------------------------------------
 
 CREATE TABLE baixas_casco (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    quantidade  INT NOT NULL CHECK (quantidade > 0),
-    motivo      TEXT,
-    created_by  UUID REFERENCES funcionarios(id),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at  TIMESTAMPTZ
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tipo_casco_id  UUID NOT NULL REFERENCES tipos_casco(id),
+    quantidade     INT NOT NULL CHECK (quantidade > 0),
+    motivo         TEXT,
+    created_by     UUID REFERENCES funcionarios(id),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at     TIMESTAMPTZ
 );
 
 -- Um ou mais funcionários responsáveis pela quebra.
@@ -382,6 +418,24 @@ CREATE TABLE baixa_casco_responsaveis (
     funcionario_id  UUID NOT NULL REFERENCES funcionarios(id),
     PRIMARY KEY (baixa_id, funcionario_id)
 );
+
+-- Ledger de estoque de casco por tipo e situação: saldo = SUM(quantidade). Quantidade é assinada.
+-- Quebra: -VAZIO (BAIXA_QUEBRA) e, se o tipo aceita sucata, +SUCATA (ENTRADA_SUCATA) do mesmo tipo.
+CREATE TABLE IF NOT EXISTS movimentos_estoque_casco (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tipo_casco_id   UUID NOT NULL REFERENCES tipos_casco(id),
+    situacao        situacao_casco NOT NULL,
+    tipo            tipo_movimento_estoque NOT NULL,
+    quantidade      INT NOT NULL CHECK (quantidade <> 0),
+    baixa_casco_id  UUID REFERENCES baixas_casco(id),
+    observacao      TEXT,
+    created_by      UUID REFERENCES funcionarios(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at      TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_mov_estoque_casco_tipo
+    ON movimentos_estoque_casco(tipo_casco_id, situacao) WHERE deleted_at IS NULL;
 
 -- ----------------------------------------------------------------------------
 -- FINANCEIRO — FIADO (conta corrente do cliente)
@@ -475,23 +529,43 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_lanc_func_diaria_caixa
 -- VIEWS DE SALDO (fonte de verdade = ledgers acima)
 -- ----------------------------------------------------------------------------
 
--- Estoque atual por produto + flag de alerta de mínimo.
+-- Estoque atual por produto+marca + flag de alerta de mínimo
+-- (alerta só com mínimo > 0 e quantidade < mínimo; quantidade = mínimo não alerta).
 CREATE OR REPLACE VIEW vw_estoque_atual AS
-SELECT p.id AS produto_id,
+SELECT pm.id AS produto_marca_id,
+       p.id AS produto_id,
        p.tipo,
        p.nome,
+       ma.id AS marca_id,
        ma.nome AS marca,
        p.categoria,
        p.tamanho,
        COALESCE(SUM(m.quantidade), 0)                     AS quantidade,
-       p.estoque_minimo,
-       (p.estoque_minimo > 0 AND COALESCE(SUM(m.quantidade), 0) < p.estoque_minimo) AS abaixo_minimo
-FROM produtos p
-LEFT JOIN marcas ma ON ma.id = p.marca_id
+       pm.estoque_minimo,
+       (pm.estoque_minimo > 0 AND COALESCE(SUM(m.quantidade), 0) < pm.estoque_minimo) AS abaixo_minimo
+FROM produto_marcas pm
+JOIN produtos p  ON p.id  = pm.produto_id AND p.deleted_at IS NULL
+JOIN marcas   ma ON ma.id = pm.marca_id
 LEFT JOIN movimentos_estoque m
-       ON m.produto_id = p.id AND m.deleted_at IS NULL
-WHERE p.deleted_at IS NULL
-GROUP BY p.id, ma.nome;
+       ON m.produto_marca_id = pm.id AND m.deleted_at IS NULL
+WHERE pm.deleted_at IS NULL
+GROUP BY pm.id, p.id, ma.id;
+
+-- Saldo de casco por tipo e situação (vazios e sucata de cada tipo de casco).
+CREATE OR REPLACE VIEW vw_estoque_casco AS
+SELECT tc.id AS tipo_casco_id,
+       tc.nome,
+       tc.marca_id,
+       ma.nome AS marca,
+       tc.aceita_sucata,
+       COALESCE(SUM(m.quantidade) FILTER (WHERE m.situacao = 'VAZIO'), 0)  AS vazios,
+       COALESCE(SUM(m.quantidade) FILTER (WHERE m.situacao = 'SUCATA'), 0) AS sucata
+FROM tipos_casco tc
+LEFT JOIN marcas ma ON ma.id = tc.marca_id
+LEFT JOIN movimentos_estoque_casco m
+       ON m.tipo_casco_id = tc.id AND m.deleted_at IS NULL
+WHERE tc.deleted_at IS NULL
+GROUP BY tc.id, ma.nome;
 
 -- Saldo de casco NORMAL por cliente (positivo = cliente deve cascos à loja).
 CREATE VIEW vw_saldo_casco_cliente AS
@@ -559,11 +633,6 @@ INSERT INTO cargos (nome, nativo) VALUES ('ADM', TRUE);
 
 INSERT INTO cargo_permissoes (cargo_id, permissao)
 SELECT id, '*' FROM cargos WHERE nome = 'ADM';
-
--- Produtos estruturais (casco genérico e sucata — sem marca).
-INSERT INTO produtos (tipo, nome, preco_referencia) VALUES
-    ('CASCO',  'Casco vazio 20L', 0),
-    ('SUCATA', 'Galão sucata',    0);
 
 INSERT INTO tipos_despesa (nome) VALUES
     ('Abastecimento'), ('Diária de funcionário'), ('Manutenção'), ('Outros');

@@ -6,11 +6,15 @@ namespace ControleEstoque.Estoque.Domain;
 /// <summary>Comportamento do produto no sistema (não a natureza da mercadoria).</summary>
 public enum TipoProduto
 {
-    AGUA,
-    GALAO_COMPLETO,
-    CASCO,
-    SUCATA,
+    RETORNAVEL,
     DESCARTAVEL
+}
+
+/// <summary>Situação do casco no estoque físico, por tipo de casco.</summary>
+public enum SituacaoCasco
+{
+    VAZIO,
+    SUCATA
 }
 
 public enum TipoMovimentoEstoque

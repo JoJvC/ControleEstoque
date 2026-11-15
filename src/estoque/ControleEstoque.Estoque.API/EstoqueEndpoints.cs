@@ -27,6 +27,28 @@ public static class EstoqueEndpoints
             return Results.Ok(lista.Select(m => new MarcaResponse(m.Id, m.Nome)));
         });
 
+        // ---- Tipos de casco -------------------------------------------------
+        app.MapPost("/v1/tipos-casco", async (
+            CreateTipoCascoRequest request, ITipoCascoService tiposCasco, CancellationToken cancellationToken) =>
+        {
+            var criado = await tiposCasco.CriarAsync(ToTipoCasco(Guid.Empty, request), cancellationToken);
+            return Results.Created($"/v1/tipos-casco/{criado.Id}", TipoCascoResponse.From(criado));
+        });
+
+        app.MapPut("/v1/tipos-casco/{id:guid}", async (
+            Guid id, CreateTipoCascoRequest request, ITipoCascoService tiposCasco,
+            CancellationToken cancellationToken) =>
+        {
+            var atualizado = await tiposCasco.AtualizarAsync(ToTipoCasco(id, request), cancellationToken);
+            return Results.Ok(TipoCascoResponse.From(atualizado));
+        });
+
+        app.MapGet("/v1/tipos-casco", async (ITipoCascoService tiposCasco, CancellationToken cancellationToken) =>
+        {
+            var lista = await tiposCasco.ListarAsync(cancellationToken);
+            return Results.Ok(lista.Select(TipoCascoResponse.From));
+        });
+
         // ---- Produtos -----------------------------------------------------
         app.MapPost("/v1/produtos", async (
             CreateProdutoRequest request, IProdutoService produtos, CancellationToken cancellationToken) =>
@@ -54,9 +76,28 @@ public static class EstoqueEndpoints
             return Results.Ok(lista.Select(ProdutoResponse.From));
         });
 
-        // ---- Foto do produto ----------------------------------------------
-        app.MapPost("/v1/produtos/{id:guid}/foto", async (
-            Guid id, IFormFile foto, IProdutoService produtos, CancellationToken cancellationToken) =>
+        // ---- Associação produto+marca ----------------------------------------
+        app.MapPost("/v1/produtos/{id:guid}/marcas", async (
+            Guid id, CreateProdutoMarcaRequest request, IProdutoService produtos,
+            CancellationToken cancellationToken) =>
+        {
+            var produto = await produtos.AdicionarMarcaAsync(id, ToProdutoMarca(Guid.Empty, request), cancellationToken);
+            return Results.Created($"/v1/produtos/{id}", ProdutoResponse.From(produto));
+        });
+
+        app.MapPut("/v1/produtos/{id:guid}/marcas/{produtoMarcaId:guid}", async (
+            Guid id, Guid produtoMarcaId, CreateProdutoMarcaRequest request, IProdutoService produtos,
+            CancellationToken cancellationToken) =>
+        {
+            var produto = await produtos.AtualizarMarcaAsync(
+                id, ToProdutoMarca(produtoMarcaId, request), cancellationToken);
+            return Results.Ok(ProdutoResponse.From(produto));
+        });
+
+        // ---- Foto da associação produto+marca ------------------------------------
+        app.MapPost("/v1/produtos/{id:guid}/marcas/{produtoMarcaId:guid}/foto", async (
+            Guid id, Guid produtoMarcaId, IFormFile foto, IProdutoService produtos,
+            CancellationToken cancellationToken) =>
         {
             const long maxBytes = 5 * 1024 * 1024;
             var extension = Path.GetExtension(foto.FileName).ToLowerInvariant();
@@ -71,14 +112,14 @@ public static class EstoqueEndpoints
             }
 
             await using var stream = foto.OpenReadStream();
-            var fotoUrl = await produtos.SalvarFotoAsync(id, stream, extension, cancellationToken);
+            var fotoUrl = await produtos.SalvarFotoAsync(id, produtoMarcaId, stream, extension, cancellationToken);
             return Results.Ok(new FotoResponse(fotoUrl));
         }).DisableAntiforgery();
 
-        app.MapGet("/v1/produtos/{id:guid}/foto", async (
-            Guid id, IProdutoService produtos, CancellationToken cancellationToken) =>
+        app.MapGet("/v1/produtos/{id:guid}/marcas/{produtoMarcaId:guid}/foto", async (
+            Guid id, Guid produtoMarcaId, IProdutoService produtos, CancellationToken cancellationToken) =>
         {
-            var foto = await produtos.AbrirFotoAsync(id, cancellationToken);
+            var foto = await produtos.AbrirFotoAsync(id, produtoMarcaId, cancellationToken);
             return foto is null
                 ? Results.NotFound()
                 : Results.Stream(foto.Value.Content, foto.Value.ContentType);
@@ -94,7 +135,8 @@ public static class EstoqueEndpoints
         app.MapPost("/v1/estoque/movimentos", async (
             CreateMovimentoRequest request, IEstoqueService estoque, CancellationToken cancellationToken) =>
         {
-            await estoque.AjustarAsync(request.ProdutoId, request.Quantidade, request.Observacao, cancellationToken);
+            await estoque.AjustarAsync(
+                request.ProdutoMarcaId, request.Quantidade, request.Observacao, cancellationToken);
             return Results.Created("/v1/estoque", null);
         });
 
@@ -105,7 +147,7 @@ public static class EstoqueEndpoints
             CancellationToken cancellationToken) =>
         {
             var itens = Validacao.SemNulos(request.Itens, "Itens")
-                .Select(i => new AbastecimentoItem(i.ProdutoId, i.Quantidade, i.CustoUnitario))
+                .Select(i => new AbastecimentoItem(i.ProdutoMarcaId, i.Quantidade, i.CustoUnitario))
                 .ToList();
             var id = await abastecimentos.RegistrarAsync(
                 new NovoAbastecimento(
@@ -114,12 +156,27 @@ public static class EstoqueEndpoints
             return Results.Created($"/v1/abastecimentos/{id}", new CreatedResponse(id));
         });
 
-        // ---- Baixa de casco (quebra) ---------------------------------------
+        // ---- Cascos: saldo, ajuste e baixa (quebra) por tipo -----------------
+        app.MapGet("/v1/estoque/cascos", async (IEstoqueService estoque, CancellationToken cancellationToken) =>
+        {
+            var cascos = await estoque.ObterEstoqueCascosAsync(cancellationToken);
+            return Results.Ok(cascos.Select(EstoqueCascoResponse.From));
+        });
+
+        app.MapPost("/v1/estoque/cascos/movimentos", async (
+            CreateMovimentoCascoRequest request, IEstoqueService estoque, CancellationToken cancellationToken) =>
+        {
+            await estoque.AjustarCascoAsync(
+                request.TipoCascoId, request.Situacao, request.Quantidade, request.Motivo, cancellationToken);
+            return Results.Created("/v1/estoque/cascos", null);
+        });
+
         app.MapPost("/v1/estoque/cascos/baixas", async (
             CreateBaixaCascoRequest request, IEstoqueService estoque, CancellationToken cancellationToken) =>
         {
             var id = await estoque.BaixarCascoAsync(
-                new NovaBaixaCasco(request.Quantidade, request.Motivo, request.ResponsaveisIds ?? []),
+                new NovaBaixaCasco(
+                    request.TipoCascoId, request.Quantidade, request.Motivo, request.ResponsaveisIds ?? []),
                 cancellationToken);
             return Results.Created($"/v1/estoque/cascos/baixas/{id}", new CreatedResponse(id));
         });
@@ -129,17 +186,24 @@ public static class EstoqueEndpoints
             IEstoqueService estoque, CancellationToken cancellationToken) =>
         {
             var itens = await estoque.ObterEstoqueAsync(cancellationToken);
+            var cascos = await estoque.ObterEstoqueCascosAsync(cancellationToken);
             return Results.Ok(new
             {
                 Itens = itens.Select(EstoqueItemResponse.From),
-                AlertasEstoqueMinimo = itens.Where(i => i.AbaixoMinimo).Select(EstoqueItemResponse.From)
+                AlertasEstoqueMinimo = itens.Where(i => i.AbaixoMinimo).Select(EstoqueItemResponse.From),
+                Cascos = cascos.Select(EstoqueCascoResponse.From)
             });
         });
 
         return app;
     }
 
+    private static TipoCasco ToTipoCasco(Guid id, CreateTipoCascoRequest request) => new(
+        id, request.Nome?.Trim() ?? string.Empty, request.MarcaId, null, request.PrecoVasilhame, request.AceitaSucata);
+
     private static Produto ToProduto(Guid id, CreateProdutoRequest request) => new(
-        id, request.Tipo, request.Nome, request.MarcaId, null, request.Categoria,
-        request.Tamanho, null, request.PrecoReferencia, request.EstoqueMinimo);
+        id, request.Tipo, request.Nome, request.Categoria, request.Tamanho, request.TipoCascoId, []);
+
+    private static ProdutoMarca ToProdutoMarca(Guid id, CreateProdutoMarcaRequest request) => new(
+        id, request.MarcaId, null, request.PrecoReferencia, request.EstoqueMinimo, 0, null, request.TipoCascoId);
 }

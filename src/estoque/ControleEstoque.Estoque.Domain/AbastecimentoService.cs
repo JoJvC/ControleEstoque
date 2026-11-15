@@ -24,7 +24,7 @@ public sealed class AbastecimentoService : IAbastecimentoService
         Validacao.IdPreenchido(abastecimento.FuncionarioId, "FuncionarioId");
         foreach (var item in abastecimento.Itens)
         {
-            Validacao.IdPreenchido(item.ProdutoId, "ProdutoId");
+            Validacao.IdPreenchido(item.ProdutoMarcaId, "ProdutoMarcaId");
             Validacao.NaoNegativo(item.CustoUnitario, "CustoUnitario");
         }
 
@@ -43,12 +43,13 @@ public sealed class AbastecimentoService : IAbastecimentoService
             if (item.Quantidade <= 0)
             {
                 throw new RequestValidationException(
-                    "QUANTIDADE_INVALIDA", $"Quantidade inválida para o produto {item.ProdutoId}.");
+                    "QUANTIDADE_INVALIDA", $"Quantidade inválida para a associação produto+marca {item.ProdutoMarcaId}.");
             }
 
-            _ = await produtos.GetAsync(item.ProdutoId, cancellationToken)
+            _ = await produtos.GetByProdutoMarcaAsync(item.ProdutoMarcaId, cancellationToken)
                 ?? throw new EntityNotFoundException(
-                    "PRODUTO_NAO_ENCONTRADO", $"Produto {item.ProdutoId} não encontrado.");
+                    "PRODUTO_MARCA_NAO_ENCONTRADA",
+                    $"Associação produto+marca {item.ProdutoMarcaId} não encontrada.");
         }
 
         return await abastecimentos.CreateAsync(abastecimento, cancellationToken);

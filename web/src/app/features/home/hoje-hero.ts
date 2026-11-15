@@ -29,16 +29,18 @@ export function modeloHero(r: RelatorioFaturamento): HeroModelo {
 }
 
 export function saudacao(hora: number): string {
+  if (hora < 6) return 'boa noite';
   if (hora < 12) return 'bom dia';
   return hora < 18 ? 'boa tarde' : 'boa noite';
 }
 
 export function dataExtenso(d: Date): string {
-  return new Intl.DateTimeFormat('pt-BR', {
+  const texto = new Intl.DateTimeFormat('pt-BR', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
   }).format(d);
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
 @Component({
@@ -83,7 +85,6 @@ export function dataExtenso(d: Date): string {
     .hero__data {
       font-size: var(--ce-font-sm);
       opacity: 0.85;
-      text-transform: capitalize;
     }
 
     .hero__saudacao {

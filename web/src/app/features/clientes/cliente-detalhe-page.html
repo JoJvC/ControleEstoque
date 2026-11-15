@@ -1,5 +1,8 @@
 <ce-app-header
   [titulo]="cliente()?.nome ?? 'Cliente'"
+  [rotulo]="rotuloCliente()"
+  [onda]="true"
+  [folgado]="true"
   [mostrarVoltar]="!desktop()"
   (voltar)="voltar()"
 >

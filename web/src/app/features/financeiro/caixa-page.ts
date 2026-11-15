@@ -20,6 +20,7 @@ import { MoneyInput } from '../../ui/molecules/money-input';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
+import { dataExtenso } from '../home/hoje-hero';
 import { CaixaStore } from './caixa-store';
 import { DespesaSheet, DespesaSheetDados } from './despesa-sheet';
 import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
@@ -305,11 +306,7 @@ export class CaixaPage {
     const r = this.store.resumo();
     return (this.fechado() ? r?.caixa.totalSaidas : r?.totalDespesas) ?? 0;
   });
-  protected readonly hoje = new Intl.DateTimeFormat('pt-BR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  }).format(new Date());
+  protected readonly hoje = dataExtenso(new Date());
   private readonly router = inject(Router);
   protected readonly desktop = toSignal(
     inject(BreakpointObserver)

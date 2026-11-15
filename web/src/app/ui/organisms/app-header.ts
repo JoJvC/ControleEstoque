@@ -103,7 +103,6 @@ import { Icon } from '../atoms/icon';
       margin: 0;
       font-size: var(--ce-font-sm);
       opacity: 0.85;
-      text-transform: capitalize;
     }
 
     .destaque:not(:empty) {

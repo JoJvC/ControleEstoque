@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   inject,
   input,
@@ -88,6 +89,12 @@ export class ClienteDetalhePage {
   protected readonly statusHistorico = this.store.statusHistorico;
 
   protected readonly cliente = signal<ClienteResponse | null>(null);
+  /** Protótipo (js/telas.js:101): 'bairro · telefone'; só o que o cadastro tem. */
+  protected readonly rotuloCliente = computed(() => {
+    const c = this.cliente();
+    const bairro = c?.enderecos.find((e) => e.principal)?.bairro;
+    return [bairro, c?.telefone].filter(Boolean).join(' · ') || null;
+  });
   protected readonly carregando = signal(true);
 
   private busca?: Subscription;

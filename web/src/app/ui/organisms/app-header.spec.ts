@@ -39,4 +39,14 @@ describe('AppHeader', () => {
       expect(el.querySelector('svg')).toBeNull();
     }
   });
+
+  it('rótulo sai como recebido, sem transformação de caixa', () => {
+    const fixture = TestBed.createComponent(AppHeader);
+    fixture.componentRef.setInput('titulo', 'Aparência');
+    fixture.componentRef.setInput('rotulo', 'Guardado neste aparelho');
+    fixture.detectChanges();
+    const rotulo = (fixture.nativeElement as HTMLElement).querySelector('.cabecalho__rotulo');
+    expect(rotulo?.textContent?.trim()).toBe('Guardado neste aparelho');
+    expect(['', 'none']).toContain(getComputedStyle(rotulo as Element).textTransform);
+  });
 });

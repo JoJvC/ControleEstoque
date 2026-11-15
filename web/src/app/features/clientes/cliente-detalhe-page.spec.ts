@@ -41,7 +41,7 @@ const VENDA = {
 async function montar(
   permissoes: string[] = ['*'],
   historico: unknown[] = [VENDA],
-  opcoes: { desktop?: boolean; filtro?: string } = {},
+  opcoes: { desktop?: boolean; filtro?: string; cliente?: unknown } = {},
 ) {
   const abrir = vi.fn();
   TestBed.configureTestingModule({
@@ -68,7 +68,7 @@ async function montar(
   }
   fixture.detectChanges();
   await assentar(fixture);
-  http.expectOne(CLIENTE_URL).flush(CLIENTE);
+  http.expectOne(CLIENTE_URL).flush(opcoes.cliente ?? CLIENTE);
   http.expectOne(SALDOS_URL).flush(SALDOS);
   http.expectOne(HISTORICO).flush(historico);
   await assentar(fixture);
@@ -97,6 +97,28 @@ async function montar(
       })),
   };
 }
+
+describe('ClienteDetalhePage — cabeçalho (js/telas.js:12-14, :101)', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('onda e rótulo "bairro · telefone" do endereço principal', async () => {
+    const cliente = {
+      ...CLIENTE,
+      telefone: '(11) 99999-0000',
+      enderecos: [{ id: 'e-1', logradouro: 'Rua A', bairro: 'Centro', principal: true }],
+    };
+    const t = await montar(['*'], [VENDA], { cliente });
+    expect(t.el.querySelector('.topo--onda')).not.toBeNull();
+    expect(t.el.querySelector('.cabecalho__rotulo')?.textContent?.trim()).toBe(
+      'Centro · (11) 99999-0000',
+    );
+  });
+
+  it('sem bairro nem telefone: sem rótulo', async () => {
+    const t = await montar();
+    expect(t.el.querySelector('.cabecalho__rotulo')).toBeNull();
+  });
+});
 
 describe('ClienteDetalhePage — permissão clientes.cadastrar', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());

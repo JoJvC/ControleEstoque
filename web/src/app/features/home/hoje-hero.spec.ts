@@ -57,26 +57,37 @@ describe('HojeHero', () => {
 describe('saudacao e dataExtenso', () => {
   it('saudação por faixa de hora', () => {
     expect([
+      saudacao(0),
       saudacao(5),
+      saudacao(6),
       saudacao(11),
       saudacao(12),
       saudacao(17),
       saudacao(18),
       saudacao(23),
-    ]).toEqual(['bom dia', 'bom dia', 'boa tarde', 'boa tarde', 'boa noite', 'boa noite']);
+    ]).toEqual([
+      'boa noite',
+      'boa noite',
+      'bom dia',
+      'bom dia',
+      'boa tarde',
+      'boa tarde',
+      'boa noite',
+      'boa noite',
+    ]);
   });
 
   it('data por extenso em pt-BR', () => {
-    expect(dataExtenso(new Date(2026, 10, 15))).toBe('domingo, 15 de novembro');
+    expect(dataExtenso(new Date(2026, 10, 15))).toBe('Domingo, 15 de novembro');
   });
 
   it('hero mostra data e saudação', () => {
     const f = TestBed.createComponent(HojeHero);
-    f.componentRef.setInput('data', 'domingo, 15 de novembro');
+    f.componentRef.setInput('data', 'Domingo, 15 de novembro');
     f.componentRef.setInput('saudacao', 'Ana, bom dia');
     f.detectChanges();
     const t = (f.nativeElement as HTMLElement).textContent;
-    expect(t).toContain('domingo, 15 de novembro');
+    expect(t).toContain('Domingo, 15 de novembro');
     expect(t).toContain('Ana, bom dia');
   });
 });

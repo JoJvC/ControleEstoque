@@ -1,7 +1,17 @@
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { Subscription, firstValueFrom, map } from 'rxjs';
 
 import { ClientesApi } from '../../core/api/clientes-api';
 import {
@@ -21,6 +31,7 @@ import { EmptyState } from '../../ui/molecules/empty-state';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
+import { FiltroClientes, urlLista } from './clientes-linhas';
 import { ClientesStore } from './clientes-store';
 import { rotuloStatusPagamento } from '../vendas/venda-rotulos';
 import { galoesVisiveis } from './galoes-visiveis';
@@ -52,12 +63,21 @@ const MAX_GALOES = 10;
 export class ClienteDetalhePage {
   /** Route param (:id). */
   readonly id = input.required<string>();
+  /** Chip da lista de onde o cliente foi aberto: o Voltar devolve a lista com ele. */
+  readonly filtro = input<FiltroClientes>('todos');
 
   private readonly api = inject(ClientesApi);
   private readonly sheet = inject(SheetService);
   private readonly router = inject(Router);
   private readonly store = inject(ClientesStore);
   private readonly toast = inject(ToastService);
+  private readonly breakpoints = inject(BreakpointObserver);
+
+  // A partir de 960 px o detalhe vive ao lado da lista: sem voltar, sem barra fixa, Vender no cabeçalho.
+  protected readonly desktop = toSignal(
+    this.breakpoints.observe('(min-width: 960px)').pipe(map((r) => r.matches)),
+    { initialValue: false },
+  );
 
   protected readonly saldos = this.store.saldos;
   protected readonly statusSaldos = this.store.statusSaldos;
@@ -70,17 +90,24 @@ export class ClienteDetalhePage {
   protected readonly cliente = signal<ClienteResponse | null>(null);
   protected readonly carregando = signal(true);
 
+  private busca?: Subscription;
+
   constructor() {
-    queueMicrotask(() => {
-      this.carregar();
-      this.carregarSaldos();
-      this.carregarHistorico();
+    // No mestre-detalhe o mesmo componente troca de :id: recarrega tudo a cada id.
+    effect(() => {
+      this.id();
+      untracked(() => {
+        this.carregar();
+        this.carregarSaldos();
+        this.carregarHistorico();
+      });
     });
   }
 
   protected carregar(): void {
+    this.busca?.unsubscribe();
     this.carregando.set(true);
-    this.api.obter(this.id()).subscribe({
+    this.busca = this.api.obter(this.id()).subscribe({
       next: (cliente) => {
         this.cliente.set(cliente);
         this.carregando.set(false);
@@ -121,6 +148,12 @@ export class ClienteDetalhePage {
 
   protected vender(): void {
     this.router.navigate(['/vendas/nova'], { queryParams: { cliente: this.id() } });
+  }
+
+  protected repetir(): void {
+    this.router.navigate(['/vendas/nova'], {
+      queryParams: { cliente: this.id(), repetirUltima: '1' },
+    });
   }
 
   protected async pagarCasco(): Promise<void> {
@@ -177,6 +210,6 @@ export class ClienteDetalhePage {
   }
 
   protected voltar(): void {
-    this.router.navigateByUrl('/clientes');
+    this.router.navigateByUrl(urlLista(null, this.filtro()));
   }
 }

@@ -86,4 +86,29 @@ describe('SearchBox (nome acessível)', () => {
     const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
     expect(input.hasAttribute('aria-label')).toBe(false);
   });
+
+  it('com valor de fora, a caixa o espelha e o limpar aparece', async () => {
+    // Sem fake timers (montar): o agendador do Angular não pode ficar preso neles.
+    await TestBed.configureTestingModule({ imports: [SearchBox] }).compileComponents();
+    const fixture = TestBed.createComponent(SearchBox);
+    fixture.componentRef.setInput('valor', 'an');
+    await fixture.whenStable();
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.value).toBe('an');
+    expect(fixture.nativeElement.querySelector('button[aria-label="Limpar busca"]')).not.toBeNull();
+  });
+
+  it('o eco do termo aparado em valor não apaga o espaço digitado', async () => {
+    await TestBed.configureTestingModule({ imports: [SearchBox] }).compileComponents();
+    const fixture = TestBed.createComponent(SearchBox);
+    await fixture.whenStable();
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    digitar(input, 'ana ');
+    fixture.componentRef.setInput('valor', 'ana');
+    await fixture.whenStable();
+    expect(input.value).toBe('ana ');
+    fixture.componentRef.setInput('valor', 'bia');
+    await fixture.whenStable();
+    expect(input.value).toBe('bia');
+  });
 });

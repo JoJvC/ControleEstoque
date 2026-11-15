@@ -4,8 +4,8 @@ import {
   DestroyRef,
   inject,
   input,
+  linkedSignal,
   output,
-  signal,
 } from '@angular/core';
 
 import { Icon } from '../atoms/icon';
@@ -82,9 +82,15 @@ const DEBOUNCE_MS = 300;
 export class SearchBox {
   readonly placeholder = input('Buscar…');
   readonly rotulo = input<string | null>(null);
+  /** Valor de fora (ex.: termo guardado na store): a caixa o espelha quando ele muda. */
+  readonly valor = input('');
   readonly buscar = output<string>();
 
-  protected readonly texto = signal('');
+  // O termo emitido é aparado: se ele ecoa de volta igual ao que está digitado (ex.: 'ana '), o campo não muda.
+  protected readonly texto = linkedSignal<string, string>({
+    source: () => this.valor(),
+    computation: (valor, anterior) => (anterior?.value.trim() === valor ? anterior.value : valor),
+  });
 
   private timer: ReturnType<typeof setTimeout> | null = null;
 

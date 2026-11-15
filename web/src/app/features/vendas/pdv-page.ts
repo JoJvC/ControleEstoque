@@ -681,6 +681,8 @@ export class PdvPage implements OnInit {
   readonly id = input<string>();
   /** Query param ?cliente=<id> (vem do detalhe do cliente): pré-seleciona o cliente numa venda nova. */
   readonly cliente = input<string>();
+  /** Query param ?repetirUltima=1 (vem do Repetir do cliente): com `cliente`, carrega a última venda dele. */
+  readonly repetirUltima = input<string>();
   private readonly vendaCarregada = signal<VendaDetalheResponse | null>(null);
   protected readonly carga = signal<'carregando' | 'erro' | 'ok'>('ok');
   protected readonly erroCarga = signal<string | null>(null);
@@ -834,7 +836,15 @@ export class PdvPage implements OnInit {
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
           // Se o operador já escolheu outro cliente enquanto isso, não sobrescreve.
-          next: (c) => this.clienteSelecionado() === null && this.selecionarCliente(c),
+          next: (c) => {
+            if (this.clienteSelecionado() !== null) {
+              return;
+            }
+            this.selecionarCliente(c);
+            if (this.repetirUltima() === '1') {
+              void this.repetirUltimaVenda();
+            }
+          },
           error: () => undefined, // abre sem cliente, como sem o parâmetro
         });
     }

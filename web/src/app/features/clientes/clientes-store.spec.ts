@@ -187,3 +187,88 @@ describe('ClientesStore — histórico', () => {
     expect(store.statusHistorico()).toBe('error');
   });
 });
+
+describe('ClientesStore — filtros e relatórios', () => {
+  let store: ClientesStore;
+  let http: HttpTestingController;
+  const FIADO_REL = '/api/financeiro/v1/relatorios/fiado';
+  const CASCOS_REL = '/api/clientes/v1/relatorios/cascos';
+  const ANA = { id: 'a', nome: 'Ana', telefone: null, observacoes: null, enderecos: [] };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([apiErrorInterceptor])),
+        provideHttpClientTesting(),
+        { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
+      ],
+    });
+    store = TestBed.inject(ClientesStore);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('abrir carrega os dois relatórios uma vez e trocar de chip não refaz as cargas', () => {
+    store.abrir('todos');
+    http.expectOne((r) => r.url === CLIENTES).flush([ANA]);
+    http.expectOne(FIADO_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoDevedor: 5 }]);
+    http.expectOne(CASCOS_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoCascos: 2 }]);
+    expect(store.linhas()).toMatchObject([{ id: 'a', saldoFiado: 5, saldoCascos: 2 }]);
+
+    store.definirFiltro('fiado');
+    store.definirFiltro('casco');
+    store.definirFiltro('casco');
+    store.definirFiltro('todos');
+    http.expectNone(() => true);
+    expect(store.statusLista()).toBe('ok');
+  });
+
+  it('abrir em fiado mostra o relatório sem buscar a lista de todos', () => {
+    store.abrir('fiado');
+    http.expectNone((r) => r.url === CLIENTES);
+    http.expectOne(CASCOS_REL).flush([]);
+    http.expectOne(FIADO_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoDevedor: 5 }]);
+    expect(store.linhas().map((l) => l.nome)).toEqual(['Ana']);
+    expect(store.temMaisLista()).toBe(false);
+  });
+
+  it('trocar o filtro para fiado e para casco dispara um único GET do relatório de cada', () => {
+    store.definirFiltro('fiado');
+    http.expectOne(FIADO_REL).flush([]);
+    http.expectNone(CASCOS_REL);
+    store.definirFiltro('casco');
+    http.expectOne(CASCOS_REL).flush([]);
+    http.expectNone(FIADO_REL);
+  });
+
+  it('voltar a todos com o termo mudado busca a API com o termo', () => {
+    store.abrir('fiado');
+    http.expectOne(FIADO_REL).flush([]);
+    http.expectOne(CASCOS_REL).flush([]);
+    store.buscar('an');
+    http.expectNone((r) => r.url === CLIENTES);
+    store.definirFiltro('todos');
+    http.expectOne((r) => r.url === CLIENTES && r.params.get('nome') === 'an').flush([ANA]);
+  });
+
+  it('a falha de um relatório não derruba a lista nem o outro relatório', () => {
+    store.abrir('todos');
+    http.expectOne((r) => r.url === CLIENTES).flush([ANA]);
+    http.expectOne(FIADO_REL).flush(null, { status: 500, statusText: 'x' });
+    http.expectOne(CASCOS_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoCascos: 2 }]);
+    expect(store.statusLista()).toBe('ok');
+    expect(store.linhas()).toMatchObject([{ id: 'a', saldoCascos: 2 }]);
+    expect(store.linhas()[0].saldoFiado).toBeUndefined();
+  });
+
+  it('relatório do chip atual com falha vira erro da lista e recarregar tenta de novo', () => {
+    store.abrir('fiado');
+    http.expectOne(FIADO_REL).flush(null, { status: 500, statusText: 'x' });
+    http.expectOne(CASCOS_REL).flush([]);
+    expect(store.statusLista()).toBe('error');
+    store.recarregar();
+    http.expectOne(FIADO_REL).flush([]);
+    expect(store.statusLista()).toBe('ok');
+  });
+});

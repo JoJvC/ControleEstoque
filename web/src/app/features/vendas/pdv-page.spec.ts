@@ -85,7 +85,12 @@ const SALDOS_ZERO: SaldosResponse = { saldoCascos: 0, sucataEntregue: 0, saldoFi
 // A sheet Cobrar é a SheetService de verdade (Esc e Fechar valem); só a sheet do item é dublê.
 async function montar(
   idVenda?: string,
-  opcoes: { desktop?: boolean; cliente?: string; catalogoFalha?: boolean } = {},
+  opcoes: {
+    desktop?: boolean;
+    cliente?: string;
+    repetirUltima?: string;
+    catalogoFalha?: boolean;
+  } = {},
 ) {
   const largura = new BehaviorSubject(opcoes.desktop === true);
   TestBed.configureTestingModule({
@@ -122,6 +127,9 @@ async function montar(
   }
   if (opcoes.cliente) {
     fixture.componentRef.setInput('cliente', opcoes.cliente);
+  }
+  if (opcoes.repetirUltima) {
+    fixture.componentRef.setInput('repetirUltima', opcoes.repetirUltima);
   }
   const el = fixture.nativeElement as HTMLElement;
   const produtosReq = http.expectOne('/api/estoque/v1/produtos');
@@ -1090,6 +1098,35 @@ describe('PdvPage com ?cliente=', () => {
     t.http.expectOne('/api/clientes/v1/clientes/c-1').flush(cliente('c-1', 'Ana'));
     await assentar(t.fixture);
     t.http.expectNone('/api/clientes/v1/clientes/c-9');
+    await t.responderSaldos('c-1');
+  });
+
+  it('com repetirUltima=1: seleciona o cliente e carrega a última venda', async () => {
+    const t = await montar(undefined, { cliente: 'c-1', repetirUltima: '1' });
+    t.http.expectOne('/api/clientes/v1/clientes/c-1').flush(cliente('c-1', 'Ana'));
+    await assentar(t.fixture);
+    await t.responderSaldos('c-1');
+    await responderUltima(t, ULTIMA);
+    expect(t.linha(AGUA).querySelector<HTMLInputElement>('ce-quantity-stepper input')!.value).toBe(
+      '2',
+    );
+  });
+
+  it('sem repetirUltima: não consulta a última venda', async () => {
+    const t = await montar(undefined, { cliente: 'c-1' });
+    t.http.expectOne('/api/clientes/v1/clientes/c-1').flush(cliente('c-1', 'Ana'));
+    await assentar(t.fixture);
+    await t.responderSaldos('c-1');
+    t.http.expectNone(ehUltimaVenda);
+  });
+
+  it('com id (edição): ignora repetirUltima', async () => {
+    const t = await montar('v-1', { cliente: 'c-9', repetirUltima: '1' });
+    t.http.expectOne(`${URL_VENDAS}/v-1`).flush({ ...VENDA_EDICAO, itens: [] });
+    await assentar(t.fixture);
+    t.http.expectOne('/api/clientes/v1/clientes/c-1').flush(cliente('c-1', 'Ana'));
+    await assentar(t.fixture);
+    t.http.expectNone(ehUltimaVenda);
     await t.responderSaldos('c-1');
   });
 

@@ -1,7 +1,6 @@
 using ControleEstoque.Financeiro.Domain;
 using ControleEstoque.Shared.Results;
 using Npgsql;
-using NpgsqlTypes;
 
 namespace ControleEstoque.Financeiro.Repository;
 
@@ -25,13 +24,13 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
         return await GetSaldoAsync(connection, null, clienteId, cancellationToken);
     }
 
-    public async Task<decimal> PagarAsync(
-        Guid clienteId, decimal valor, string? observacao, CancellationToken cancellationToken)
+    public async Task<ResultadoPagamentoFiado> PagarAsync(
+        Guid clienteId, decimal valor, FormaPagamento forma, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        // Ordem das travas: caixa (FOR SHARE) e depois cliente (FOR UPDATE).
+        // Ordem das travas: caixa (FOR SHARE), cliente (FOR UPDATE) e vendas do cliente (FOR UPDATE).
         await using (var command = new NpgsqlCommand(Sql.TravaCaixaHoje, connection, transaction))
         {
             if ((string?)await command.ExecuteScalarAsync(cancellationToken) == nameof(StatusCaixa.FECHADO))
@@ -49,20 +48,52 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
             }
         }
 
+        var pendentes = new List<VendaPendente>();
+        await using (var command = new NpgsqlCommand(Sql.TravaVendasPendentes, connection, transaction))
+        {
+            command.Parameters.AddWithValue("clienteId", clienteId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                pendentes.Add(new VendaPendente(
+                    reader.GetGuid(0), reader.GetFieldValue<DateTimeOffset>(1),
+                    reader.GetDecimal(2), reader.GetDecimal(3)));
+            }
+        }
+
+        Guid lancamentoId;
         await using (var command = new NpgsqlCommand(Sql.InsertPagamento, connection, transaction))
         {
             command.Parameters.AddWithValue("clienteId", clienteId);
             command.Parameters.AddWithValue("valor", valor);
-            command.Parameters.Add(new NpgsqlParameter("observacao", NpgsqlDbType.Text)
+            command.Parameters.AddWithValue("observacao", $"Pagamento de fiado ({forma})");
+            lancamentoId = (Guid)(await command.ExecuteScalarAsync(cancellationToken))!;
+        }
+
+        var distribuicao = FiadoFifo.Distribuir(valor, pendentes);
+        foreach (var abatimento in distribuicao.Abatimentos)
+        {
+            await using (var command = new NpgsqlCommand(Sql.InsertPagamentoVenda, connection, transaction))
             {
-                Value = (object?)observacao ?? DBNull.Value
-            });
-            await command.ExecuteNonQueryAsync(cancellationToken);
+                command.Parameters.AddWithValue("vendaId", abatimento.VendaId);
+                command.Parameters.AddWithValue("forma", forma.ToString());
+                command.Parameters.AddWithValue("valor", abatimento.ValorAbatido);
+                command.Parameters.AddWithValue("lancamentoId", lancamentoId);
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var command = new NpgsqlCommand(Sql.UpdateStatusVenda, connection, transaction))
+            {
+                command.Parameters.AddWithValue("vendaId", abatimento.VendaId);
+                command.Parameters.AddWithValue("status", abatimento.NovoStatus.ToString());
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
 
         var saldo = await GetSaldoAsync(connection, transaction, clienteId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return saldo;
+        return new ResultadoPagamentoFiado(
+            saldo, distribuicao.Abatimentos, FiadoFifo.CreditoGerado(distribuicao.Sobra, 0m - saldo));
     }
 
     public async Task<IReadOnlyList<SaldoFiadoCliente>> ListSaldosDevedoresAsync(
@@ -104,10 +135,31 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
         public const string GetSaldo =
             "SELECT saldo_devedor FROM vw_saldo_fiado_cliente WHERE cliente_id = @clienteId";
 
+        // Vendas do cliente ainda em aberto, da mais antiga para a mais nova; o pago inclui CREDITO_CLIENTE.
+        public const string TravaVendasPendentes = """
+            SELECT v.id, v.data, v.total_liquido,
+                   COALESCE((SELECT SUM(p.valor) FROM venda_pagamentos p
+                             WHERE p.venda_id = v.id AND p.deleted_at IS NULL), 0)
+            FROM vendas v
+            WHERE v.cliente_id = @clienteId AND v.deleted_at IS NULL
+              AND v.status_pagamento IN ('PENDENTE', 'PARCIAL')
+            ORDER BY v.data, v.id
+            FOR UPDATE OF v
+            """;
+
         public const string InsertPagamento = """
             INSERT INTO lancamentos_fiado (cliente_id, tipo, valor, observacao)
             VALUES (@clienteId, 'PAGAMENTO', @valor, @observacao)
+            RETURNING id
             """;
+
+        public const string InsertPagamentoVenda = """
+            INSERT INTO venda_pagamentos (venda_id, forma, valor, data, lancamento_fiado_id)
+            VALUES (@vendaId, @forma::forma_pagamento, @valor, now(), @lancamentoId)
+            """;
+
+        public const string UpdateStatusVenda =
+            "UPDATE vendas SET status_pagamento = @status::status_pagamento_venda, updated_at = now() WHERE id = @vendaId";
 
         public const string ListSaldosDevedores = """
             SELECT cliente_id, nome, saldo_devedor, saldo

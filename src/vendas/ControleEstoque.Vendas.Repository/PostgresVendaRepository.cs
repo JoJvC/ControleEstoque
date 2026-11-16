@@ -981,7 +981,10 @@ public sealed class PostgresVendaRepository : IVendaRepository
                                  WHEN 'PAGAMENTO'    THEN -l.valor
                                  ELSE 0 END)
                              FROM lancamentos_fiado l
-                             WHERE l.venda_id = v.id AND l.deleted_at IS NULL), 0),
+                             WHERE l.venda_id = v.id AND l.deleted_at IS NULL), 0)
+                   - COALESCE((SELECT SUM(p.valor) FROM venda_pagamentos p
+                               WHERE p.venda_id = v.id AND p.deleted_at IS NULL
+                                 AND p.lancamento_fiado_id IS NOT NULL), 0),
                    v.status_pagamento::text
             FROM vendas v
             WHERE v.id = @vendaId AND v.deleted_at IS NULL

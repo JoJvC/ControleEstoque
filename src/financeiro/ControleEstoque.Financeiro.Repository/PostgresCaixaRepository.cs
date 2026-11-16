@@ -259,6 +259,7 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
                              JOIN vendas v ON v.id = p.venda_id
                              WHERE p.deleted_at IS NULL AND v.deleted_at IS NULL
                                AND p.forma <> 'CREDITO_CLIENTE'
+                               AND p.lancamento_fiado_id IS NULL
                                AND p.data::date = @data), 0)
                  + COALESCE((SELECT SUM(l.valor)
                              FROM lancamentos_fiado l

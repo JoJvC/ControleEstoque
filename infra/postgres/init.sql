@@ -529,6 +529,12 @@ CREATE TABLE lancamentos_fiado (
 CREATE INDEX idx_fiado_cliente ON lancamentos_fiado(cliente_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_fiado_venda   ON lancamentos_fiado(venda_id)   WHERE venda_id IS NOT NULL;
 
+-- Recebimento de fiado (FIFO): a linha de venda_pagamentos gerada por ele aponta o lancamento PAGAMENTO de origem,
+-- para o caixa e os relatórios contarem o dinheiro uma vez só (pelo lançamento, não pela linha da venda).
+ALTER TABLE venda_pagamentos ADD COLUMN IF NOT EXISTS lancamento_fiado_id UUID REFERENCES lancamentos_fiado(id);
+CREATE INDEX IF NOT EXISTS idx_venda_pagamentos_lancamento_fiado
+    ON venda_pagamentos (lancamento_fiado_id) WHERE lancamento_fiado_id IS NOT NULL;
+
 -- ----------------------------------------------------------------------------
 -- FINANCEIRO — CAIXA
 -- ----------------------------------------------------------------------------

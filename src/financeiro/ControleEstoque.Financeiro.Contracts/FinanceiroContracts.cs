@@ -52,4 +52,9 @@ public sealed record TipoDespesaResponse(Guid Id, string Nome);
 
 public sealed record PagamentoFiadoRequest(decimal Valor, string? Forma);
 
-public sealed record PagamentoFiadoResponse(decimal NovoSaldoFiado, decimal NovoSaldo);
+public sealed record VendaAbatidaResponse(
+    Guid VendaId, DateTimeOffset Data, decimal ValorAbatido, string NovoStatus, decimal Restante);
+
+public sealed record PagamentoFiadoResponse(
+    decimal NovoSaldoFiado, decimal NovoSaldo,
+    IReadOnlyList<VendaAbatidaResponse> VendasAbatidas, decimal ValorEmCredito);

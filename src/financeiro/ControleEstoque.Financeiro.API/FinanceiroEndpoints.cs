@@ -65,8 +65,15 @@ public static class FinanceiroEndpoints
             Guid id, PagamentoFiadoRequest request, IFiadoService fiado,
             CancellationToken cancellationToken) =>
         {
-            var novoSaldo = await fiado.PagarAsync(id, request.Valor, request.Forma, cancellationToken);
-            return Results.Ok(new PagamentoFiadoResponse(novoSaldo, 0m - novoSaldo));
+            var resultado = await fiado.PagarAsync(id, request.Valor, request.Forma, cancellationToken);
+            return Results.Ok(new PagamentoFiadoResponse(
+                resultado.NovoSaldoDevedor,
+                0m - resultado.NovoSaldoDevedor,
+                resultado.Abatimentos
+                    .Select(a => new VendaAbatidaResponse(
+                        a.VendaId, a.Data, a.ValorAbatido, a.NovoStatus.ToString(), a.Restante))
+                    .ToList(),
+                resultado.ValorEmCredito));
         });
 
         // ---- Relatórios ---------------------------------------------------------

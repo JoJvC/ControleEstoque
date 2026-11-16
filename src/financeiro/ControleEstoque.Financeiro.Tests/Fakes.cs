@@ -158,14 +158,19 @@ internal sealed class FakeFiadoRepository : IFiadoRepository
 
     public List<decimal> PagamentosLancados { get; } = new();
 
+    /// <summary>Vendas PENDENTE/PARCIAL por cliente, na ordem em que o SQL as entregaria (data, id).</summary>
+    public Dictionary<Guid, List<VendaPendente>> VendasPendentes { get; } = new();
+
+    public List<FormaPagamento> FormasRecebidas { get; } = new();
+
     public Task<bool> ClienteExisteAsync(Guid clienteId, CancellationToken cancellationToken) =>
         Task.FromResult(Clientes.Contains(clienteId));
 
     public Task<decimal> GetSaldoAsync(Guid clienteId, CancellationToken cancellationToken) =>
         Task.FromResult(Saldos.GetValueOrDefault(clienteId));
 
-    public Task<decimal> PagarAsync(
-        Guid clienteId, decimal valor, string? observacao, CancellationToken cancellationToken)
+    public Task<ResultadoPagamentoFiado> PagarAsync(
+        Guid clienteId, decimal valor, FormaPagamento forma, CancellationToken cancellationToken)
     {
         if (CaixaHojeFechado)
         {
@@ -173,8 +178,13 @@ internal sealed class FakeFiadoRepository : IFiadoRepository
         }
 
         PagamentosLancados.Add(valor);
+        FormasRecebidas.Add(forma);
+        var distribuicao = FiadoFifo.Distribuir(
+            valor, VendasPendentes.GetValueOrDefault(clienteId) ?? new List<VendaPendente>());
         Saldos[clienteId] = Saldos.GetValueOrDefault(clienteId) - valor;
-        return Task.FromResult(Saldos[clienteId]);
+        return Task.FromResult(new ResultadoPagamentoFiado(
+            Saldos[clienteId], distribuicao.Abatimentos,
+            FiadoFifo.CreditoGerado(distribuicao.Sobra, 0m - Saldos[clienteId])));
     }
 
     public Task<IReadOnlyList<SaldoFiadoCliente>> ListSaldosDevedoresAsync(

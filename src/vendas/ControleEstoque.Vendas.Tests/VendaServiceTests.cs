@@ -991,6 +991,44 @@ public sealed class VendaServiceTests
         Assert.Null(await sut.ObterUltimoPrecoAsync(Guid.NewGuid(), agua.ProdutoId, agua.MarcaId, CancellationToken.None));
     }
 
+    private async Task ReservarAsync(ProdutoVenda produto, int quantidade)
+    {
+        var pedidos = new FakePedidoRepository(lookup.SaldosEstoque, vendas.Reservas);
+        var pedidoService = new PedidoService(pedidos, lookup);
+        var pedido = await pedidoService.CriarAsync(
+            new NovoPedido(
+                clienteId, funcionarioId, null,
+                [new ItemVenda(produto.ProdutoId, produto.MarcaId, quantidade, 8m, null)], [], null),
+            CancellationToken.None);
+        await pedidoService.IniciarAsync(pedido.Id, funcionarioId, [funcionarioId], CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoReservaDePedidoEmAndamentoTiraODisponivel_LancaEstoqueInsuficiente()
+    {
+        await ReservarAsync(descartavel, 26); // saldo 30, reservado 26: disponível 4
+
+        var ex = await Assert.ThrowsAsync<InsufficientStockException>(() =>
+            sut.CriarAsync(NovaVendaDe(descartavel, 5, 8m), CancellationToken.None));
+
+        Assert.Contains("(4)", ex.Message); // a mensagem mostra o disponível, não o saldo
+        await sut.CriarAsync(NovaVendaDe(descartavel, 4, 8m), CancellationToken.None);
+        Assert.NotNull(vendas.UltimaGravacao);
+    }
+
+    [Fact]
+    public async Task EditarAsync_QuandoReservaDePedidoEmAndamentoTiraODisponivel_LancaEstoqueInsuficiente()
+    {
+        var criada = await sut.CriarAsync(NovaVendaDe(descartavel, 2, 8m), CancellationToken.None); // saldo 28
+        await ReservarAsync(descartavel, 20); // disponível 8, mais os 2 da própria venda devolvidos = 10
+
+        await Assert.ThrowsAsync<InsufficientStockException>(() =>
+            sut.EditarAsync(criada.Id, NovaVendaDe(descartavel, 11, 8m), CancellationToken.None));
+
+        await sut.EditarAsync(criada.Id, NovaVendaDe(descartavel, 10, 8m), CancellationToken.None);
+        Assert.NotNull(vendas.UltimaEdicao);
+    }
+
     private NovaVenda NovaVendaDe(
         ProdutoVenda produto,
         int quantidade,

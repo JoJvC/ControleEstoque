@@ -135,6 +135,9 @@ public sealed class FakeVendaRepository : IVendaRepository
 
     public FakeVendaRepository(Dictionary<Guid, long> saldos) => this.saldos = saldos;
 
+    /// <summary>Reservado por produto_marca_id (pedidos EM_ANDAMENTO); o FakePedidoRepository mantém este dicionário.</summary>
+    public Dictionary<Guid, long> Reservas { get; } = new();
+
     /// <summary>Simula gravação atômica que recusa, mesmo com saldo alto na leitura avulsa.</summary>
     public bool RecusarSempre { get; set; }
 
@@ -260,9 +263,11 @@ public sealed class FakeVendaRepository : IVendaRepository
             await Task.Delay(5); // janela entre ler e gravar: expõe a corrida sem a trava
             foreach (var (produtoId, saida) in novas)
             {
-                if (RecusarSempre || lidos[produtoId] - saida < 0)
+                var reservado = Reservas.GetValueOrDefault(produtoId);
+                if (RecusarSempre || EstoqueDisponivel.Falta(lidos[produtoId], reservado, saida))
                 {
-                    return new SaldoInsuficiente(produtoId, lidos[produtoId], saida);
+                    return new SaldoInsuficiente(
+                        produtoId, EstoqueDisponivel.Disponivel(lidos[produtoId], reservado), saida);
                 }
             }
 
@@ -376,6 +381,132 @@ internal sealed class FakePermissaoLookup : IPermissaoFuncionarioLookup
 
     public Task<IReadOnlyList<string>?> PermissoesAsync(Guid funcionarioId, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<string>?>(PermissoesPorFuncionario.GetValueOrDefault(funcionarioId));
+}
+
+/// <summary>
+/// Pedidos em memória. O reservado dos EM_ANDAMENTO fica em <paramref name="reservas"/>, o mesmo dicionário que o
+/// FakeVendaRepository lê; o início confere saldo − reservado − saída com a função pura, sob uma trava.
+/// </summary>
+internal sealed class FakePedidoRepository : IPedidoRepository
+{
+    private readonly Dictionary<Guid, long> saldos;
+    private readonly Dictionary<Guid, long> reservas;
+    private readonly Dictionary<Guid, Pedido> pedidos = new();
+    private readonly Dictionary<Guid, string> nomes;
+    private readonly SemaphoreSlim trava = new(1, 1);
+
+    public FakePedidoRepository(
+        Dictionary<Guid, long> saldos, Dictionary<Guid, long> reservas, Dictionary<Guid, string>? nomesFuncionarios = null)
+    {
+        this.saldos = saldos;
+        this.reservas = reservas;
+        nomes = nomesFuncionarios ?? new Dictionary<Guid, string>();
+    }
+
+    public Task CriarAsync(PedidoGravacao g, CancellationToken cancellationToken)
+    {
+        pedidos[g.PedidoId] = new Pedido(
+            g.PedidoId, g.ClienteId, g.EnderecoEntregaId, StatusPedido.PENDENTE, g.Observacao, g.CriadoPor, g.CriadoEm,
+            null, null, null, g.Itens, Funcionarios(g.FuncionariosIds));
+        return Task.CompletedTask;
+    }
+
+    public Task<Pedido?> GetAsync(Guid pedidoId, CancellationToken cancellationToken) =>
+        Task.FromResult(pedidos.GetValueOrDefault(pedidoId));
+
+    public Task<IReadOnlyList<PedidoResumo>> ListAsync(
+        StatusPedido? status, int page, int pageSize, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PedidoResumo>>(pedidos.Values
+            .Where(p => status is null || p.Status == status)
+            .OrderByDescending(p => p.CreatedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(p => new PedidoResumo(
+                p.Id, p.ClienteId, p.EnderecoEntregaId, p.Status, p.Observacao, p.CreatedAt, p.IniciadoEm, p.CanceladoEm))
+            .ToList());
+
+    public async Task<SaldoInsuficiente?> IniciarAsync(
+        Guid pedidoId, IReadOnlyList<Guid> funcionariosIds, DateTimeOffset iniciadoEm,
+        CancellationToken cancellationToken)
+    {
+        await trava.WaitAsync(cancellationToken);
+        try
+        {
+            var pedido = Travar(pedidoId);
+            if (!TransicoesPedido.PodeIniciar(pedido.Status))
+            {
+                throw new ConflictException("PEDIDO_STATUS_INVALIDO", $"Pedido {pedido.Status} não pode ser iniciado.");
+            }
+
+            var saidas = pedido.Itens.GroupBy(i => i.ProdutoMarcaId)
+                .ToDictionary(g => g.Key, g => g.Sum(i => (long)i.Quantidade));
+            foreach (var (produtoMarcaId, saida) in saidas)
+            {
+                var saldo = saldos.GetValueOrDefault(produtoMarcaId);
+                var reservado = reservas.GetValueOrDefault(produtoMarcaId);
+                if (EstoqueDisponivel.Falta(saldo, reservado, saida))
+                {
+                    return new SaldoInsuficiente(produtoMarcaId, EstoqueDisponivel.Disponivel(saldo, reservado), saida);
+                }
+            }
+
+            foreach (var (produtoMarcaId, saida) in saidas)
+            {
+                reservas[produtoMarcaId] = reservas.GetValueOrDefault(produtoMarcaId) + saida;
+            }
+
+            pedidos[pedidoId] = pedido with
+            {
+                Status = StatusPedido.EM_ANDAMENTO, IniciadoEm = iniciadoEm, Funcionarios = Funcionarios(funcionariosIds)
+            };
+            return null;
+        }
+        finally
+        {
+            trava.Release();
+        }
+    }
+
+    public async Task CancelarAsync(
+        Guid pedidoId, Guid funcionarioId, DateTimeOffset canceladoEm, CancellationToken cancellationToken)
+    {
+        await trava.WaitAsync(cancellationToken);
+        try
+        {
+            var pedido = Travar(pedidoId);
+            if (!TransicoesPedido.PodeCancelar(pedido.Status))
+            {
+                throw new ConflictException("PEDIDO_STATUS_INVALIDO", $"Pedido {pedido.Status} não pode ser cancelado.");
+            }
+
+            if (pedido.Status == StatusPedido.EM_ANDAMENTO)
+            {
+                foreach (var item in pedido.Itens)
+                {
+                    reservas[item.ProdutoMarcaId] -= item.Quantidade;
+                }
+            }
+
+            pedidos[pedidoId] = pedido with
+            {
+                Status = StatusPedido.CANCELADO, CanceladoEm = canceladoEm, CanceladoPor = funcionarioId
+            };
+        }
+        finally
+        {
+            trava.Release();
+        }
+    }
+
+    /// <summary>Para montar cenários que o ciclo ainda não alcança (ex.: CONCLUIDO, que é a parte 2 do item 17).</summary>
+    public void ForcarStatus(Guid pedidoId, StatusPedido status) =>
+        pedidos[pedidoId] = pedidos[pedidoId] with { Status = status };
+
+    private Pedido Travar(Guid pedidoId) =>
+        pedidos.GetValueOrDefault(pedidoId)
+        ?? throw new EntityNotFoundException("PEDIDO_NAO_ENCONTRADO", $"Pedido {pedidoId} não encontrado.");
+
+    private List<FuncionarioPedido> Funcionarios(IReadOnlyList<Guid> ids) =>
+        ids.Select(id => new FuncionarioPedido(id, nomes.GetValueOrDefault(id, $"Funcionário {id}"))).ToList();
 }
 
 internal sealed class FakeCupomFiscalRepository : ICupomFiscalRepository

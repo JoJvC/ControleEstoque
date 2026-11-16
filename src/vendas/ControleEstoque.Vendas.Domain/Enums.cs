@@ -39,3 +39,12 @@ public enum ModoCreditoVasilhame
     COMPRAR,        // cobra tudo e o crédito segue
     CONVERTER_CASCO // cobra tudo e baixa o saldo devedor de casco do tipo (limitado a ele); não mexe nos vazios
 }
+
+/// <summary>Ciclo do pedido para entrega; os nomes espelham o ENUM status_pedido do init.sql.</summary>
+public enum StatusPedido
+{
+    PENDENTE,
+    EM_ANDAMENTO,
+    CONCLUIDO,
+    CANCELADO
+}

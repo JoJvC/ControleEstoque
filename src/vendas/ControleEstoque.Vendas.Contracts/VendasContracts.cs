@@ -119,3 +119,58 @@ public sealed record VendaDetalheResponse(
 public sealed record AddPagamentoRequest(FormaPagamento Forma, decimal Valor);
 
 public sealed record CupomFiscalResponse(Guid CupomId, string Numero, DateTimeOffset EmitidoEm);
+
+public sealed record CriarPedidoRequest(
+    Guid FuncionarioId,
+    Guid ClienteId,
+    Guid? EnderecoEntregaId,
+    IReadOnlyList<ItemVendaRequest>? Itens,
+    IReadOnlyList<Guid>? FuncionariosIds,
+    string? Observacao);
+
+public sealed record IniciarPedidoRequest(Guid FuncionarioId, IReadOnlyList<Guid>? FuncionariosIds);
+
+public sealed record CancelarPedidoRequest(Guid FuncionarioId);
+
+public sealed record PedidoResumoResponse(
+    Guid Id,
+    Guid ClienteId,
+    Guid? EnderecoEntregaId,
+    StatusPedido Status,
+    string? Observacao,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? IniciadoEm,
+    DateTimeOffset? CanceladoEm)
+{
+    public static PedidoResumoResponse From(PedidoResumo p) => new(
+        p.Id, p.ClienteId, p.EnderecoEntregaId, p.Status, p.Observacao, p.CreatedAt, p.IniciadoEm, p.CanceladoEm);
+}
+
+public sealed record ItemPedidoResponse(
+    Guid ProdutoId, Guid MarcaId, int Quantidade, decimal PrecoUnitario, DescontoRequest? Desconto);
+
+public sealed record FuncionarioPedidoResponse(Guid Id, string Nome);
+
+public sealed record PedidoResponse(
+    Guid Id,
+    Guid ClienteId,
+    Guid? EnderecoEntregaId,
+    StatusPedido Status,
+    string? Observacao,
+    Guid CreatedBy,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? IniciadoEm,
+    DateTimeOffset? CanceladoEm,
+    Guid? CanceladoPor,
+    IReadOnlyList<ItemPedidoResponse> Itens,
+    IReadOnlyList<FuncionarioPedidoResponse> Funcionarios)
+{
+    public static PedidoResponse From(Pedido p) => new(
+        p.Id, p.ClienteId, p.EnderecoEntregaId, p.Status, p.Observacao, p.CreatedBy, p.CreatedAt, p.IniciadoEm,
+        p.CanceladoEm, p.CanceladoPor,
+        p.Itens.Select(i => new ItemPedidoResponse(
+            i.ProdutoId, i.MarcaId, i.Quantidade, i.PrecoUnitario,
+            i.Desconto is null ? null : new DescontoRequest(i.Desconto.Tipo, i.Desconto.Valor, i.Desconto.Motivo)))
+            .ToList(),
+        p.Funcionarios.Select(f => new FuncionarioPedidoResponse(f.Id, f.Nome)).ToList());
+}

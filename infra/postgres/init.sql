@@ -69,6 +69,15 @@ CREATE TYPE tipo_frete AS ENUM ('TERCEIRIZADO', 'PROPRIO');
 
 CREATE TYPE status_caixa AS ENUM ('ABERTO', 'FECHADO');
 
+-- Status do pedido para entrega (guardado por IF para poder repetir).
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'status_pedido') THEN
+        CREATE TYPE status_pedido AS ENUM ('PENDENTE', 'EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO');
+    END IF;
+END
+$$;
+
 -- ----------------------------------------------------------------------------
 -- RH / PERMISSIONAMENTO
 -- ----------------------------------------------------------------------------
@@ -298,6 +307,53 @@ BEGIN
     END IF;
 END
 $$;
+
+-- ----------------------------------------------------------------------------
+-- PEDIDOS PARA ENTREGA
+-- ----------------------------------------------------------------------------
+
+-- Nasce PENDENTE, sem pagamento e sem reserva. A reserva de estoque é calculada: soma de pedido_itens dos pedidos
+-- EM_ANDAMENTO por produto+marca (não há movimento de estoque). O endereço ser do mesmo cliente é regra do serviço.
+CREATE TABLE IF NOT EXISTS pedidos (
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cliente_id           UUID NOT NULL REFERENCES clientes(id),
+    endereco_entrega_id  UUID NULL REFERENCES cliente_enderecos(id),
+    status               status_pedido NOT NULL DEFAULT 'PENDENTE',
+    observacao           TEXT NULL,
+    created_by           UUID NOT NULL REFERENCES funcionarios(id),
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    iniciado_em          TIMESTAMPTZ NULL,
+    cancelado_em         TIMESTAMPTZ NULL,
+    cancelado_por        UUID NULL REFERENCES funcionarios(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pedidos_status ON pedidos(status);
+
+CREATE TABLE IF NOT EXISTS pedido_itens (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    pedido_id        UUID NOT NULL REFERENCES pedidos(id),
+    produto_marca_id UUID NOT NULL REFERENCES produto_marcas(id),
+    quantidade       INT NOT NULL CHECK (quantidade > 0),
+    preco_unitario   NUMERIC(19,2) NOT NULL CHECK (preco_unitario >= 0),
+    desconto_tipo    tipo_desconto,
+    desconto_valor   NUMERIC(19,2) CHECK (desconto_valor IS NULL OR desconto_valor >= 0),
+    motivo_desconto  TEXT,
+    -- desconto e motivo andam juntos: ou ambos presentes, ou nenhum
+    CONSTRAINT chk_pedido_itens_desconto_com_motivo CHECK (
+        (desconto_tipo IS NULL AND desconto_valor IS NULL AND motivo_desconto IS NULL)
+        OR
+        (desconto_tipo IS NOT NULL AND desconto_valor IS NOT NULL AND motivo_desconto IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_pedido_itens_pedido ON pedido_itens(pedido_id);
+
+-- Funcionários da entrega: opcionais no cadastro, obrigatórios (e substituíveis) no início.
+CREATE TABLE IF NOT EXISTS pedido_funcionarios (
+    pedido_id       UUID NOT NULL REFERENCES pedidos(id),
+    funcionario_id  UUID NOT NULL REFERENCES funcionarios(id),
+    PRIMARY KEY (pedido_id, funcionario_id)
+);
 
 -- ----------------------------------------------------------------------------
 -- VENDAS

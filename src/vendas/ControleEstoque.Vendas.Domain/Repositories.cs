@@ -107,6 +107,37 @@ public interface IVendaRepository
         Guid clienteId, Guid produtoId, Guid marcaId, CancellationToken cancellationToken);
 }
 
+public interface IPedidoRepository
+{
+    /// <summary>Grava o pedido PENDENTE com itens e funcionários em uma transação. Sem saldo, sem reserva.</summary>
+    Task CriarAsync(PedidoGravacao gravacao, CancellationToken cancellationToken);
+
+    Task<Pedido?> GetAsync(Guid pedidoId, CancellationToken cancellationToken);
+
+    /// <summary>Mais recentes primeiro (created_at desc); <paramref name="status"/> nulo lista todos.</summary>
+    Task<IReadOnlyList<PedidoResumo>> ListAsync(
+        StatusPedido? status, int page, int pageSize, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Em uma transação: trava o pedido (FOR UPDATE; sumido lança EntityNotFoundException PEDIDO_NAO_ENCONTRADO; fora
+    /// de PENDENTE lança ConflictException PEDIDO_STATUS_INVALIDO), trava as associações produto+marca dos itens, confere
+    /// saldo − reservado − quantidade (a reserva é a dos outros pedidos EM_ANDAMENTO) e, se couber, troca os
+    /// funcionários, grava EM_ANDAMENTO e <c>iniciado_em</c>. Sem estoque, faz rollback e devolve a falta
+    /// (ProdutoId = associação produto+marca; Saldo = disponível).
+    /// </summary>
+    Task<SaldoInsuficiente?> IniciarAsync(
+        Guid pedidoId, IReadOnlyList<Guid> funcionariosIds, DateTimeOffset iniciadoEm,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Trava o pedido (FOR UPDATE): sumido lança PEDIDO_NAO_ENCONTRADO; CONCLUIDO ou CANCELADO lança
+    /// ConflictException PEDIDO_STATUS_INVALIDO; senão grava CANCELADO, <c>cancelado_em</c> e <c>cancelado_por</c>.
+    /// A reserva some porque o pedido deixa de ser EM_ANDAMENTO.
+    /// </summary>
+    Task CancelarAsync(
+        Guid pedidoId, Guid funcionarioId, DateTimeOffset canceladoEm, CancellationToken cancellationToken);
+}
+
 public interface ICupomFiscalRepository
 {
     Task<bool> JaEmitidoAsync(Guid vendaId, CancellationToken cancellationToken);

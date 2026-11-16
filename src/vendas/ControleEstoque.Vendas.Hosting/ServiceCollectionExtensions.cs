@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
             NpgsqlDataSource.Create(sp.GetRequiredService<IOptions<VendasOptions>>().Value.ConnectionString));
 
         services.AddSingleton<IVendaRepository, PostgresVendaRepository>();
+        services.AddSingleton<IPedidoRepository, PostgresPedidoRepository>();
         services.AddSingleton<IVendaLookup, PostgresVendaLookup>();
         services.AddSingleton<IPermissaoFuncionarioLookup, PostgresPermissaoFuncionarioLookup>();
         services.AddSingleton<ICupomFiscalRepository, PostgresCupomFiscalRepository>();
@@ -30,6 +31,7 @@ public static class ServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IVendaService, VendaService>();
+        services.AddSingleton<IPedidoService, PedidoService>();
         return services;
     }
 }

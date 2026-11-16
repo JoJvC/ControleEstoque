@@ -145,4 +145,64 @@ public sealed class InitSqlTests
         Assert.True(view.IndexOf("AS saldo\n", StringComparison.Ordinal) > view.IndexOf("AS saldo_devedor", StringComparison.Ordinal),
             "saldo deve ser a última coluna");
     }
+
+    [Fact]
+    public void StatusPedido_EnumComOsQuatroValoresDentroDeDoComChecagemEmPgType()
+    {
+        var sql = Ler();
+
+        Assert.Matches(
+            @"DO \$\$\s+BEGIN\s+IF NOT EXISTS \(SELECT 1 FROM pg_type WHERE typname = 'status_pedido'\) THEN\s+"
+            + @"CREATE TYPE status_pedido AS ENUM \('PENDENTE', 'EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO'\);",
+            sql);
+    }
+
+    [Fact]
+    public void Pedidos_TemColunasEReferenciasDaSpec()
+    {
+        var sql = Ler();
+        var tabela = Tabela(sql, "pedidos");
+
+        Assert.Contains("CREATE TABLE IF NOT EXISTS pedidos (", sql);
+        Assert.Matches(@"id\s+UUID PRIMARY KEY DEFAULT gen_random_uuid\(\)", tabela);
+        Assert.Matches(@"cliente_id\s+UUID NOT NULL REFERENCES clientes\(id\)", tabela);
+        Assert.Matches(@"endereco_entrega_id\s+UUID NULL REFERENCES cliente_enderecos\(id\)", tabela);
+        Assert.Matches(@"status\s+status_pedido NOT NULL DEFAULT 'PENDENTE'", tabela);
+        Assert.Matches(@"observacao\s+TEXT NULL", tabela);
+        Assert.Matches(@"created_by\s+UUID NOT NULL REFERENCES funcionarios\(id\)", tabela);
+        Assert.Matches(@"created_at\s+TIMESTAMPTZ NOT NULL DEFAULT now\(\)", tabela);
+        Assert.Matches(@"iniciado_em\s+TIMESTAMPTZ NULL", tabela);
+        Assert.Matches(@"cancelado_em\s+TIMESTAMPTZ NULL", tabela);
+        Assert.Matches(@"cancelado_por\s+UUID NULL REFERENCES funcionarios\(id\)", tabela);
+        Assert.Contains("CREATE INDEX IF NOT EXISTS idx_pedidos_status ON pedidos(status);", sql);
+    }
+
+    [Fact]
+    public void PedidoItens_ReferenciaProdutoMarcaComQuantidadePositivaEDescontoComoVendaItens()
+    {
+        var sql = Ler();
+        var tabela = Tabela(sql, "pedido_itens");
+
+        Assert.Contains("CREATE TABLE IF NOT EXISTS pedido_itens (", sql);
+        Assert.Matches(@"pedido_id\s+UUID NOT NULL REFERENCES pedidos\(id\)", tabela);
+        Assert.Matches(@"produto_marca_id\s+UUID NOT NULL REFERENCES produto_marcas\(id\)", tabela);
+        Assert.Matches(@"quantidade\s+INT NOT NULL CHECK \(quantidade > 0\)", tabela);
+        Assert.Matches(@"preco_unitario\s+NUMERIC\(19,2\) NOT NULL CHECK \(preco_unitario >= 0\)", tabela);
+        Assert.Matches(@"desconto_tipo\s+tipo_desconto", tabela);
+        Assert.Matches(@"desconto_valor\s+NUMERIC\(19,2\)", tabela);
+        Assert.Matches(@"motivo_desconto\s+TEXT", tabela);
+        Assert.Contains("CREATE INDEX IF NOT EXISTS idx_pedido_itens_pedido ON pedido_itens(pedido_id);", sql);
+    }
+
+    [Fact]
+    public void PedidoFuncionarios_TemChavePrimariaComposta()
+    {
+        var sql = Ler();
+        var tabela = Tabela(sql, "pedido_funcionarios");
+
+        Assert.Contains("CREATE TABLE IF NOT EXISTS pedido_funcionarios (", sql);
+        Assert.Matches(@"pedido_id\s+UUID NOT NULL REFERENCES pedidos\(id\)", tabela);
+        Assert.Matches(@"funcionario_id\s+UUID NOT NULL REFERENCES funcionarios\(id\)", tabela);
+        Assert.Contains("PRIMARY KEY (pedido_id, funcionario_id)", tabela);
+    }
 }

@@ -79,6 +79,44 @@ public static class VendasEndpoints
                 new CupomFiscalResponse(cupom.Id, cupom.Numero, cupom.EmitidoEm));
         });
 
+        // ---- Pedidos para entrega -------------------------------------------
+        app.MapPost("/v1/pedidos", async (
+            CriarPedidoRequest request, IPedidoService pedidos, CancellationToken cancellationToken) =>
+        {
+            var pedido = await pedidos.CriarAsync(
+                new NovoPedido(
+                    request.ClienteId, request.FuncionarioId, request.EnderecoEntregaId,
+                    Validacao.SemNulos(request.Itens, "Itens").Select(i => new ItemVenda(
+                        i.ProdutoId, i.MarcaId, i.Quantidade, i.PrecoUnitario,
+                        i.Desconto is null ? null : new Desconto(
+                            i.Desconto.Tipo, i.Desconto.Valor, i.Desconto.Motivo ?? string.Empty))).ToList(),
+                    request.FuncionariosIds ?? [], request.Observacao),
+                cancellationToken);
+            return Results.Created($"/v1/pedidos/{pedido.Id}", PedidoResponse.From(pedido));
+        });
+
+        app.MapGet("/v1/pedidos", async (
+            string? status, int? page, int? pageSize, IPedidoService pedidos, CancellationToken cancellationToken) =>
+        {
+            var lista = await pedidos.ListarAsync(status, page ?? 1, pageSize ?? 50, cancellationToken);
+            return Results.Ok(lista.Select(PedidoResumoResponse.From));
+        });
+
+        app.MapGet("/v1/pedidos/{id:guid}", async (
+            Guid id, IPedidoService pedidos, CancellationToken cancellationToken) =>
+            Results.Ok(PedidoResponse.From(await pedidos.ObterAsync(id, cancellationToken))));
+
+        // Confirma ou troca os funcionários (pelo menos um) e reserva os itens; só a partir de PENDENTE.
+        app.MapPost("/v1/pedidos/{id:guid}/inicio", async (
+            Guid id, IniciarPedidoRequest request, IPedidoService pedidos, CancellationToken cancellationToken) =>
+            Results.Ok(PedidoResponse.From(await pedidos.IniciarAsync(
+                id, request.FuncionarioId, request.FuncionariosIds ?? [], cancellationToken))));
+
+        // Sem chave de permissão: nada foi cobrado. Libera a reserva.
+        app.MapPost("/v1/pedidos/{id:guid}/cancelamento", async (
+            Guid id, CancelarPedidoRequest request, IPedidoService pedidos, CancellationToken cancellationToken) =>
+            Results.Ok(PedidoResponse.From(await pedidos.CancelarAsync(id, request.FuncionarioId, cancellationToken))));
+
         // ---- Relatórios -----------------------------------------------------
         app.MapGet("/v1/relatorios/faturamento", async (
             DateOnly? inicio, DateOnly? fim, Guid? produtoId,

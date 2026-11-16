@@ -326,8 +326,9 @@ public sealed class PostgresVendaRepository : IVendaRepository
 
     /// <summary>
     /// Trava as associações produto+marca vendidas em ordem de id e, em outra instrução da mesma transação
-    /// (READ COMMITTED), confere se o saldo cobre as quantidades (somadas por associação). Na edição roda depois do soft-delete,
-    /// então as saídas antigas da própria venda já não contam.
+    /// (READ COMMITTED), confere se o saldo menos o reservado pelos pedidos EM_ANDAMENTO cobre as quantidades
+    /// (somadas por associação). Na edição roda depois do soft-delete, então as saídas antigas da própria venda já
+    /// não contam. Falta.Saldo leva o disponível (saldo − reservado).
     /// </summary>
     private static async Task<SaldoInsuficiente?> ChecarSaldoAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, VendaGravacao gravacao,
@@ -336,38 +337,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
         var saidas = gravacao.Itens
             .GroupBy(i => i.ProdutoMarcaId)
             .ToDictionary(g => g.Key, g => g.Sum(i => (long)i.Quantidade));
-        var ids = saidas.Keys.ToArray();
-
-        await using (var command = new NpgsqlCommand(Sql.TravaProdutoMarcas, connection, transaction))
-        {
-            command.Parameters.AddWithValue("ids", ids);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-            }
-        }
-
-        var saldos = new Dictionary<Guid, long>();
-        await using (var command = new NpgsqlCommand(Sql.GetSaldosEstoque, connection, transaction))
-        {
-            command.Parameters.AddWithValue("ids", ids);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                saldos[reader.GetGuid(0)] = reader.GetInt64(1);
-            }
-        }
-
-        foreach (var (produtoMarcaId, saida) in saidas)
-        {
-            var saldo = saldos.GetValueOrDefault(produtoMarcaId);
-            if (saldo - saida < 0)
-            {
-                return new SaldoInsuficiente(produtoMarcaId, saldo, saida);
-            }
-        }
-
-        return null;
+        return await ChecagemEstoque.ChecarAsync(connection, transaction, saidas, cancellationToken);
     }
 
     // ---- privados -----------------------------------------------------------
@@ -908,17 +878,6 @@ public sealed class PostgresVendaRepository : IVendaRepository
                                      desconto_tipo, desconto_valor, motivo_desconto, total_item)
             VALUES (@vendaId, @produtoMarcaId, @tipoCascoId, @quantidade, @precoUnitario,
                     @descontoTipo::tipo_desconto, @descontoValor, @motivoDesconto, @totalItem)
-            """;
-
-        // NO KEY UPDATE não conflita com o FOR KEY SHARE das FKs: lançamentos positivos não esperam.
-        public const string TravaProdutoMarcas =
-            "SELECT id FROM produto_marcas WHERE id = ANY(@ids) ORDER BY id FOR NO KEY UPDATE";
-
-        public const string GetSaldosEstoque = """
-            SELECT produto_marca_id, COALESCE(SUM(quantidade), 0)::bigint
-            FROM movimentos_estoque
-            WHERE produto_marca_id = ANY(@ids) AND deleted_at IS NULL
-            GROUP BY produto_marca_id
             """;
 
         public const string InsertMovimentoEstoque = """

@@ -185,3 +185,27 @@ public sealed record RelatorioFaturamento(
     decimal FiadoGerado);
 
 public sealed record VendasPorFuncionario(Guid FuncionarioId, string Nome, long QuantidadeVendas, decimal TotalLiquido);
+
+/// <summary>Item = produto+marca, como na venda; o pedido ainda não calcula totais.</summary>
+public sealed record NovoPedido(
+    Guid ClienteId, Guid FuncionarioId, Guid? EnderecoEntregaId, IReadOnlyList<ItemVenda> Itens,
+    IReadOnlyList<Guid> FuncionariosIds, string? Observacao);
+
+/// <summary>ProdutoMarcaId é a associação produto+marca (a que o estoque e a reserva usam).</summary>
+public sealed record ItemPedido(
+    Guid ProdutoId, Guid MarcaId, Guid ProdutoMarcaId, int Quantidade, decimal PrecoUnitario, Desconto? Desconto);
+
+public sealed record FuncionarioPedido(Guid Id, string Nome);
+
+public sealed record PedidoGravacao(
+    Guid PedidoId, Guid ClienteId, Guid? EnderecoEntregaId, string? Observacao, Guid CriadoPor,
+    DateTimeOffset CriadoEm, IReadOnlyList<ItemPedido> Itens, IReadOnlyList<Guid> FuncionariosIds);
+
+public sealed record PedidoResumo(
+    Guid Id, Guid ClienteId, Guid? EnderecoEntregaId, StatusPedido Status, string? Observacao,
+    DateTimeOffset CreatedAt, DateTimeOffset? IniciadoEm, DateTimeOffset? CanceladoEm);
+
+public sealed record Pedido(
+    Guid Id, Guid ClienteId, Guid? EnderecoEntregaId, StatusPedido Status, string? Observacao, Guid CreatedBy,
+    DateTimeOffset CreatedAt, DateTimeOffset? IniciadoEm, DateTimeOffset? CanceladoEm, Guid? CanceladoPor,
+    IReadOnlyList<ItemPedido> Itens, IReadOnlyList<FuncionarioPedido> Funcionarios);

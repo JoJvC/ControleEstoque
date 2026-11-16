@@ -125,10 +125,213 @@ public sealed class VendasApiTests : IClassFixture<VendasApiTests.Fabrica>
         Assert.Equal(1, vasilhame.QuantidadeAbatida);
     }
 
+    private sealed record CenarioPedido(Guid ClienteId, Guid FuncionarioId, Guid EntregadorId, ProdutoVenda Produto);
+
+    /// <summary>Cliente, funcionários e produto novos (a Fabrica é compartilhada entre os testes).</summary>
+    private CenarioPedido NovoCenario(long saldo)
+    {
+        var cenario = new CenarioPedido(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            fabrica.Lookup.AddProduto(TipoProduto.DESCARTAVEL, "Carvão 5kg", saldo));
+        fabrica.Lookup.Clientes.Add(cenario.ClienteId);
+        fabrica.Lookup.Funcionarios.Add(cenario.FuncionarioId);
+        fabrica.Lookup.Funcionarios.Add(cenario.EntregadorId);
+        return cenario;
+    }
+
+    private static StringContent Json(string corpo) =>
+        new(corpo, System.Text.Encoding.UTF8, "application/json");
+
+    private async Task<Guid> CriarPedidoAsync(CenarioPedido c, int quantidade)
+    {
+        var resposta = await fabrica.CreateClient().PostAsync("/v1/pedidos", Json($$"""
+            {"funcionarioId":"{{c.FuncionarioId}}","clienteId":"{{c.ClienteId}}",
+             "itens":[{"produtoId":"{{c.Produto.ProdutoId}}","marcaId":"{{c.Produto.MarcaId}}",
+                       "quantidade":{{quantidade}},"precoUnitario":8}]}
+            """));
+        Assert.Equal(HttpStatusCode.Created, resposta.StatusCode);
+        using var json = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync());
+        return json.RootElement.GetProperty("id").GetGuid();
+    }
+
+    private static async Task<string?> CodigoAsync(HttpResponseMessage resposta)
+    {
+        using var json = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync());
+        return json.RootElement.GetProperty("code").GetString();
+    }
+
+    private Task<HttpResponseMessage> IniciarPedidoAsync(Guid id, CenarioPedido c, string funcionarios) =>
+        fabrica.CreateClient().PostAsync($"/v1/pedidos/{id}/inicio", Json($$"""
+            {"funcionarioId":"{{c.FuncionarioId}}","funcionariosIds":{{funcionarios}}}
+            """));
+
+    private Task<HttpResponseMessage> CancelarPedidoAsync(Guid id, CenarioPedido c) =>
+        fabrica.CreateClient().PostAsync($"/v1/pedidos/{id}/cancelamento", Json($$"""
+            {"funcionarioId":"{{c.FuncionarioId}}"}
+            """));
+
+    [Fact]
+    public async Task PostPedidoCriaPendenteComItensEDevolve201()
+    {
+        var c = NovoCenario(10);
+
+        var resposta = await fabrica.CreateClient().PostAsync("/v1/pedidos", Json($$"""
+            {"funcionarioId":"{{c.FuncionarioId}}","clienteId":"{{c.ClienteId}}","observacao":"portão azul",
+             "itens":[{"produtoId":"{{c.Produto.ProdutoId}}","marcaId":"{{c.Produto.MarcaId}}",
+                       "quantidade":3,"precoUnitario":8}]}
+            """));
+
+        Assert.Equal(HttpStatusCode.Created, resposta.StatusCode);
+        using var json = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync());
+        Assert.Equal("PENDENTE", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal(c.FuncionarioId, json.RootElement.GetProperty("createdBy").GetGuid());
+        Assert.Equal(3, json.RootElement.GetProperty("itens")[0].GetProperty("quantidade").GetInt32());
+        Assert.Equal(0, json.RootElement.GetProperty("funcionarios").GetArrayLength());
+        Assert.Equal($"/v1/pedidos/{json.RootElement.GetProperty("id").GetGuid()}", resposta.Headers.Location!.ToString());
+    }
+
+    [Fact]
+    public async Task PostPedidoSemItensDevolve400ItensObrigatorios()
+    {
+        var c = NovoCenario(10);
+
+        var resposta = await fabrica.CreateClient().PostAsync("/v1/pedidos", Json($$"""
+            {"funcionarioId":"{{c.FuncionarioId}}","clienteId":"{{c.ClienteId}}"}
+            """));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resposta.StatusCode);
+        Assert.Equal("ITENS_OBRIGATORIOS", await CodigoAsync(resposta));
+    }
+
+    [Fact]
+    public async Task GetPedidosFiltraPorStatusEOrdenaDoMaisRecente()
+    {
+        var c = NovoCenario(10);
+        var primeiro = await CriarPedidoAsync(c, 1);
+        await Task.Delay(20); // created_at vem do relógio real: garante a ordem
+        var segundo = await CriarPedidoAsync(c, 1);
+        Assert.Equal(HttpStatusCode.OK, (await CancelarPedidoAsync(primeiro, c)).StatusCode);
+
+        var todos = await Ids(await fabrica.CreateClient().GetAsync("/v1/pedidos?pageSize=200"));
+        var cancelados = await Ids(await fabrica.CreateClient().GetAsync("/v1/pedidos?status=CANCELADO&pageSize=200"));
+
+        Assert.True(todos.IndexOf(segundo) < todos.IndexOf(primeiro));
+        Assert.Contains(primeiro, cancelados);
+        Assert.DoesNotContain(segundo, cancelados);
+
+        static async Task<List<Guid>> Ids(HttpResponseMessage r)
+        {
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+            using var json = JsonDocument.Parse(await r.Content.ReadAsStringAsync());
+            return json.RootElement.EnumerateArray().Select(p => p.GetProperty("id").GetGuid()).ToList();
+        }
+    }
+
+    [Fact]
+    public async Task GetPedidosComStatusDesconhecidoDevolve400()
+    {
+        var resposta = await fabrica.CreateClient().GetAsync("/v1/pedidos?status=VOANDO");
+
+        Assert.Equal(HttpStatusCode.BadRequest, resposta.StatusCode);
+        Assert.Equal("VALOR_ENUM_INVALIDO", await CodigoAsync(resposta));
+    }
+
+    [Fact]
+    public async Task GetPedidoInexistenteDevolve404PedidoNaoEncontrado()
+    {
+        var resposta = await fabrica.CreateClient().GetAsync($"/v1/pedidos/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, resposta.StatusCode);
+        Assert.Equal("PEDIDO_NAO_ENCONTRADO", await CodigoAsync(resposta));
+    }
+
+    [Fact]
+    public async Task GetPedidoDevolveItensEFuncionariosComNome()
+    {
+        var c = NovoCenario(10);
+        var id = await CriarPedidoAsync(c, 2);
+        await IniciarPedidoAsync(id, c, $"[\"{c.EntregadorId}\"]");
+
+        var resposta = await fabrica.CreateClient().GetAsync($"/v1/pedidos/{id}");
+
+        Assert.Equal(HttpStatusCode.OK, resposta.StatusCode);
+        using var json = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync());
+        Assert.Equal("EM_ANDAMENTO", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal(c.EntregadorId, json.RootElement.GetProperty("funcionarios")[0].GetProperty("id").GetGuid());
+        Assert.False(string.IsNullOrEmpty(json.RootElement.GetProperty("funcionarios")[0].GetProperty("nome").GetString()));
+    }
+
+    [Fact]
+    public async Task InicioDevolve200ReservaEFalha409AoRepetir()
+    {
+        var c = NovoCenario(10);
+        var id = await CriarPedidoAsync(c, 6);
+
+        var iniciado = await IniciarPedidoAsync(id, c, $"[\"{c.EntregadorId}\"]");
+        var repetido = await IniciarPedidoAsync(id, c, $"[\"{c.EntregadorId}\"]");
+
+        Assert.Equal(HttpStatusCode.OK, iniciado.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, repetido.StatusCode);
+        Assert.Equal("PEDIDO_STATUS_INVALIDO", await CodigoAsync(repetido));
+        Assert.Equal(6, fabrica.Vendas.Reservas[c.Produto.ProdutoMarcaId]);
+    }
+
+    [Fact]
+    public async Task InicioSemFuncionariosDevolve422FuncionariosObrigatorios()
+    {
+        var c = NovoCenario(10);
+        var id = await CriarPedidoAsync(c, 1);
+
+        var resposta = await IniciarPedidoAsync(id, c, "[]");
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resposta.StatusCode);
+        Assert.Equal("FUNCIONARIOS_OBRIGATORIOS", await CodigoAsync(resposta));
+    }
+
+    [Fact]
+    public async Task InicioComReservaDeOutroPedidoDevolve422EstoqueInsuficiente()
+    {
+        var c = NovoCenario(10);
+        var a = await CriarPedidoAsync(c, 6);
+        var b = await CriarPedidoAsync(c, 5);
+        Assert.Equal(HttpStatusCode.OK, (await IniciarPedidoAsync(a, c, $"[\"{c.EntregadorId}\"]")).StatusCode);
+
+        var resposta = await IniciarPedidoAsync(b, c, $"[\"{c.EntregadorId}\"]");
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resposta.StatusCode);
+        Assert.Equal("ESTOQUE_INSUFICIENTE", await CodigoAsync(resposta));
+    }
+
+    [Fact]
+    public async Task CancelamentoDevolve200LiberaAReservaEFalha409AoRepetir()
+    {
+        var c = NovoCenario(10);
+        var id = await CriarPedidoAsync(c, 6);
+        await IniciarPedidoAsync(id, c, $"[\"{c.EntregadorId}\"]");
+
+        var cancelado = await CancelarPedidoAsync(id, c);
+        var repetido = await CancelarPedidoAsync(id, c);
+
+        Assert.Equal(HttpStatusCode.OK, cancelado.StatusCode);
+        using var json = JsonDocument.Parse(await cancelado.Content.ReadAsStringAsync());
+        Assert.Equal("CANCELADO", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal(c.FuncionarioId, json.RootElement.GetProperty("canceladoPor").GetGuid());
+        Assert.Equal(0, fabrica.Vendas.Reservas[c.Produto.ProdutoMarcaId]);
+        Assert.Equal(HttpStatusCode.Conflict, repetido.StatusCode);
+        Assert.Equal("PEDIDO_STATUS_INVALIDO", await CodigoAsync(repetido));
+    }
+
     public sealed class Fabrica : WebApplicationFactory<Program>
     {
-        public FakeVendaRepository Vendas { get; } = new(new Dictionary<Guid, long>());
         internal FakeVendaLookup Lookup { get; } = new();
+        public FakeVendaRepository Vendas { get; }
+        internal FakePedidoRepository Pedidos { get; }
+
+        public Fabrica()
+        {
+            Vendas = new FakeVendaRepository(Lookup.SaldosEstoque);
+            Pedidos = new FakePedidoRepository(Lookup.SaldosEstoque, Vendas.Reservas);
+        }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -137,10 +340,12 @@ public sealed class VendasApiTests : IClassFixture<VendasApiTests.Fabrica>
             {
                 services.RemoveAll<IRelatorioVendasRepository>();
                 services.RemoveAll<IVendaRepository>();
+                services.RemoveAll<IPedidoRepository>();
                 services.RemoveAll<IVendaLookup>();
                 services.AddSingleton<IVendaLookup>(Lookup);
                 services.AddSingleton<IRelatorioVendasRepository>(new RelatorioFalso());
                 services.AddSingleton<IVendaRepository>(Vendas);
+                services.AddSingleton<IPedidoRepository>(Pedidos);
             });
         }
 

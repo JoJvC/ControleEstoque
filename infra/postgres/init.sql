@@ -84,7 +84,7 @@ CREATE TABLE cargos (
     deleted_at  TIMESTAMPTZ
 );
 
--- Permissões granulares por tela/ação (ex: 'vendas.registrar', 'caixa.fechar').
+-- Permissões granulares por tela/ação (ex: 'vendas.registrar', 'caixa.fechar', 'caixa.reabrir', 'vendas.cancelar').
 CREATE TABLE cargo_permissoes (
     cargo_id    UUID NOT NULL REFERENCES cargos(id),
     permissao   TEXT NOT NULL,
@@ -325,6 +325,10 @@ CREATE TABLE vendas (
     CONSTRAINT chk_vendas_totais_nao_negativos
         CHECK (total_bruto >= 0 AND total_desconto >= 0 AND total_liquido >= 0)
 );
+
+-- Cancelamento de venda (soft delete): quem cancelou e quando.
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS cancelada_por UUID REFERENCES funcionarios(id);
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS cancelada_em  TIMESTAMPTZ;
 
 CREATE INDEX idx_vendas_cliente     ON vendas(cliente_id)     WHERE deleted_at IS NULL;
 CREATE INDEX idx_vendas_funcionario ON vendas(funcionario_id) WHERE deleted_at IS NULL;
@@ -573,6 +577,17 @@ BEGIN
     END IF;
 END
 $$;
+
+-- Reabertura do caixa fechado: uma linha por reabertura (quem, quando, motivo). O caixa reaberto só fecha à mão.
+CREATE TABLE IF NOT EXISTS caixa_reaberturas (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    caixa_id     UUID NOT NULL REFERENCES caixas(id),
+    reaberto_por UUID NOT NULL REFERENCES funcionarios(id),
+    reaberto_em  TIMESTAMPTZ NOT NULL,
+    motivo       TEXT NOT NULL CHECK (length(btrim(motivo)) > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_caixa_reaberturas_caixa ON caixa_reaberturas(caixa_id);
 
 -- Tipos de despesa cadastráveis (categorização obrigatória de cada despesa).
 CREATE TABLE tipos_despesa (

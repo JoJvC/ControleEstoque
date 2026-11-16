@@ -21,7 +21,7 @@ public sealed class VendaServiceLacunasTests
     public VendaServiceLacunasTests()
     {
         vendas = new FakeVendaRepository(lookup.SaldosEstoque);
-        sut = new VendaService(vendas, lookup, cupons);
+        sut = new VendaService(vendas, lookup, cupons, new FakePermissaoLookup());
         lookup.Clientes.Add(clienteId);
         lookup.Funcionarios.Add(funcionarioId);
         cascoG = lookup.AddTipoCasco(30m, aceitaSucata: true);

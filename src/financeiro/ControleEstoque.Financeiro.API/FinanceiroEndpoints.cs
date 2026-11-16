@@ -56,8 +56,14 @@ public static class FinanceiroEndpoints
                 resultado.TotalSaidas, resultado.SaldoFinal, resultado.DiariasLancadas, resultado.DinheiroNaGaveta));
         });
 
+        // Exige caixa.reabrir (ou *) do funcionário informado e um motivo; o caixa reaberto só fecha à mão.
+        app.MapPost("/v1/caixas/{id:guid}/reabertura", async (
+            Guid id, ReabrirCaixaRequest request, ICaixaService caixas, CancellationToken cancellationToken) =>
+            Results.Ok(CaixaResponse.From(
+                await caixas.ReabrirAsync(id, request.FuncionarioId, request.Motivo, cancellationToken))));
+
         // Lança depois as diárias de um caixa fechado pelo sistema, com a data do caixa; não o reabre.
-        // Como o fechamento manual, não checa permissão (ver REGRAS_DE_NEGOCIO.md 3.5).
+        // Como o fechamento manual, não checa permissão (ver REGRAS_DE_NEGOCIO.md 3.5); só reabrir checa.
         app.MapPost("/v1/caixas/{id:guid}/diarias", async (
             Guid id, LancarDiariasRequest request, ICaixaService caixas, CancellationToken cancellationToken) =>
         {

@@ -14,6 +14,10 @@ public interface ICaixaService
     Task<ResultadoFechamento> FecharAsync(
         Guid caixaId, IReadOnlyList<DiariaFechamento> funcionariosPresentes, CancellationToken cancellationToken);
 
+    /// <summary>Reabre o caixa fechado; exige <c>caixa.reabrir</c> (ou <c>*</c>) e motivo.</summary>
+    Task<Caixa> ReabrirAsync(
+        Guid caixaId, Guid funcionarioId, string? motivo, CancellationToken cancellationToken);
+
     /// <summary>Fecha pelo sistema os caixas abertos de dia anterior ao de hoje em São Paulo; devolve quantos.</summary>
     Task<int> FecharVencidosAsync(CancellationToken cancellationToken);
 
@@ -25,13 +29,16 @@ public sealed class CaixaService : ICaixaService
 {
     private readonly ICaixaRepository caixas;
     private readonly ITipoDespesaRepository tiposDespesa;
+    private readonly IPermissaoFuncionarioLookup permissoes;
     private readonly TimeProvider relogio;
 
     public CaixaService(
-        ICaixaRepository caixas, ITipoDespesaRepository tiposDespesa, TimeProvider? relogio = null)
+        ICaixaRepository caixas, ITipoDespesaRepository tiposDespesa, IPermissaoFuncionarioLookup permissoes,
+        TimeProvider? relogio = null)
     {
         this.caixas = caixas;
         this.tiposDespesa = tiposDespesa;
+        this.permissoes = permissoes;
         this.relogio = relogio ?? TimeProvider.System;
     }
 
@@ -128,8 +135,28 @@ public sealed class CaixaService : ICaixaService
     {
         ValidarDiarias(funcionariosPresentes);
 
+        // Caixa de dia anterior (reaberto) lança as diárias com a data dele; o de hoje, com now() (nulo).
+        var caixa = await ObterCaixaAsync(caixaId, cancellationToken);
+        DateTimeOffset? instanteDiarias = caixa.Data < RelogioCaixa.HojeEmSaoPaulo(relogio.GetUtcNow())
+            ? RelogioCaixa.InstanteDaDiaria(caixa.Data)
+            : null;
+
         // Estado, diárias, entradas e despesas são lidos pelo repositório, na transação do fechamento.
-        return await caixas.FecharAsync(caixaId, funcionariosPresentes, cancellationToken);
+        return await caixas.FecharAsync(caixaId, funcionariosPresentes, instanteDiarias, cancellationToken);
+    }
+
+    public async Task<Caixa> ReabrirAsync(
+        Guid caixaId, Guid funcionarioId, string? motivo, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(motivo))
+        {
+            throw new RequestValidationException("MOTIVO_OBRIGATORIO", "Informe o motivo da reabertura.");
+        }
+
+        await PermissoesCaixa.ExigirReabrirAsync(permissoes, funcionarioId, cancellationToken);
+
+        // O repositório repete o estado sob a trava FOR UPDATE (404 CAIXA_NAO_ENCONTRADO, 409 CAIXA_JA_ABERTO).
+        return await caixas.ReabrirAsync(caixaId, funcionarioId, motivo.Trim(), relogio.GetUtcNow(), cancellationToken);
     }
 
     public async Task<int> FecharVencidosAsync(CancellationToken cancellationToken)

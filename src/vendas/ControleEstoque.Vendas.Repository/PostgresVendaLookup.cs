@@ -121,6 +121,17 @@ public sealed class PostgresVendaLookup : IVendaLookup
         return results;
     }
 
+    public async Task<CaixaVenda?> GetCaixaAsync(Guid caixaId, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.GetCaixa, connection);
+        command.Parameters.AddWithValue("id", caixaId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new CaixaVenda(reader.GetGuid(0), reader.GetFieldValue<DateOnly>(1), reader.GetString(2) == "ABERTO")
+            : null;
+    }
+
     private async Task<bool> ExistsAsync(string sql, Guid id, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -131,6 +142,9 @@ public sealed class PostgresVendaLookup : IVendaLookup
 
     private static class Sql
     {
+        public const string GetCaixa =
+            "SELECT id, data, status::text FROM caixas WHERE id = @id AND deleted_at IS NULL";
+
         public const string ClienteExiste =
             "SELECT EXISTS (SELECT 1 FROM clientes WHERE id = @id AND deleted_at IS NULL)";
 

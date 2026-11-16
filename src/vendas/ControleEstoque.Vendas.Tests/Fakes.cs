@@ -12,6 +12,18 @@ internal sealed class FakeVendaLookup : IVendaLookup
     public Dictionary<Guid, TipoCascoVenda> TiposCasco { get; } = new();
     public Dictionary<Guid, long> SaldosEstoque { get; } = new(); // por produto_marca_id
 
+    public Dictionary<Guid, CaixaVenda> Caixas { get; } = new();
+
+    public CaixaVenda AddCaixa(DateOnly data, bool aberto = true)
+    {
+        var caixa = new CaixaVenda(Guid.NewGuid(), data, aberto);
+        Caixas[caixa.Id] = caixa;
+        return caixa;
+    }
+
+    public Task<CaixaVenda?> GetCaixaAsync(Guid caixaId, CancellationToken cancellationToken) =>
+        Task.FromResult(Caixas.GetValueOrDefault(caixaId));
+
     public TipoCascoVenda AddTipoCasco(decimal precoVasilhame, bool aceitaSucata)
     {
         var tipo = new TipoCascoVenda(Guid.NewGuid(), precoVasilhame, aceitaSucata);
@@ -131,6 +143,14 @@ public sealed class FakeVendaRepository : IVendaRepository
     public (Guid? ClienteId, int PageSize)? UltimaListagem { get; private set; }
     public HashSet<Guid> VendasExistentes { get; } = new();
 
+    /// <summary>vendas.data por venda; a venda criada guarda o instante da gravação (ou o padrão, now()).</summary>
+    public Dictionary<Guid, DateTimeOffset> DatasDasVendas { get; } = new();
+
+    /// <summary>Dias de caixa FECHADO (fuso de São Paulo): o cancelamento e a edição com pagamento recusam.</summary>
+    public HashSet<DateOnly> DiasDeCaixaFechado { get; } = new();
+
+    public List<(Guid VendaId, Guid FuncionarioId, DateTimeOffset Em)> Cancelamentos { get; } = new();
+
     /// <summary>Saldo de casco por cliente e tipo, como a view vw_saldo_casco_cliente: empréstimo soma, devolução abate.</summary>
     private readonly Dictionary<(Guid ClienteId, Guid TipoCascoId), long> saldoCasco = new();
     private readonly Dictionary<Guid, VendaGravacao> gravacoesPorVenda = new();
@@ -164,6 +184,7 @@ public sealed class FakeVendaRepository : IVendaRepository
 
         UltimaGravacao = gravacao;
         VendasExistentes.Add(gravacao.VendaId);
+        DatasDasVendas[gravacao.VendaId] = gravacao.Instante ?? DateTimeOffset.UtcNow;
         AplicarCascos(gravacao);
         return new ResultadoGravacao(SaldoCascoDe(gravacao.ClienteId));
     }
@@ -264,6 +285,31 @@ public sealed class FakeVendaRepository : IVendaRepository
         }
     }
 
+    public Task<DateTimeOffset?> GetDataAsync(Guid vendaId, CancellationToken cancellationToken) =>
+        Task.FromResult<DateTimeOffset?>(VendasExistentes.Contains(vendaId)
+            ? DatasDasVendas.GetValueOrDefault(vendaId, DateTimeOffset.UtcNow)
+            : null);
+
+    public Task CancelarAsync(
+        Guid vendaId, Guid funcionarioId, DateTimeOffset canceladaEm, CancellationToken cancellationToken)
+    {
+        var data = DatasDasVendas.GetValueOrDefault(vendaId, DateTimeOffset.UtcNow);
+        var dia = DateOnly.FromDateTime(data.UtcDateTime.AddHours(-3));
+        if (!VendasExistentes.Contains(vendaId))
+        {
+            throw new EntityNotFoundException("VENDA_NAO_ENCONTRADA", "Venda não encontrada.");
+        }
+
+        if (DiasDeCaixaFechado.Contains(dia))
+        {
+            throw CaixaFechado();
+        }
+
+        VendasExistentes.Remove(vendaId);
+        Cancelamentos.Add((vendaId, funcionarioId, canceladaEm));
+        return Task.CompletedTask;
+    }
+
     public Task<bool> ExisteAsync(Guid vendaId, CancellationToken cancellationToken) =>
         Task.FromResult(VendasExistentes.Contains(vendaId));
 
@@ -324,6 +370,14 @@ public sealed class FakeVendaRepository : IVendaRepository
             .FirstOrDefault());
 }
 
+internal sealed class FakePermissaoLookup : IPermissaoFuncionarioLookup
+{
+    public Dictionary<Guid, string[]> PermissoesPorFuncionario { get; } = new();
+
+    public Task<IReadOnlyList<string>?> PermissoesAsync(Guid funcionarioId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>?>(PermissoesPorFuncionario.GetValueOrDefault(funcionarioId));
+}
+
 internal sealed class FakeCupomFiscalRepository : ICupomFiscalRepository
 {
     public HashSet<Guid> Emitidos { get; } = new();
@@ -336,4 +390,14 @@ internal sealed class FakeCupomFiscalRepository : ICupomFiscalRepository
         Emitidos.Add(vendaId);
         return Task.FromResult(new CupomFiscal(Guid.NewGuid(), "CF-00000001", DateTimeOffset.UtcNow));
     }
+}
+
+/// <summary>Relógio dublê: GetUtcNow fixo.</summary>
+internal sealed class RelogioFixo : TimeProvider
+{
+    private readonly DateTimeOffset agora;
+
+    public RelogioFixo(DateTimeOffset agora) => this.agora = agora;
+
+    public override DateTimeOffset GetUtcNow() => agora;
 }

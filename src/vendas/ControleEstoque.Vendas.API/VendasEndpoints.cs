@@ -24,6 +24,14 @@ public static class VendasEndpoints
             return Results.Ok(VendaResponse.From(resultado));
         });
 
+        // Exige vendas.cancelar (ou *) do funcionário informado; só com o caixa do dia da venda aberto.
+        app.MapPost("/v1/vendas/{id:guid}/cancelamento", async (
+            Guid id, CancelarVendaRequest request, IVendaService vendas, CancellationToken cancellationToken) =>
+        {
+            await vendas.CancelarAsync(id, request.FuncionarioId, cancellationToken);
+            return Results.NoContent();
+        });
+
         app.MapGet("/v1/vendas/ultimo-preco", async (
             Guid? clienteId, Guid? produtoId, Guid? marcaId, IVendaService vendas,
             CancellationToken cancellationToken) =>
@@ -108,7 +116,8 @@ public static class VendasEndpoints
                 s.TipoCascoId, s.Quantidade,
                 s.ValorUnitario ?? throw new RequestValidationException(
                     "SUCATA_INVALIDA", $"Sucata do tipo {s.TipoCascoId} exige valor unitário."))).ToList(),
-        request.Observacao);
+        request.Observacao,
+        request.CaixaId);
 
     private static List<CascoQuantidade> ToCascos(List<CascoQuantidadeRequest>? cascos, string campo) =>
         Validacao.SemNulos(cascos, campo).Select(c => new CascoQuantidade(c.TipoCascoId, c.Quantidade)).ToList();

@@ -12,7 +12,7 @@ public sealed class FechamentoAutomaticoTests
     private readonly FakeCaixaRepository caixas = new();
     private readonly FakeTipoDespesaRepository tipos = new();
 
-    private CaixaService ServicoEm(DateTimeOffset agora) => new(caixas, tipos, new RelogioFixo(agora));
+    private CaixaService ServicoEm(DateTimeOffset agora) => new(caixas, tipos, new FakePermissaoLookup(), new RelogioFixo(agora));
 
     private static DateTimeOffset Em(int dia, int h, int m, int s) => new(2026, 11, dia, h, m, s, Sp);
 

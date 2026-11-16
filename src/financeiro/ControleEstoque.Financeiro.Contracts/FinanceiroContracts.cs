@@ -51,6 +51,8 @@ public sealed record FechamentoResponse(
     int DiariasLancadas,
     decimal DinheiroNaGaveta);
 
+public sealed record ReabrirCaixaRequest(Guid FuncionarioId, string? Motivo);
+
 public sealed record LancarDiariasRequest(List<DiariaFechamentoRequest>? Diarias);
 
 public sealed record LancamentoDiariasResponse(Guid CaixaId, DateOnly Data, int DiariasLancadas);

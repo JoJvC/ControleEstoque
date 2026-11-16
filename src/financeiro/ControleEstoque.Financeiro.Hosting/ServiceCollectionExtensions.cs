@@ -25,6 +25,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICaixaRepository, PostgresCaixaRepository>();
         services.AddSingleton<ITipoDespesaRepository, PostgresTipoDespesaRepository>();
         services.AddSingleton<IFiadoRepository, PostgresFiadoRepository>();
+        services.AddSingleton<IPermissaoFuncionarioLookup, PostgresPermissaoFuncionarioLookup>();
         services.AddSingleton<IRelatorioCaixaRepository, PostgresRelatorioCaixaRepository>();
 
         services.TryAddSingleton(TimeProvider.System);

@@ -33,6 +33,15 @@ public interface IVendaLookup
         IReadOnlyCollection<(Guid ProdutoId, Guid MarcaId)> pares, CancellationToken cancellationToken);
     Task<IReadOnlyDictionary<Guid, TipoCascoVenda>> GetTiposCascoAsync(
         IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
+    /// <summary>Caixa (não apagado) pelo id; nulo se não existe.</summary>
+    Task<CaixaVenda?> GetCaixaAsync(Guid caixaId, CancellationToken cancellationToken);
+}
+
+/// <summary>Permissões do cargo de um funcionário (a autenticação ainda não existe: ele vem informado).</summary>
+public interface IPermissaoFuncionarioLookup
+{
+    /// <summary>Nulo se o funcionário não existe ou foi excluído; vazia se está inativo.</summary>
+    Task<IReadOnlyList<string>?> PermissoesAsync(Guid funcionarioId, CancellationToken cancellationToken);
 }
 
 public interface IVendaRepository
@@ -40,6 +49,9 @@ public interface IVendaRepository
     /// <summary>
     /// Persiste a venda e todos os efeitos em uma transação; retorna o novo saldo de casco do cliente.
     /// Com pagamento, trava o caixa de hoje (FOR SHARE) e lança ConflictException CAIXA_FECHADO se fechado.
+    /// Com <c>CaixaId</c>, trava esse caixa em vez do de hoje, mesmo sem pagamento: inexistente lança
+    /// EntityNotFoundException CAIXA_NAO_ENCONTRADO e FECHADO lança CAIXA_FECHADO. <c>Instante</c> não nulo vira a
+    /// data da venda, dos pagamentos e dos movimentos/lançamentos que ela gera (nulo: now()).
     /// Trava as associações produto+marca vendidas e checa o saldo dentro da transação; sem saldo, faz rollback e devolve a falta.
     /// Com UsoCredito &gt; 0, trava o cliente (FOR UPDATE) e lança BusinessRuleException CREDITO_INSUFICIENTE (rollback)
     /// se o uso passa do crédito relido sob a trava. Com vasilhame abatido do crédito de galão, trava o cliente do mesmo
@@ -52,9 +64,22 @@ public interface IVendaRepository
     /// movimentos de casco (do cliente e do estoque), vasilhames, sucatas da venda e lançamentos de fiado vinculados
     /// à venda, e reinsere conforme a gravação — tudo em uma transação. A checagem de saldo roda
     /// depois do soft-delete, então as saídas antigas da própria venda não contam. Lança CAIXA_FECHADO se
-    /// um pagamento atual da venda cair em caixa FECHADO, ou se reinserir pagamento com o caixa de hoje FECHADO.
+    /// um pagamento atual da venda cair em caixa FECHADO, ou se reinserir pagamento com o caixa do dia da venda
+    /// FECHADO. Os efeitos reinseridos ficam com <c>Instante</c> (o da venda).
     /// </summary>
     Task<ResultadoGravacao> EditarAsync(VendaGravacao gravacao, CancellationToken cancellationToken);
+
+    /// <summary>Data da venda não apagada; nulo se não existe.</summary>
+    Task<DateTimeOffset?> GetDataAsync(Guid vendaId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Cancela (soft delete) a venda e desfaz os efeitos pelo mesmo caminho da edição, numa transação: trava os caixas
+    /// dos pagamentos e o do dia da venda (FOR SHARE; FECHADO lança ConflictException CAIXA_FECHADO; sem caixa na
+    /// data, segue) e a venda (FOR UPDATE; sumida lança EntityNotFoundException VENDA_NAO_ENCONTRADA). Grava
+    /// cancelada_por e cancelada_em.
+    /// </summary>
+    Task CancelarAsync(
+        Guid vendaId, Guid funcionarioId, DateTimeOffset canceladaEm, CancellationToken cancellationToken);
 
     Task<bool> ExisteAsync(Guid vendaId, CancellationToken cancellationToken);
     Task<Venda?> GetAsync(Guid vendaId, CancellationToken cancellationToken);

@@ -30,6 +30,9 @@ public sealed record CascoQuantidade(Guid TipoCascoId, int Quantidade);
 
 public sealed record SaldoCascoTipo(Guid TipoCascoId, string Nome, long Saldo);
 
+/// <summary>Caixa escolhido pelo lançador (caixa reaberto): a data dele vale para a venda.</summary>
+public sealed record CaixaVenda(Guid Id, DateOnly Data, bool Aberto);
+
 /// <summary>Comando de criação/edição de venda, como chega da API.</summary>
 public sealed record NovaVenda(
     Guid ClienteId,
@@ -40,7 +43,8 @@ public sealed record NovaVenda(
     IReadOnlyList<PagamentoVenda> Pagamentos,
     IReadOnlyList<CascoQuantidade> CascosDevolvidos,
     IReadOnlyList<SucataVenda> SucataEntregue,
-    string? Observacao);
+    string? Observacao,
+    Guid? CaixaId = null);
 
 /// <summary>Resolução do item no banco: associação e casco resolvido.</summary>
 public sealed record ItemResolvido(Guid ProdutoMarcaId, Guid? TipoCascoId);
@@ -107,7 +111,9 @@ public sealed record VendaGravacao(
     IReadOnlyList<SucataVenda> SucataEntregue,
     decimal DebitoFiado,
     decimal CreditoGerado,
-    decimal UsoCredito);
+    decimal UsoCredito,
+    DateTimeOffset? Instante = null,
+    Guid? CaixaId = null);
 
 /// <summary>
 /// Resultado da gravação: saldo de casco do cliente por tipo, ou a falta de estoque que causou o rollback

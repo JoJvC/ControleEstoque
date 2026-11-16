@@ -27,6 +27,27 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
 
     public List<(Guid FuncionarioId, decimal Valor, DateTimeOffset CriadoEm)> DiariasPendentesLancadas { get; } = new();
 
+    /// <summary>created_at das diárias do fechamento manual; nulo = now() do banco (caixa de hoje).</summary>
+    public List<DateTimeOffset?> InstantesDiariasFechamento { get; } = new();
+
+    /// <summary>lancamentos_funcionario por caixa: diária, vale e pagamento; Apagado = soft delete.</summary>
+    public List<LancamentoFuncionario> Lancamentos { get; } = new();
+
+    public List<Reabertura> Reaberturas { get; } = new();
+
+    public IEnumerable<LancamentoFuncionario> DiariasAtivas(Guid caixaId) =>
+        Lancamentos.Where(l => l.CaixaId == caixaId && l.Tipo == "DIARIA" && !l.Apagado);
+
+    private void LancarDiaria(Guid caixaId, Guid funcionarioId, decimal valor)
+    {
+        if (DiariasAtivas(caixaId).Any(l => l.FuncionarioId == funcionarioId))
+        {
+            throw new ConflictException("CAIXA_JA_FECHADO", "Caixa já foi fechado.");
+        }
+
+        Lancamentos.Add(new LancamentoFuncionario(caixaId, funcionarioId, "DIARIA", valor, false));
+    }
+
     public Caixa AddCaixa(
         DateOnly data, decimal saldoInicial, StatusCaixa status = StatusCaixa.ABERTO,
         DateTimeOffset? fechadoEm = null, bool fechadoPeloSistema = false, bool diariasPendentes = false)
@@ -115,7 +136,8 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
 
     /// <summary>Cumpre o contrato C1: estado, diárias, entradas e despesas lidos no próprio fechamento.</summary>
     public Task<ResultadoFechamento> FecharAsync(
-        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionarioIds, CancellationToken cancellationToken)
+        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionarioIds, DateTimeOffset? instanteDiarias,
+        CancellationToken cancellationToken)
     {
         var caixa = caixas.GetValueOrDefault(caixaId)
             ?? throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", "Caixa não encontrado.");
@@ -147,6 +169,12 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
 
         var totalSaidas = (despesas.GetValueOrDefault(caixaId) ?? []).Sum(d => d.Valor);
         var saldoFinal = caixa.SaldoInicial + Entradas - totalSaidas;
+        foreach (var (funcionarioId, valor) in diarias)
+        {
+            LancarDiaria(caixaId, funcionarioId, valor);
+            InstantesDiariasFechamento.Add(instanteDiarias);
+        }
+
         DiariasLancadas.AddRange(diarias);
         Fechamento = (Entradas, totalSaidas, saldoFinal);
         caixas[caixaId] = caixa with
@@ -163,13 +191,17 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
 
     public Task<IReadOnlyList<Caixa>> ListAbertosAntesDeAsync(DateOnly data, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Caixa>>(
-            caixas.Values.Where(c => c.Status == StatusCaixa.ABERTO && c.Data < data).OrderBy(c => c.Data).ToList());
+            caixas.Values
+                .Where(c => c.Status == StatusCaixa.ABERTO && c.Data < data && !Reabriu(c.Id))
+                .OrderBy(c => c.Data).ToList());
+
+    private bool Reabriu(Guid caixaId) => Reaberturas.Any(r => r.CaixaId == caixaId);
 
     public Task<ResultadoFechamento?> FecharPeloSistemaAsync(
         Guid caixaId, DateTimeOffset fechadoEm, CancellationToken cancellationToken)
     {
         var caixa = caixas.GetValueOrDefault(caixaId);
-        if (caixa is null || caixa.Status != StatusCaixa.ABERTO)
+        if (caixa is null || caixa.Status != StatusCaixa.ABERTO || Reabriu(caixaId))
         {
             return Task.FromResult<ResultadoFechamento?>(null);
         }
@@ -228,10 +260,67 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
             }
         }
 
+        foreach (var (funcionarioId, valor, _) in lancadas)
+        {
+            LancarDiaria(caixaId, funcionarioId, valor);
+        }
+
         DiariasPendentesLancadas.AddRange(lancadas);
         caixas[caixaId] = caixa with { DiariasPendentes = false };
         return Task.FromResult(new ResultadoLancamentoDiarias(caixaId, caixa.Data, lancadas.Count));
     }
+
+    public Task<Caixa> ReabrirAsync(
+        Guid caixaId, Guid funcionarioId, string motivo, DateTimeOffset reabertoEm,
+        CancellationToken cancellationToken)
+    {
+        var caixa = caixas.GetValueOrDefault(caixaId)
+            ?? throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", "Caixa não encontrado.");
+        if (caixa.Status == StatusCaixa.ABERTO)
+        {
+            throw new ConflictException("CAIXA_JA_ABERTO", "O caixa já está aberto.");
+        }
+
+        Reaberturas.Add(new Reabertura(caixaId, funcionarioId, reabertoEm, motivo));
+        for (var i = 0; i < Lancamentos.Count; i++)
+        {
+            if (Lancamentos[i].CaixaId == caixaId && Lancamentos[i].Tipo == "DIARIA" && !Lancamentos[i].Apagado)
+            {
+                Lancamentos[i] = Lancamentos[i] with { Apagado = true };
+            }
+        }
+
+        return Task.FromResult(caixas[caixaId] = caixa with
+        {
+            Status = StatusCaixa.ABERTO,
+            TotalEntradas = null,
+            TotalSaidas = null,
+            SaldoFinal = null,
+            FechadoEm = null,
+            FechadoPeloSistema = false,
+            DiariasPendentes = false
+        });
+    }
+}
+
+internal sealed record LancamentoFuncionario(
+    Guid CaixaId, Guid FuncionarioId, string Tipo, decimal Valor, bool Apagado);
+
+internal sealed record Reabertura(Guid CaixaId, Guid FuncionarioId, DateTimeOffset Em, string Motivo);
+
+internal sealed class FakePermissaoLookup : IPermissaoFuncionarioLookup
+{
+    public Dictionary<Guid, string[]> PermissoesPorFuncionario { get; } = new();
+
+    public Guid AddFuncionario(params string[] permissoes)
+    {
+        var id = Guid.NewGuid();
+        PermissoesPorFuncionario[id] = permissoes;
+        return id;
+    }
+
+    public Task<IReadOnlyList<string>?> PermissoesAsync(Guid funcionarioId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>?>(PermissoesPorFuncionario.GetValueOrDefault(funcionarioId));
 }
 
 internal sealed class FakeTipoDespesaRepository : ITipoDespesaRepository

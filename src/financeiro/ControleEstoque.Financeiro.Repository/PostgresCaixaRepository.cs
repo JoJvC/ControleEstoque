@@ -200,7 +200,8 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
     }
 
     public async Task<ResultadoFechamento> FecharAsync(
-        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionarioIds, CancellationToken cancellationToken)
+        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionarioIds, DateTimeOffset? instanteDiarias,
+        CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -239,6 +240,10 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             command.Parameters.AddWithValue("funcionarioId", funcionarioId);
             command.Parameters.AddWithValue("caixaId", caixaId);
             command.Parameters.AddWithValue("valor", valorEfetivo);
+            command.Parameters.Add(new NpgsqlParameter("createdAt", NpgsqlDbType.TimestampTz)
+            {
+                Value = instanteDiarias is { } instante ? instante.ToUniversalTime() : DBNull.Value
+            });
             try
             {
                 await command.ExecuteNonQueryAsync(cancellationToken);
@@ -349,9 +354,10 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             command.Parameters.AddWithValue("caixaId", caixaId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken)
-                || reader.GetString(0) != nameof(StatusCaixa.ABERTO))
+                || reader.GetString(0) != nameof(StatusCaixa.ABERTO)
+                || reader.GetBoolean(3))
             {
-                return null; // já fechado (à mão ou por outro ciclo): idempotente
+                return null; // já fechado (à mão ou por outro ciclo) ou reaberto: idempotente
             }
 
             data = reader.GetFieldValue<DateOnly>(1);
@@ -454,6 +460,65 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
 
         await transaction.CommitAsync(cancellationToken);
         return new ResultadoLancamentoDiarias(caixaId, data, lancadas);
+    }
+
+    public async Task<Caixa> ReabrirAsync(
+        Guid caixaId, Guid funcionarioId, string motivo, DateTimeOffset reabertoEm,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using (var command = new NpgsqlCommand(Sql.TravaCaixaParaFechar, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", $"Caixa {caixaId} não encontrado.");
+            }
+
+            if (reader.GetString(0) == nameof(StatusCaixa.ABERTO))
+            {
+                throw new ConflictException("CAIXA_JA_ABERTO", "O caixa já está aberto.");
+            }
+        }
+
+        await using (var command = new NpgsqlCommand(Sql.InsertReabertura, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            command.Parameters.AddWithValue("funcionarioId", funcionarioId);
+            command.Parameters.Add(ParametroInstante("reabertoEm", reabertoEm));
+            command.Parameters.AddWithValue("motivo", motivo);
+            try
+            {
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+            catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+            {
+                throw new EntityNotFoundException(
+                    "FUNCIONARIO_NAO_ENCONTRADO", $"Funcionário {funcionarioId} não encontrado.");
+            }
+        }
+
+        // Diárias do fechamento (manual ou lançadas depois) voltam a pendentes; VALE e PAGAMENTO ficam.
+        await using (var command = new NpgsqlCommand(Sql.DesfazerDiarias, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        Caixa caixa;
+        await using (var command = new NpgsqlCommand(Sql.Reabrir, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            await reader.ReadAsync(cancellationToken);
+            caixa = MapCaixa(reader);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return caixa;
     }
 
     private static Caixa MapCaixa(NpgsqlDataReader reader) => new(
@@ -564,8 +629,8 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             """;
 
         public const string InsertDiaria = """
-            INSERT INTO lancamentos_funcionario (funcionario_id, caixa_id, tipo, valor)
-            VALUES (@funcionarioId, @caixaId, 'DIARIA', @valor)
+            INSERT INTO lancamentos_funcionario (funcionario_id, caixa_id, tipo, valor, created_at)
+            VALUES (@funcionarioId, @caixaId, 'DIARIA', @valor, COALESCE(@createdAt, now()))
             """;
 
         public const string Fechar = """
@@ -576,7 +641,11 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             """;
 
         public const string ListAbertosAntesDe =
-            SelectCaixa + " WHERE data < @data AND status = 'ABERTO' AND deleted_at IS NULL ORDER BY data";
+            SelectCaixa + """
+                 WHERE data < @data AND status = 'ABERTO' AND deleted_at IS NULL
+                   AND NOT EXISTS (SELECT 1 FROM caixa_reaberturas r WHERE r.caixa_id = caixas.id)
+                 ORDER BY data
+                """;
 
         public const string FecharPeloSistema = """
             UPDATE caixas
@@ -584,6 +653,26 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
                 saldo_final = @saldoFinal, fechado_em = @fechadoEm, fechado_pelo_sistema = true,
                 diarias_pendentes = true, updated_at = now()
             WHERE id = @caixaId AND status = 'ABERTO' AND deleted_at IS NULL
+            """;
+
+        public const string InsertReabertura = """
+            INSERT INTO caixa_reaberturas (id, caixa_id, reaberto_por, reaberto_em, motivo)
+            VALUES (gen_random_uuid(), @caixaId, @funcionarioId, @reabertoEm, @motivo)
+            """;
+
+        public const string DesfazerDiarias = """
+            UPDATE lancamentos_funcionario SET deleted_at = now()
+            WHERE caixa_id = @caixaId AND tipo = 'DIARIA' AND deleted_at IS NULL
+            """;
+
+        public const string Reabrir = """
+            UPDATE caixas
+            SET status = 'ABERTO', total_entradas = NULL, total_saidas = NULL, saldo_final = NULL,
+                fechado_em = NULL, fechado_por = NULL, fechado_pelo_sistema = false,
+                diarias_pendentes = false, updated_at = now()
+            WHERE id = @caixaId
+            RETURNING id, data, status::text, saldo_inicial, total_entradas, total_saidas,
+                      saldo_final, fechado_em, fechado_pelo_sistema, diarias_pendentes
             """;
 
         public const string ListComDiariasPendentes = """
@@ -612,7 +701,9 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             "SELECT status::text FROM caixas WHERE id = @caixaId AND deleted_at IS NULL FOR SHARE";
 
         public const string TravaCaixaParaFechar = """
-            SELECT status::text, data, saldo_inicial FROM caixas
+            SELECT status::text, data, saldo_inicial,
+                   EXISTS (SELECT 1 FROM caixa_reaberturas r WHERE r.caixa_id = caixas.id)
+            FROM caixas
             WHERE id = @caixaId AND deleted_at IS NULL
             FOR UPDATE
             """;

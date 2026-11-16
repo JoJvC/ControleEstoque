@@ -2,6 +2,7 @@ using ControleEstoque.Vendas.Domain;
 using ControleEstoque.Vendas.Repository;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 
@@ -23,9 +24,11 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IVendaRepository, PostgresVendaRepository>();
         services.AddSingleton<IVendaLookup, PostgresVendaLookup>();
+        services.AddSingleton<IPermissaoFuncionarioLookup, PostgresPermissaoFuncionarioLookup>();
         services.AddSingleton<ICupomFiscalRepository, PostgresCupomFiscalRepository>();
         services.AddSingleton<IRelatorioVendasRepository, PostgresRelatorioVendasRepository>();
 
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IVendaService, VendaService>();
         return services;
     }

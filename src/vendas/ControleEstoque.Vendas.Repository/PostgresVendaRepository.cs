@@ -16,8 +16,13 @@ public sealed class PostgresVendaRepository : IVendaRepository
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        // Ordem das travas: caixa, venda/cliente, produtos. Venda sem pagamento (só fiado) não toca o caixa.
-        if (gravacao.Pagamentos.Count > 0)
+        // Ordem das travas: caixa, venda/cliente, produtos. Venda sem pagamento (só fiado) não toca o caixa,
+        // salvo quando o caixa foi escolhido (caixa reaberto).
+        if (gravacao.CaixaId is { } caixaId)
+        {
+            await GarantirCaixaAbertoAsync(connection, transaction, caixaId, cancellationToken);
+        }
+        else if (gravacao.Pagamentos.Count > 0)
         {
             await GarantirCaixaHojeAbertoAsync(connection, transaction, cancellationToken);
         }
@@ -32,6 +37,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
         await using (var command = new NpgsqlCommand(Sql.InsertVenda, connection, transaction))
         {
             AddVendaParameters(command, gravacao);
+            command.Parameters.Add(Instante(gravacao));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -47,7 +53,8 @@ public sealed class PostgresVendaRepository : IVendaRepository
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        await GarantirCaixasDaEdicaoAbertosAsync(connection, transaction, gravacao, cancellationToken);
+        await GarantirCaixasDaEdicaoAbertosAsync(
+            connection, transaction, gravacao.VendaId, gravacao.Pagamentos.Count > 0, cancellationToken);
 
         await using (var command = new NpgsqlCommand(Sql.UpdateVenda, connection, transaction))
         {
@@ -75,6 +82,53 @@ public sealed class PostgresVendaRepository : IVendaRepository
         var saldo = await GetSaldoCascoAsync(connection, transaction, gravacao.ClienteId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new ResultadoGravacao(saldo);
+    }
+
+    public async Task<DateTimeOffset?> GetDataAsync(Guid vendaId, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.GetData, connection);
+        command.Parameters.AddWithValue("vendaId", vendaId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? reader.GetFieldValue<DateTimeOffset>(0) : null;
+    }
+
+    public async Task CancelarAsync(
+        Guid vendaId, Guid funcionarioId, DateTimeOffset canceladaEm, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // Cancelar desfaz os pagamentos e tira a venda do dia dela: ambos os caixas precisam estar abertos.
+        await GarantirCaixasDaEdicaoAbertosAsync(connection, transaction, vendaId, true, cancellationToken);
+
+        await using (var command = new NpgsqlCommand(Sql.TravaVenda, connection, transaction))
+        {
+            command.Parameters.AddWithValue("vendaId", vendaId);
+            if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            {
+                throw new EntityNotFoundException("VENDA_NAO_ENCONTRADA", $"Venda {vendaId} não encontrada.");
+            }
+        }
+
+        await using (var command = new NpgsqlCommand(Sql.SoftDeleteEfeitos, connection, transaction))
+        {
+            command.Parameters.AddWithValue("vendaId", vendaId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var command = new NpgsqlCommand(Sql.CancelarVenda, connection, transaction))
+        {
+            command.Parameters.AddWithValue("vendaId", vendaId);
+            command.Parameters.AddWithValue("funcionarioId", funcionarioId);
+            command.Parameters.Add(new NpgsqlParameter("canceladaEm", NpgsqlDbType.TimestampTz)
+            {
+                Value = canceladaEm.ToUniversalTime()
+            });
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<bool> ExisteAsync(Guid vendaId, CancellationToken cancellationToken)
@@ -351,25 +405,39 @@ public sealed class PostgresVendaRepository : IVendaRepository
         }
     }
 
+    /// <summary>Caixa escolhido pelo lançador: inexistente lança CAIXA_NAO_ENCONTRADO; FECHADO, CAIXA_FECHADO.</summary>
+    private static async Task GarantirCaixaAbertoAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Guid caixaId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(Sql.TravaCaixaPorId, connection, transaction);
+        command.Parameters.AddWithValue("caixaId", caixaId);
+        var status = (string?)await command.ExecuteScalarAsync(cancellationToken)
+            ?? throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", $"Caixa {caixaId} não encontrado.");
+        if (status == "FECHADO")
+        {
+            throw new ConflictException("CAIXA_FECHADO", "Não é possível lançar venda em caixa fechado.");
+        }
+    }
+
     /// <summary>
     /// Edição apaga e reinsere os pagamentos: recusa se algum pagamento atual da venda caiu num dia de caixa
-    /// FECHADO, ou se a edição reinsere pagamento (data = hoje) e o caixa de hoje está FECHADO. Travas em
+    /// FECHADO, ou se a edição reinsere pagamento (data = a da venda) e o caixa desse dia está FECHADO. Travas em
     /// ordem de data, antes da trava da venda e dos produtos.
     /// </summary>
     private static async Task GarantirCaixasDaEdicaoAbertosAsync(
-        NpgsqlConnection connection, NpgsqlTransaction transaction, VendaGravacao gravacao,
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Guid vendaId, bool reinsere,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(Sql.TravaCaixasDaEdicao, connection, transaction);
-        command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
-        command.Parameters.AddWithValue("reinsere", gravacao.Pagamentos.Count > 0);
+        command.Parameters.AddWithValue("vendaId", vendaId);
+        command.Parameters.AddWithValue("reinsere", reinsere);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
             if (reader.GetString(0) == "FECHADO")
             {
                 throw new ConflictException(
-                    "CAIXA_FECHADO", "Não é possível editar venda com pagamento em caixa fechado.");
+                    "CAIXA_FECHADO", "Não é possível editar ou cancelar venda com caixa fechado.");
             }
         }
     }
@@ -485,6 +553,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
                 command.Parameters.AddWithValue("tipo", "SAIDA_VENDA");
                 command.Parameters.AddWithValue("quantidade", -item.Quantidade);
                 command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
+                command.Parameters.Add(Instante(gravacao));
                 await command.ExecuteNonQueryAsync(cancellationToken);
             }
         }
@@ -566,6 +635,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
             command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
             command.Parameters.AddWithValue("forma", pagamento.Forma.ToString());
             command.Parameters.AddWithValue("valor", pagamento.Valor);
+            command.Parameters.Add(Instante(gravacao));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -576,6 +646,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
             command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
             command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
             command.Parameters.AddWithValue("valor", gravacao.DebitoFiado);
+            command.Parameters.Add(Instante(gravacao));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -585,6 +656,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
             command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
             command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
             command.Parameters.AddWithValue("valor", gravacao.UsoCredito);
+            command.Parameters.Add(Instante(gravacao));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -595,6 +667,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
             command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
             command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
             command.Parameters.AddWithValue("valor", gravacao.CreditoGerado);
+            command.Parameters.Add(Instante(gravacao));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
@@ -609,6 +682,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
         command.Parameters.AddWithValue("tipoCascoId", casco.TipoCascoId);
         command.Parameters.AddWithValue("tipo", tipo);
         command.Parameters.AddWithValue("quantidade", casco.Quantidade);
+        command.Parameters.Add(Instante(gravacao));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -622,6 +696,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
         command.Parameters.AddWithValue("tipo", tipo);
         command.Parameters.AddWithValue("quantidade", casco.Quantidade);
         command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
+        command.Parameters.Add(Instante(gravacao));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -708,6 +783,10 @@ public sealed class PostgresVendaRepository : IVendaRepository
         return porVenda;
     }
 
+    /// <summary>Nulo mantém o DEFAULT now() (COALESCE no SQL).</summary>
+    private static NpgsqlParameter Instante(VendaGravacao gravacao) =>
+        new("instante", NpgsqlDbType.TimestampTz) { Value = (object?)gravacao.Instante?.ToUniversalTime() ?? DBNull.Value };
+
     private static void AddVendaParameters(NpgsqlCommand command, VendaGravacao gravacao)
     {
         command.Parameters.AddWithValue("id", gravacao.VendaId);
@@ -787,10 +866,10 @@ public sealed class PostgresVendaRepository : IVendaRepository
         public const string InsertVenda = """
             INSERT INTO vendas (id, cliente_id, funcionario_id, endereco_entrega_id,
                                 total_bruto, total_desconto, desconto_sucata, total_liquido, status_pagamento,
-                                observacao, created_by)
+                                observacao, created_by, data)
             VALUES (@id, @clienteId, @funcionarioId, @enderecoEntregaId,
                     @totalBruto, @totalDesconto, @descontoSucata, @totalLiquido, @status::status_pagamento_venda,
-                    @observacao, @funcionarioId)
+                    @observacao, @funcionarioId, COALESCE(@instante, now()))
             """;
 
         public const string UpdateVenda = """
@@ -843,18 +922,20 @@ public sealed class PostgresVendaRepository : IVendaRepository
             """;
 
         public const string InsertMovimentoEstoque = """
-            INSERT INTO movimentos_estoque (produto_marca_id, tipo, quantidade, venda_id)
-            VALUES (@produtoMarcaId, @tipo::tipo_movimento_estoque, @quantidade, @vendaId)
+            INSERT INTO movimentos_estoque (produto_marca_id, tipo, quantidade, venda_id, created_at)
+            VALUES (@produtoMarcaId, @tipo::tipo_movimento_estoque, @quantidade, @vendaId, COALESCE(@instante, now()))
             """;
 
         public const string InsertMovimentoEstoqueCasco = """
-            INSERT INTO movimentos_estoque_casco (tipo_casco_id, situacao, tipo, quantidade, venda_id)
-            VALUES (@tipoCascoId, @situacao::situacao_casco, @tipo::tipo_movimento_estoque, @quantidade, @vendaId)
+            INSERT INTO movimentos_estoque_casco (tipo_casco_id, situacao, tipo, quantidade, venda_id, created_at)
+            VALUES (@tipoCascoId, @situacao::situacao_casco, @tipo::tipo_movimento_estoque, @quantidade, @vendaId,
+                    COALESCE(@instante, now()))
             """;
 
         public const string InsertMovimentoCasco = """
-            INSERT INTO movimentos_casco_cliente (cliente_id, venda_id, tipo_casco_id, tipo, quantidade)
-            VALUES (@clienteId, @vendaId, @tipoCascoId, @tipo::tipo_movimento_casco, @quantidade)
+            INSERT INTO movimentos_casco_cliente (cliente_id, venda_id, tipo_casco_id, tipo, quantidade, created_at)
+            VALUES (@clienteId, @vendaId, @tipoCascoId, @tipo::tipo_movimento_casco, @quantidade,
+                    COALESCE(@instante, now()))
             """;
 
         public const string InsertVasilhame = """
@@ -869,23 +950,25 @@ public sealed class PostgresVendaRepository : IVendaRepository
             """;
 
         public const string InsertPagamento = """
-            INSERT INTO venda_pagamentos (venda_id, forma, valor)
-            VALUES (@vendaId, @forma::forma_pagamento, @valor)
+            INSERT INTO venda_pagamentos (venda_id, forma, valor, data)
+            VALUES (@vendaId, @forma::forma_pagamento, @valor, COALESCE(@instante, now()))
             """;
 
         public const string InsertDebitoFiado = """
-            INSERT INTO lancamentos_fiado (cliente_id, venda_id, tipo, valor)
-            VALUES (@clienteId, @vendaId, 'DEBITO_VENDA', @valor)
+            INSERT INTO lancamentos_fiado (cliente_id, venda_id, tipo, valor, created_at)
+            VALUES (@clienteId, @vendaId, 'DEBITO_VENDA', @valor, COALESCE(@instante, now()))
             """;
 
         public const string InsertUsoCredito = """
-            INSERT INTO lancamentos_fiado (cliente_id, venda_id, tipo, valor, observacao)
-            VALUES (@clienteId, @vendaId, 'DEBITO_USO_CREDITO', @valor, 'Uso de crédito na venda')
+            INSERT INTO lancamentos_fiado (cliente_id, venda_id, tipo, valor, observacao, created_at)
+            VALUES (@clienteId, @vendaId, 'DEBITO_USO_CREDITO', @valor, 'Uso de crédito na venda',
+                    COALESCE(@instante, now()))
             """;
 
         public const string InsertCreditoSobra = """
-            INSERT INTO lancamentos_fiado (cliente_id, venda_id, tipo, valor, observacao)
-            VALUES (@clienteId, @vendaId, 'CREDITO_SOBRA_VENDA', @valor, 'Pagamento acima do total da venda')
+            INSERT INTO lancamentos_fiado (cliente_id, venda_id, tipo, valor, observacao, created_at)
+            VALUES (@clienteId, @vendaId, 'CREDITO_SOBRA_VENDA', @valor, 'Pagamento acima do total da venda',
+                    COALESCE(@instante, now()))
             """;
 
         // Mesma conta de vw_saldo_casco_cliente, para um tipo (positivo = cliente deve; negativo = crédito de galão).
@@ -981,6 +1064,18 @@ public sealed class PostgresVendaRepository : IVendaRepository
             ORDER BY data
             """;
 
+        public const string GetData = "SELECT data FROM vendas WHERE id = @vendaId AND deleted_at IS NULL";
+
+        public const string CancelarVenda = """
+            UPDATE vendas
+            SET deleted_at = now(), cancelada_por = @funcionarioId, cancelada_em = @canceladaEm,
+                updated_by = @funcionarioId, updated_at = now()
+            WHERE id = @vendaId AND deleted_at IS NULL
+            """;
+
+        public const string TravaCaixaPorId =
+            "SELECT status::text FROM caixas WHERE id = @caixaId AND deleted_at IS NULL FOR SHARE";
+
         public const string TravaCaixaHoje =
             "SELECT status::text FROM caixas WHERE data = CURRENT_DATE AND deleted_at IS NULL FOR SHARE";
 
@@ -990,7 +1085,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
             WHERE c.deleted_at IS NULL
               AND (c.data IN (SELECT p.data::date FROM venda_pagamentos p
                               WHERE p.venda_id = @vendaId AND p.deleted_at IS NULL)
-                   OR (@reinsere AND c.data = CURRENT_DATE))
+                   OR (@reinsere AND c.data = (SELECT v.data::date FROM vendas v WHERE v.id = @vendaId)))
             ORDER BY c.data
             FOR SHARE OF c
             """;

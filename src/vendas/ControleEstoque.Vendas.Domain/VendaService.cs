@@ -6,6 +6,9 @@ public interface IVendaService
 {
     Task<ResultadoVenda> CriarAsync(NovaVenda venda, CancellationToken cancellationToken);
     Task<ResultadoVenda> EditarAsync(Guid vendaId, NovaVenda venda, CancellationToken cancellationToken);
+
+    /// <summary>Cancela a venda; exige <c>vendas.cancelar</c> (ou <c>*</c>) e o caixa do dia da venda aberto.</summary>
+    Task CancelarAsync(Guid vendaId, Guid funcionarioId, CancellationToken cancellationToken);
     Task<Venda> ObterAsync(Guid vendaId, CancellationToken cancellationToken);
     Task<IReadOnlyList<Venda>> ListarAsync(
         Guid? clienteId, DateOnly? inicio, DateOnly? fim, int page, int pageSize,
@@ -22,17 +25,41 @@ public sealed class VendaService : IVendaService
     private readonly IVendaRepository vendas;
     private readonly IVendaLookup lookup;
     private readonly ICupomFiscalRepository cupons;
+    private readonly IPermissaoFuncionarioLookup permissoes;
+    private readonly TimeProvider relogio;
 
-    public VendaService(IVendaRepository vendas, IVendaLookup lookup, ICupomFiscalRepository cupons)
+    public VendaService(
+        IVendaRepository vendas, IVendaLookup lookup, ICupomFiscalRepository cupons,
+        IPermissaoFuncionarioLookup permissoes, TimeProvider? relogio = null)
     {
         this.vendas = vendas;
         this.lookup = lookup;
         this.cupons = cupons;
+        this.permissoes = permissoes;
+        this.relogio = relogio ?? TimeProvider.System;
     }
 
     public async Task<ResultadoVenda> CriarAsync(NovaVenda venda, CancellationToken cancellationToken)
     {
         var gravacao = await MontarGravacaoAsync(Guid.NewGuid(), venda, cancellationToken);
+        if (venda.CaixaId is { } caixaId)
+        {
+            Validacao.IdPreenchido(caixaId, "CaixaId");
+            var caixa = await lookup.GetCaixaAsync(caixaId, cancellationToken)
+                ?? throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", $"Caixa {caixaId} não encontrado.");
+            if (!caixa.Aberto)
+            {
+                throw new ConflictException("CAIXA_FECHADO", "Não é possível lançar venda em caixa fechado.");
+            }
+
+            // O repositório repete a checagem sob a trava do caixa.
+            gravacao = gravacao with
+            {
+                CaixaId = caixaId,
+                Instante = RelogioLancamento.InstanteDoLancamento(caixa.Data, relogio.GetUtcNow())
+            };
+        }
+
         var gravado = await vendas.CriarAsync(gravacao, cancellationToken);
         return await ToResultadoAsync(gravacao, gravado, cancellationToken);
     }
@@ -40,10 +67,8 @@ public sealed class VendaService : IVendaService
     public async Task<ResultadoVenda> EditarAsync(
         Guid vendaId, NovaVenda venda, CancellationToken cancellationToken)
     {
-        if (!await vendas.ExisteAsync(vendaId, cancellationToken))
-        {
-            throw new EntityNotFoundException("VENDA_NAO_ENCONTRADA", $"Venda {vendaId} não encontrada.");
-        }
+        var dataVenda = await vendas.GetDataAsync(vendaId, cancellationToken)
+            ?? throw new EntityNotFoundException("VENDA_NAO_ENCONTRADA", $"Venda {vendaId} não encontrada.");
 
         // Decisão MVP: venda com cupom fiscal emitido não pode mais ser editada.
         if (await cupons.JaEmitidoAsync(vendaId, cancellationToken))
@@ -52,9 +77,30 @@ public sealed class VendaService : IVendaService
                 "VENDA_JA_FATURADA", "Venda com cupom fiscal emitido não pode ser editada.");
         }
 
-        var gravacao = await MontarGravacaoAsync(vendaId, venda, cancellationToken);
+        // Os efeitos reinseridos ficam com a data original da venda, não com a de hoje.
+        var gravacao = await MontarGravacaoAsync(vendaId, venda, cancellationToken) with { Instante = dataVenda };
         var gravado = await vendas.EditarAsync(gravacao, cancellationToken);
         return await ToResultadoAsync(gravacao, gravado, cancellationToken);
+    }
+
+    public async Task CancelarAsync(Guid vendaId, Guid funcionarioId, CancellationToken cancellationToken)
+    {
+        await PermissoesVendas.ExigirCancelarAsync(permissoes, funcionarioId, cancellationToken);
+
+        if (await vendas.GetDataAsync(vendaId, cancellationToken) is null)
+        {
+            throw new EntityNotFoundException("VENDA_NAO_ENCONTRADA", $"Venda {vendaId} não encontrada.");
+        }
+
+        // Mesma regra da edição: venda com cupom fiscal emitido não pode mais ser alterada.
+        if (await cupons.JaEmitidoAsync(vendaId, cancellationToken))
+        {
+            throw new BusinessRuleException(
+                "VENDA_JA_FATURADA", "Venda com cupom fiscal emitido não pode ser cancelada.");
+        }
+
+        // O caixa do dia da venda é conferido pelo repositório, sob a trava (CAIXA_FECHADO).
+        await vendas.CancelarAsync(vendaId, funcionarioId, relogio.GetUtcNow(), cancellationToken);
     }
 
     public async Task<Venda> ObterAsync(Guid vendaId, CancellationToken cancellationToken)

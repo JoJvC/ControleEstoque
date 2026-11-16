@@ -35,17 +35,23 @@ public interface ICaixaRepository
     /// Fecha o caixa em uma transação: trava o caixa (FOR UPDATE), lê diárias, entradas e despesas dentro
     /// dela, lança DIARIA na conta corrente de cada funcionário (regra crítica 7 — diária NÃO é saída
     /// de caixa) e grava os consolidados. Lança EntityNotFoundException (caixa ou funcionário) e
-    /// ConflictException CAIXA_JA_FECHADO (inclusive sob corrida).
+    /// ConflictException CAIXA_JA_FECHADO (inclusive sob corrida). As diárias
+    /// recebem created_at = <paramref name="instanteDiarias"/>; nulo mantém now().
     /// </summary>
     Task<ResultadoFechamento> FecharAsync(
-        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionarioIds, CancellationToken cancellationToken);
+        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionarioIds, DateTimeOffset? instanteDiarias,
+        CancellationToken cancellationToken);
 
-    /// <summary>Caixas ABERTO (não apagados) com data anterior a <paramref name="data"/>.</summary>
+    /// <summary>
+    /// Caixas ABERTO (não apagados) com data anterior a <paramref name="data"/>, sem reabertura: o caixa reaberto
+    /// só fecha à mão.
+    /// </summary>
     Task<IReadOnlyList<Caixa>> ListAbertosAntesDeAsync(DateOnly data, CancellationToken cancellationToken);
 
     /// <summary>
     /// Fecha o caixa pelo sistema (FOR UPDATE; consolidados como no fechamento manual; fechado_em informado;
-    /// diárias pendentes; nenhuma diária lançada). Devolve null, sem erro, se o caixa já não estiver ABERTO.
+    /// diárias pendentes; nenhuma diária lançada). Devolve null, sem erro, se o caixa já não estiver ABERTO
+    /// ou se tiver reabertura.
     /// </summary>
     Task<ResultadoFechamento?> FecharPeloSistemaAsync(
         Guid caixaId, DateTimeOffset fechadoEm, CancellationToken cancellationToken);
@@ -62,6 +68,22 @@ public interface ICaixaRepository
     Task<ResultadoLancamentoDiarias> LancarDiariasPendentesAsync(
         Guid caixaId, IReadOnlyList<DiariaFechamento> diarias, DateTimeOffset instante,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reabre o caixa FECHADO numa transação (FOR UPDATE): grava a reabertura (quem, quando, motivo), volta o caixa
+    /// a ABERTO sem os campos do fechamento nem as flags de sistema e soft-deleta as diárias do caixa (VALE e
+    /// PAGAMENTO ficam). Lança EntityNotFoundException CAIXA_NAO_ENCONTRADO e ConflictException CAIXA_JA_ABERTO.
+    /// </summary>
+    Task<Caixa> ReabrirAsync(
+        Guid caixaId, Guid funcionarioId, string motivo, DateTimeOffset reabertoEm,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>Permissões do cargo de um funcionário (a autenticação ainda não existe: ele vem informado).</summary>
+public interface IPermissaoFuncionarioLookup
+{
+    /// <summary>Nulo se o funcionário não existe ou foi excluído; vazia se está inativo.</summary>
+    Task<IReadOnlyList<string>?> PermissoesAsync(Guid funcionarioId, CancellationToken cancellationToken);
 }
 
 public interface ITipoDespesaRepository

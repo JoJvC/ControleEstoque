@@ -32,7 +32,10 @@ public sealed record CreateVendaRequest(
     List<PagamentoRequest>? Pagamentos,
     List<CascoQuantidadeRequest>? CascosDevolvidos,
     List<SucataEntregueRequest>? SucataEntregue,
-    string? Observacao);
+    string? Observacao,
+    Guid? CaixaId = null);
+
+public sealed record CancelarVendaRequest(Guid FuncionarioId);
 
 public sealed record VendaResponse(
     Guid Id,

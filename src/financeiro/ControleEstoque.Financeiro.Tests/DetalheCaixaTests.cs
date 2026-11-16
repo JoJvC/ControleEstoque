@@ -15,7 +15,7 @@ public sealed class DetalheCaixaTests
     private static DateTimeOffset Em(int dia, int h, int m = 0) => new(2026, 11, dia, h, m, 0, Sp);
 
     private CaixaService Servico(DateTimeOffset? agora = null) =>
-        new(caixas, tipos, new RelogioFixo(agora ?? Em(16, 15)));
+        new(caixas, tipos, new FakePermissaoLookup(), new RelogioFixo(agora ?? Em(16, 15)));
 
     /// <summary>Exemplo da spec: saldo 50; V1 30 DINHEIRO + 20 PIX; V2 a fiado; fiado 40 DINHEIRO; despesa 15; diária 60.</summary>
     private Caixa CenarioDaSpec(DateOnly data, StatusCaixa status = StatusCaixa.ABERTO)
@@ -128,7 +128,7 @@ public sealed class DetalheCaixaTests
         outro.AddEntrada(FormaPagamento.PIX, 20m);
         outro.AddDespesa(vencido.Id, 15m);
         var doSistema = await outro.FecharPeloSistemaAsync(vencido.Id, Em(16, 0), CancellationToken.None);
-        var detalheSistema = await new CaixaService(outro, tipos, new RelogioFixo(Em(16, 1)))
+        var detalheSistema = await new CaixaService(outro, tipos, new FakePermissaoLookup(), new RelogioFixo(Em(16, 1)))
             .ObterDetalheAsync(vencido.Id, CancellationToken.None);
         Assert.Equal(detalheSistema.Totais.DinheiroNaGaveta, doSistema!.DinheiroNaGaveta);
     }
@@ -148,7 +148,7 @@ public sealed class DetalheCaixaTests
 
         var outro = new FakeCaixaRepository();
         outro.AddCaixa(Ontem, 10m);
-        var lista = await new CaixaService(outro, tipos, new RelogioFixo(Em(16, 0)))
+        var lista = await new CaixaService(outro, tipos, new FakePermissaoLookup(), new RelogioFixo(Em(16, 0)))
             .ListarAsync(Ontem, Ontem, CancellationToken.None);
         var item = Assert.Single(lista);
         Assert.True(item.Caixa.FechadoPeloSistema);

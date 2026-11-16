@@ -22,7 +22,7 @@ export interface ItemVendaRequest {
   desconto: DescontoRequest | null;
 }
 
-export type ModoCreditoVasilhame = 'ABATER_CREDITO' | 'COMPRAR';
+export type ModoCreditoVasilhame = 'ABATER_CREDITO' | 'COMPRAR' | 'CONVERTER_CASCO';
 
 /** Vasilhame vendido por tipo de casco; `modoCredito` omitido vale ABATER_CREDITO. */
 export interface VasilhameRequest {

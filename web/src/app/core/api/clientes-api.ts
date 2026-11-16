@@ -5,8 +5,6 @@ import { Observable } from 'rxjs';
 import { ConfigStore } from '../config/app-config';
 import {
   ClienteResponse,
-  ConversaoCascosRequest,
-  ConversaoCascosResponse,
   CreateClienteRequest,
   CreateEnderecoRequest,
   DevolucaoCascosRequest,
@@ -87,16 +85,6 @@ export class ClientesApi {
   ): Observable<DevolucaoCascosResponse> {
     return this.http.post<DevolucaoCascosResponse>(
       `${this.base}/clientes/${clienteId}/cascos/devolucoes`,
-      request,
-    );
-  }
-
-  converterCascos(
-    clienteId: string,
-    request: ConversaoCascosRequest,
-  ): Observable<ConversaoCascosResponse> {
-    return this.http.post<ConversaoCascosResponse>(
-      `${this.base}/clientes/${clienteId}/cascos/conversoes`,
       request,
     );
   }

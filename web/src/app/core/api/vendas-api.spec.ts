@@ -56,6 +56,22 @@ describe('VendasApi', () => {
     expect(resp).toEqual({ id: ID });
   });
 
+  it('criar: venda de conversão leva CONVERTER_CASCO e pagamentos vazios', () => {
+    const conversao = {
+      ...body,
+      itens: [],
+      pagamentos: [],
+      vasilhames: [
+        { tipoCascoId: 't-1', quantidade: 2, precoUnitario: 12, modoCredito: 'CONVERTER_CASCO' },
+      ],
+    } as typeof body;
+    api.criar(conversao).subscribe();
+    const req = http.expectOne(BASE);
+    expect(req.request.body.vasilhames[0].modoCredito).toBe('CONVERTER_CASCO');
+    expect(req.request.body.pagamentos).toEqual([]);
+    req.flush({ id: ID });
+  });
+
   it('editar: PUT /vendas/{id} com o corpo', () => {
     api.editar(ID, body).subscribe();
     const req = http.expectOne(`${BASE}/${ID}`);

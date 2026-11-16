@@ -15,12 +15,14 @@ import { Router } from '@angular/router';
 import { Subscription, firstValueFrom, map } from 'rxjs';
 
 import { ClientesApi } from '../../core/api/clientes-api';
+import { EstoqueApi } from '../../core/api/estoque-api';
 import {
   ClienteResponse,
-  ConversaoCascosResponse,
   DevolucaoCascosResponse,
   EntregaSucataResponse,
 } from '../../core/api/models/clientes';
+import { TipoCascoResponse } from '../../core/api/models/estoque';
+import { VendaResponse } from '../../core/api/models/vendas';
 import { PagamentoFiadoResponse } from '../../core/api/models/financeiro';
 import { SheetService } from '../../core/overlay/sheet-service';
 import { CePermissao } from '../../core/permissions/ce-permissao';
@@ -37,10 +39,12 @@ import { rotuloStatusPagamento } from '../vendas/venda-rotulos';
 import { galoesVisiveis } from './galoes-visiveis';
 import { EnderecoSheet, EnderecoSheetDados } from './endereco-sheet';
 import { EntregarSucataSheet, EntregarSucataSheetDados } from './entregar-sucata-sheet';
-import { PagarCascoSheet, PagarCascoSheetDados } from './pagar-casco-sheet';
+import { ConverterGalaoSheet, ConverterGalaoSheetDados } from './converter-galao-sheet';
+import { RecolherCascosSheet, RecolherCascosSheetDados } from './recolher-cascos-sheet';
+import { tiposConversiveis } from './cascos-cliente';
 import { ReceberFiadoSheet, ReceberFiadoSheetDados } from './receber-fiado-sheet';
 import { classificarSaldo, rotuloSaldo } from './saldo-cliente';
-import { linhasCascoPorTipo, rotuloSaldoCasco } from '../vendas/cascos-por-tipo';
+import { cascosAFavor, cascosComEle, linhasCascoPorTipo } from '../vendas/cascos-por-tipo';
 
 const preco = new PrecoPipe();
 const MAX_GALOES = 10;
@@ -59,6 +63,7 @@ export class ClienteDetalhePage {
   readonly filtro = input<FiltroClientes>('todos');
 
   private readonly api = inject(ClientesApi);
+  private readonly estoqueApi = inject(EstoqueApi);
   private readonly sheet = inject(SheetService);
   private readonly router = inject(Router);
   private readonly store = inject(ClientesStore);
@@ -87,10 +92,15 @@ export class ClienteDetalhePage {
     return [bairro, c?.telefone].filter(Boolean).join(' · ') || null;
   });
   protected readonly carregando = signal(true);
+  private readonly tipos = signal<TipoCascoResponse[]>([]);
+  protected readonly temConversivel = computed(
+    () => tiposConversiveis(this.tipos(), this.saldos()?.cascosPorTipo ?? []).length > 0,
+  );
 
   private busca?: Subscription;
 
   constructor() {
+    this.estoqueApi.listarTiposCasco().subscribe({ next: (tipos) => this.tipos.set(tipos) });
     // No mestre-detalhe o mesmo componente troca de :id: recarrega tudo a cada id.
     effect(() => {
       this.id();
@@ -140,7 +150,8 @@ export class ClienteDetalhePage {
   protected readonly classificarSaldo = classificarSaldo;
   protected readonly rotuloSaldo = rotuloSaldo;
   protected readonly linhasCasco = linhasCascoPorTipo;
-  protected readonly rotuloSaldoCasco = rotuloSaldoCasco;
+  protected readonly cascosComEle = cascosComEle;
+  protected readonly cascosAFavor = cascosAFavor;
   protected readonly legendaSaldo = {
     fiado: 'dinheiro a receber',
     credito: 'a favor do cliente',
@@ -169,22 +180,35 @@ export class ClienteDetalhePage {
     });
   }
 
-  protected async pagarCasco(): Promise<void> {
-    const ref = this.sheet.abrir<
-      DevolucaoCascosResponse | ConversaoCascosResponse,
-      PagarCascoSheetDados
-    >(PagarCascoSheet, { clienteId: this.id() });
+  protected async recolherCascos(): Promise<void> {
+    const ref = this.sheet.abrir<DevolucaoCascosResponse, RecolherCascosSheetDados>(
+      RecolherCascosSheet,
+      {
+        clienteId: this.id(),
+        tipos: this.tipos(),
+        cascosPorTipo: this.saldos()?.cascosPorTipo ?? [],
+      },
+    );
     const resposta = await firstValueFrom(ref.closed);
     if (!resposta) {
       return;
     }
-    if ('novoSaldoFiado' in resposta) {
-      this.toast.success(
-        `Conversão registrada. Saldo de cascos: ${resposta.novoSaldoCascos}. Fiado: ${preco.transform(resposta.novoSaldoFiado)}.`,
-      );
-    } else {
-      this.toast.success(`Devolução registrada. Saldo de cascos: ${resposta.novoSaldoCascos}.`);
+    this.toast.success(`Cascos recolhidos. Com ele: ${resposta.novoSaldoCascos}.`);
+    this.carregarSaldos();
+    this.carregarHistorico();
+  }
+
+  protected async converterGalao(): Promise<void> {
+    const ref = this.sheet.abrir<VendaResponse, ConverterGalaoSheetDados>(ConverterGalaoSheet, {
+      clienteId: this.id(),
+      tipos: this.tipos(),
+      cascosPorTipo: this.saldos()?.cascosPorTipo ?? [],
+    });
+    const venda = await firstValueFrom(ref.closed);
+    if (!venda) {
+      return;
     }
+    this.toast.success(`Galão convertido: ${preco.transform(venda.totalLiquido)} no fiado.`);
     this.carregarSaldos();
     this.carregarHistorico();
   }

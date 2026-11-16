@@ -105,19 +105,15 @@ describe('ClientesApi', () => {
     expect(resp).toEqual({ saldoCascos: 2 });
   });
 
-  it('devolverCascos: POST /clientes/{id}/cascos/devolucoes com o corpo', () => {
-    api.devolverCascos(ID, body).subscribe();
+  it('devolverCascos: POST /clientes/{id}/cascos/devolucoes com { linhas }', () => {
+    const linhas = [
+      { tipoCascoId: 't-1', quantidade: 2 },
+      { tipoCascoId: 't-2', quantidade: 1 },
+    ];
+    api.devolverCascos(ID, { linhas }).subscribe();
     const req = http.expectOne(`${BASE}/${ID}/cascos/devolucoes`);
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual(body);
-    req.flush({});
-  });
-
-  it('converterCascos: POST /clientes/{id}/cascos/conversoes com o corpo', () => {
-    api.converterCascos(ID, body).subscribe();
-    const req = http.expectOne(`${BASE}/${ID}/cascos/conversoes`);
-    expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual(body);
+    expect(req.request.body).toEqual({ linhas });
     req.flush({});
   });
 

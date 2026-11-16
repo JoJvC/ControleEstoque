@@ -37,8 +37,11 @@
           <h2 class="secao__titulo">
             <ce-icon nome="casco-na-rua" [tamanho]="16" /> Cascos com ele
           </h2>
-          <p class="bloco__valor">{{ rotuloSaldoCasco(s.saldoCascos) }}</p>
-          @if (galoes(s.saldoCascos); as g) {
+          <p class="bloco__valor">{{ cascosComEle(s.cascosPorTipo) }}</p>
+          @if (cascosAFavor(s.cascosPorTipo); as favor) {
+            <p class="bloco__legenda">{{ favor }} a favor</p>
+          }
+          @if (galoes(cascosComEle(s.cascosPorTipo)); as g) {
             @if (g.desenhados === 0) {
               <p class="vazio">Nenhum casco com ele</p>
             } @else {
@@ -62,8 +65,9 @@
             }
           }
           <p class="bloco__legenda">contagem de galões</p>
-          <ce-button variante="ghost" [disabled]="s.saldoCascos <= 0" (click)="pagarCasco()">
-            Recolher cascos
+          <ce-button variante="ghost" (click)="recolherCascos()"> Recolher cascos </ce-button>
+          <ce-button variante="ghost" [disabled]="!temConversivel()" (click)="converterGalao()">
+            Converter galão em débito
           </ce-button>
         </section>
         @let saldo = classificarSaldo(s.saldo);

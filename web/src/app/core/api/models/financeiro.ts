@@ -6,8 +6,21 @@ export interface PagamentoFiadoRequest {
   forma: string | null;
 }
 
+export interface VendaAbatida {
+  vendaId: string;
+  data: string;
+  valorAbatido: number;
+  novoStatus: 'PENDENTE' | 'PARCIAL' | 'PAGA';
+  restante: number;
+}
+
 export interface PagamentoFiadoResponse {
   novoSaldoFiado: number;
+  /** Saldo único: negativo é fiado, positivo é crédito. */
+  novoSaldo: number;
+  /** Da venda mais antiga para a mais nova (FIFO). */
+  vendasAbatidas: VendaAbatida[];
+  valorEmCredito: number;
 }
 
 export type StatusCaixa = 'ABERTO' | 'FECHADO';

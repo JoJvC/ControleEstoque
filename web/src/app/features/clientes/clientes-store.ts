@@ -5,10 +5,9 @@ import { ClientesApi } from '../../core/api/clientes-api';
 import { FinanceiroApi } from '../../core/api/financeiro-api';
 import { VendasApi } from '../../core/api/vendas-api';
 import { SaldoCascoRelatorio, SaldoFiadoCliente } from '../../core/api/models/relatorios';
-import { VendaDetalheResponse } from '../../core/api/models/vendas';
+import { VendaDetalheResponse, VendaResponse } from '../../core/api/models/vendas';
 import {
   ClienteResponse,
-  ConversaoCascosResponse,
   CreateClienteRequest,
   DevolucaoCascosResponse,
   EntregaSucataResponse,
@@ -258,16 +257,34 @@ export class ClientesStore {
   }
 
   // As escritas lançam ApiError — a sheet trata. O saldo vem sempre do GET /saldos.
-  devolverCascos(id: string, quantidade: number): Promise<DevolucaoCascosResponse> {
-    return firstValueFrom(this.api.devolverCascos(id, { quantidade }));
+  devolverCascos(
+    id: string,
+    linhas: { tipoCascoId: string; quantidade: number }[],
+  ): Promise<DevolucaoCascosResponse> {
+    return firstValueFrom(this.api.devolverCascos(id, { linhas }));
   }
 
-  converterCascos(
-    id: string,
+  /** Venda só de vasilhame em CONVERTER_CASCO, sem pagamento: o total inteiro vira fiado. */
+  converterGalao(
+    clienteId: string,
+    funcionarioId: string,
+    tipoCascoId: string,
     quantidade: number,
-    valorUnitario: number,
-  ): Promise<ConversaoCascosResponse> {
-    return firstValueFrom(this.api.converterCascos(id, { quantidade, valorUnitario }));
+    precoUnitario: number,
+  ): Promise<VendaResponse> {
+    return firstValueFrom(
+      this.vendasApi.criar({
+        clienteId,
+        funcionarioId,
+        enderecoEntregaId: null,
+        itens: [],
+        vasilhames: [{ tipoCascoId, quantidade, precoUnitario, modoCredito: 'CONVERTER_CASCO' }],
+        pagamentos: [],
+        cascosDevolvidos: [],
+        sucataEntregue: [],
+        observacao: null,
+      }),
+    );
   }
 
   entregarSucata(

@@ -116,10 +116,87 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         {
             results.Add(new Despesa(
                 reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.GetDecimal(3),
-                reader.IsDBNull(4) ? null : reader.GetString(4)));
+                reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetFieldValue<DateTimeOffset>(5)));
         }
 
         return results;
+    }
+
+    public async Task<IReadOnlyList<Caixa>> ListByPeriodoAsync(
+        DateOnly inicio, DateOnly fim, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.ListByPeriodo, connection);
+        command.Parameters.Add(new NpgsqlParameter("inicio", NpgsqlDbType.Date) { Value = inicio });
+        command.Parameters.Add(new NpgsqlParameter("fim", NpgsqlDbType.Date) { Value = fim });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var results = new List<Caixa>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(MapCaixa(reader));
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<EntradaCaixa>> ListEntradasAsync(
+        DateOnly data, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        return await ListEntradasAsync(connection, null, data, cancellationToken);
+    }
+
+    private static async Task<IReadOnlyList<EntradaCaixa>> ListEntradasAsync(
+        NpgsqlConnection connection, NpgsqlTransaction? transaction, DateOnly data,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(Sql.ListEntradas, connection, transaction);
+        command.Parameters.Add(new NpgsqlParameter("data", NpgsqlDbType.Date) { Value = data });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var results = new List<EntradaCaixa>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(new EntradaCaixa(
+                reader.GetFieldValue<DateTimeOffset>(0), Enum.Parse<OrigemEntrada>(reader.GetString(1)),
+                reader.GetGuid(2), reader.GetString(3), Enum.Parse<FormaPagamento>(reader.GetString(4)),
+                reader.GetDecimal(5)));
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<DiariaLancada>> ListDiariasAsync(
+        Guid caixaId, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.ListDiarias, connection);
+        command.Parameters.AddWithValue("caixaId", caixaId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var results = new List<DiariaLancada>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(new DiariaLancada(
+                reader.GetGuid(0), reader.GetString(1), reader.GetDecimal(2), reader.GetFieldValue<DateTimeOffset>(3)));
+        }
+
+        return results;
+    }
+
+    public async Task<AuditoriaCaixa> GetAuditoriaAsync(Guid caixaId, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.GetAuditoria, connection);
+        command.Parameters.AddWithValue("caixaId", caixaId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", $"Caixa {caixaId} não encontrado.");
+        }
+
+        return new AuditoriaCaixa(
+            reader.IsDBNull(0) ? null : new PessoaCaixa(reader.GetGuid(0), reader.GetString(1)),
+            reader.GetFieldValue<DateTimeOffset>(2),
+            reader.IsDBNull(3) ? null : new PessoaCaixa(reader.GetGuid(3), reader.GetString(4)));
     }
 
     public async Task<ResultadoFechamento> FecharAsync(
@@ -149,7 +226,7 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         }
 
         var efetivos = await ResolverDiariasAsync(connection, transaction, funcionarioIds, cancellationToken);
-        var (entradas, totalSaidas, saldoFinal) =
+        var (entradas, totalSaidas, saldoFinal, dinheiroNaGaveta) =
             await CalcularTotaisAsync(connection, transaction, caixaId, data, saldoInicial, cancellationToken);
 
         // Diária credita a conta corrente do funcionário — não é saída de caixa.
@@ -185,7 +262,8 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return new ResultadoFechamento(caixaId, data, entradas, totalSaidas, saldoFinal, diariasLancadas);
+        return new ResultadoFechamento(
+            caixaId, data, entradas, totalSaidas, saldoFinal, diariasLancadas, dinheiroNaGaveta);
     }
 
     /// <summary>
@@ -224,11 +302,13 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
     }
 
     /// <summary>Consolidados do caixa; diária NÃO sai do caixa (regra crítica 7).</summary>
-    private static async Task<(decimal Entradas, decimal Saidas, decimal SaldoFinal)> CalcularTotaisAsync(
+    private static async Task<(decimal Entradas, decimal Saidas, decimal SaldoFinal, decimal DinheiroNaGaveta)>
+        CalcularTotaisAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid caixaId, DateOnly data,
         decimal saldoInicial, CancellationToken cancellationToken)
     {
         var entradas = await GetEntradasAsync(connection, transaction, data, cancellationToken);
+        var detalhadas = await ListEntradasAsync(connection, transaction, data, cancellationToken);
         decimal totalSaidas;
         await using (var command = new NpgsqlCommand(Sql.TotalDespesas, connection, transaction))
         {
@@ -236,7 +316,8 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             totalSaidas = (decimal?)await command.ExecuteScalarAsync(cancellationToken) ?? 0m;
         }
 
-        return (entradas, totalSaidas, saldoInicial + entradas - totalSaidas);
+        return (entradas, totalSaidas, saldoInicial + entradas - totalSaidas,
+            GavetaCaixa.DinheiroEsperado(saldoInicial, detalhadas, totalSaidas));
     }
 
     public async Task<IReadOnlyList<Caixa>> ListAbertosAntesDeAsync(
@@ -255,7 +336,7 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         return results;
     }
 
-    public async Task<bool> FecharPeloSistemaAsync(
+    public async Task<ResultadoFechamento?> FecharPeloSistemaAsync(
         Guid caixaId, DateTimeOffset fechadoEm, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -270,14 +351,14 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             if (!await reader.ReadAsync(cancellationToken)
                 || reader.GetString(0) != nameof(StatusCaixa.ABERTO))
             {
-                return false; // já fechado (à mão ou por outro ciclo): idempotente
+                return null; // já fechado (à mão ou por outro ciclo): idempotente
             }
 
             data = reader.GetFieldValue<DateOnly>(1);
             saldoInicial = reader.GetDecimal(2);
         }
 
-        var (entradas, totalSaidas, saldoFinal) =
+        var (entradas, totalSaidas, saldoFinal, dinheiroNaGaveta) =
             await CalcularTotaisAsync(connection, transaction, caixaId, data, saldoInicial, cancellationToken);
 
         int linhas;
@@ -292,7 +373,9 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return linhas == 1;
+        return linhas == 1
+            ? new ResultadoFechamento(caixaId, data, entradas, totalSaidas, saldoFinal, 0, dinheiroNaGaveta)
+            : null;
     }
 
     public async Task<IReadOnlyList<CaixaDiariasPendentes>> ListComDiariasPendentesAsync(
@@ -427,8 +510,53 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
                                AND l.created_at::date = @data), 0)
             """;
 
+        public const string ListByPeriodo =
+            SelectCaixa + " WHERE data BETWEEN @inicio AND @fim AND deleted_at IS NULL ORDER BY data DESC";
+
+        // Mesmo filtro de GetEntradas, linha a linha. A forma do recebimento de fiado vem de lancamentos_fiado.forma;
+        // as linhas antigas (sem a coluna) usam a forma do venda_pagamentos vinculado, e sem nenhum rastro, OUTRO.
+        public const string ListEntradas = """
+            SELECT p.data, 'VENDA', cl.id, cl.nome, p.forma::text, p.valor
+            FROM venda_pagamentos p
+            JOIN vendas v ON v.id = p.venda_id
+            JOIN clientes cl ON cl.id = v.cliente_id
+            WHERE p.deleted_at IS NULL AND v.deleted_at IS NULL
+              AND p.forma <> 'CREDITO_CLIENTE'
+              AND p.lancamento_fiado_id IS NULL
+              AND p.data::date = @data
+            UNION ALL
+            SELECT l.created_at, 'RECEBIMENTO_FIADO', cl.id, cl.nome,
+                   COALESCE(l.forma::text,
+                            (SELECT p.forma::text FROM venda_pagamentos p
+                             WHERE p.lancamento_fiado_id = l.id AND p.deleted_at IS NULL LIMIT 1),
+                            'OUTRO'),
+                   l.valor
+            FROM lancamentos_fiado l
+            JOIN clientes cl ON cl.id = l.cliente_id
+            WHERE l.deleted_at IS NULL AND l.tipo = 'PAGAMENTO'
+              AND l.venda_id IS NULL
+              AND l.created_at::date = @data
+            ORDER BY 1
+            """;
+
+        public const string ListDiarias = """
+            SELECT f.id, f.nome, l.valor, l.created_at
+            FROM lancamentos_funcionario l
+            JOIN funcionarios f ON f.id = l.funcionario_id
+            WHERE l.caixa_id = @caixaId AND l.tipo = 'DIARIA' AND l.deleted_at IS NULL
+            ORDER BY l.created_at, f.nome
+            """;
+
+        public const string GetAuditoria = """
+            SELECT a.id, a.nome, c.created_at, f.id, f.nome
+            FROM caixas c
+            LEFT JOIN funcionarios a ON a.id = c.created_by
+            LEFT JOIN funcionarios f ON f.id = c.fechado_por
+            WHERE c.id = @caixaId AND c.deleted_at IS NULL
+            """;
+
         public const string ListDespesas = """
-            SELECT d.id, d.tipo_despesa_id, td.nome, d.valor, d.descricao
+            SELECT d.id, d.tipo_despesa_id, td.nome, d.valor, d.descricao, d.created_at
             FROM caixa_despesas d
             JOIN tipos_despesa td ON td.id = d.tipo_despesa_id
             WHERE d.caixa_id = @caixaId AND d.deleted_at IS NULL

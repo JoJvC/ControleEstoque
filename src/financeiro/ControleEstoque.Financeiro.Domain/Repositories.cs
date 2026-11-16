@@ -21,6 +21,16 @@ public interface ICaixaRepository
 
     Task<IReadOnlyList<Despesa>> ListDespesasAsync(Guid caixaId, CancellationToken cancellationToken);
 
+    /// <summary>Caixas (não apagados) de <paramref name="inicio"/> a <paramref name="fim"/>, data decrescente.</summary>
+    Task<IReadOnlyList<Caixa>> ListByPeriodoAsync(DateOnly inicio, DateOnly fim, CancellationToken cancellationToken);
+
+    /// <summary>Entradas do dia uma a uma, com o mesmo filtro de <see cref="GetEntradasAsync"/>.</summary>
+    Task<IReadOnlyList<EntradaCaixa>> ListEntradasAsync(DateOnly data, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<DiariaLancada>> ListDiariasAsync(Guid caixaId, CancellationToken cancellationToken);
+
+    Task<AuditoriaCaixa> GetAuditoriaAsync(Guid caixaId, CancellationToken cancellationToken);
+
     /// <summary>
     /// Fecha o caixa em uma transação: trava o caixa (FOR UPDATE), lê diárias, entradas e despesas dentro
     /// dela, lança DIARIA na conta corrente de cada funcionário (regra crítica 7 — diária NÃO é saída
@@ -35,9 +45,10 @@ public interface ICaixaRepository
 
     /// <summary>
     /// Fecha o caixa pelo sistema (FOR UPDATE; consolidados como no fechamento manual; fechado_em informado;
-    /// diárias pendentes; nenhuma diária lançada). Devolve false, sem erro, se o caixa já não estiver ABERTO.
+    /// diárias pendentes; nenhuma diária lançada). Devolve null, sem erro, se o caixa já não estiver ABERTO.
     /// </summary>
-    Task<bool> FecharPeloSistemaAsync(Guid caixaId, DateTimeOffset fechadoEm, CancellationToken cancellationToken);
+    Task<ResultadoFechamento?> FecharPeloSistemaAsync(
+        Guid caixaId, DateTimeOffset fechadoEm, CancellationToken cancellationToken);
 
     /// <summary>Caixas fechados pelo sistema que ainda esperam o lançamento das diárias, por data.</summary>
     Task<IReadOnlyList<CaixaDiariasPendentes>> ListComDiariasPendentesAsync(CancellationToken cancellationToken);

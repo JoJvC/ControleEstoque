@@ -20,6 +20,23 @@ public static class FinanceiroEndpoints
             DateOnly data, ICaixaService caixas, CancellationToken cancellationToken) =>
             Results.Ok(ResumoCaixaResponse.From(await caixas.ObterResumoAsync(data, cancellationToken))));
 
+        // Leitura, sem checagem de permissão como o resto do caixa (ver REGRAS_DE_NEGOCIO.md 3.5).
+        app.MapGet("/v1/caixas", async (
+            DateOnly? inicio, DateOnly? fim, ICaixaService caixas, CancellationToken cancellationToken) =>
+        {
+            if (inicio is null || fim is null)
+            {
+                throw new RequestValidationException("PERIODO_OBRIGATORIO", "Informe inicio e fim (AAAA-MM-DD).");
+            }
+
+            var itens = await caixas.ListarAsync(inicio.Value, fim.Value, cancellationToken);
+            return Results.Ok(itens.Select(ItemListaCaixaResponse.From).ToList());
+        });
+
+        app.MapGet("/v1/caixas/{id:guid}/detalhe", async (
+            Guid id, ICaixaService caixas, CancellationToken cancellationToken) =>
+            Results.Ok(DetalheCaixaResponse.From(await caixas.ObterDetalheAsync(id, cancellationToken))));
+
         app.MapPost("/v1/caixas/{id:guid}/despesas", async (
             Guid id, CreateDespesaRequest request, ICaixaService caixas, CancellationToken cancellationToken) =>
         {
@@ -36,7 +53,7 @@ public static class FinanceiroEndpoints
             var resultado = await caixas.FecharAsync(id, funcionarios, cancellationToken);
             return Results.Ok(new FechamentoResponse(
                 resultado.CaixaId, resultado.Data, resultado.TotalEntradas,
-                resultado.TotalSaidas, resultado.SaldoFinal, resultado.DiariasLancadas));
+                resultado.TotalSaidas, resultado.SaldoFinal, resultado.DiariasLancadas, resultado.DinheiroNaGaveta));
         });
 
         // Lança depois as diárias de um caixa fechado pelo sistema, com a data do caixa; não o reabre.

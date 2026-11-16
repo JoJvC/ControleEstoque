@@ -67,6 +67,7 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
             command.Parameters.AddWithValue("clienteId", clienteId);
             command.Parameters.AddWithValue("valor", valor);
             command.Parameters.AddWithValue("observacao", $"Pagamento de fiado ({forma})");
+            command.Parameters.AddWithValue("forma", forma.ToString());
             lancamentoId = (Guid)(await command.ExecuteScalarAsync(cancellationToken))!;
         }
 
@@ -148,8 +149,8 @@ public sealed class PostgresFiadoRepository : IFiadoRepository
             """;
 
         public const string InsertPagamento = """
-            INSERT INTO lancamentos_fiado (cliente_id, tipo, valor, observacao)
-            VALUES (@clienteId, 'PAGAMENTO', @valor, @observacao)
+            INSERT INTO lancamentos_fiado (cliente_id, tipo, valor, observacao, forma)
+            VALUES (@clienteId, 'PAGAMENTO', @valor, @observacao, @forma::forma_pagamento)
             RETURNING id
             """;
 

@@ -10,6 +10,9 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
 
     public Dictionary<Guid, decimal> ValoresDiaria { get; } = new();
     public decimal Entradas { get; set; }
+    public List<EntradaCaixa> EntradasDetalhadas { get; } = new();
+    public List<DiariaLancada> DiariasDoCaixa { get; } = new();
+    public Dictionary<Guid, AuditoriaCaixa> Auditorias { get; } = new();
     public List<(Guid FuncionarioId, decimal Valor)> DiariasLancadas { get; } = new();
     public (decimal Entradas, decimal Saidas, decimal SaldoFinal)? Fechamento { get; private set; }
 
@@ -35,11 +38,34 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
         return caixa;
     }
 
-    public void AddDespesa(Guid caixaId, decimal valor)
+    public void AddDespesa(Guid caixaId, decimal valor, string? descricao = null, DateTimeOffset hora = default)
     {
         var lista = despesas.TryGetValue(caixaId, out var l) ? l : despesas[caixaId] = [];
-        lista.Add(new Despesa(Guid.NewGuid(), Guid.NewGuid(), "Teste", valor, null));
+        lista.Add(new Despesa(Guid.NewGuid(), Guid.NewGuid(), "Teste", valor, descricao, hora));
     }
+
+    /// <summary>Entrada detalhada; também entra no total de Entradas, como o SQL real.</summary>
+    public void AddEntrada(
+        FormaPagamento forma, decimal valor, OrigemEntrada origem = OrigemEntrada.VENDA,
+        string cliente = "Cliente", DateTimeOffset hora = default)
+    {
+        EntradasDetalhadas.Add(new EntradaCaixa(hora, origem, Guid.NewGuid(), cliente, forma, valor));
+        Entradas += valor;
+    }
+
+    public Task<IReadOnlyList<Caixa>> ListByPeriodoAsync(
+        DateOnly inicio, DateOnly fim, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Caixa>>(
+            caixas.Values.Where(c => c.Data >= inicio && c.Data <= fim).OrderByDescending(c => c.Data).ToList());
+
+    public Task<IReadOnlyList<EntradaCaixa>> ListEntradasAsync(DateOnly data, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<EntradaCaixa>>(EntradasDetalhadas.ToList());
+
+    public Task<IReadOnlyList<DiariaLancada>> ListDiariasAsync(Guid caixaId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<DiariaLancada>>(DiariasDoCaixa.ToList());
+
+    public Task<AuditoriaCaixa> GetAuditoriaAsync(Guid caixaId, CancellationToken cancellationToken) =>
+        Task.FromResult(Auditorias.GetValueOrDefault(caixaId) ?? new AuditoriaCaixa(null, default, null));
 
     public Task<Caixa> AbrirAsync(DateOnly? data, decimal saldoInicial, CancellationToken cancellationToken)
     {
@@ -51,6 +77,8 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
 
         return Task.FromResult(AddCaixa(dia, saldoInicial));
     }
+
+    public void Substituir(Caixa caixa) => caixas[caixa.Id] = caixa;
 
     public Task<Caixa?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(caixas.GetValueOrDefault(id));
@@ -129,20 +157,21 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
             SaldoFinal = saldoFinal
         };
         return Task.FromResult(new ResultadoFechamento(
-            caixaId, caixa.Data, Entradas, totalSaidas, saldoFinal, diarias.Count));
+            caixaId, caixa.Data, Entradas, totalSaidas, saldoFinal, diarias.Count,
+            GavetaCaixa.DinheiroEsperado(caixa.SaldoInicial, EntradasDetalhadas, totalSaidas)));
     }
 
     public Task<IReadOnlyList<Caixa>> ListAbertosAntesDeAsync(DateOnly data, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Caixa>>(
             caixas.Values.Where(c => c.Status == StatusCaixa.ABERTO && c.Data < data).OrderBy(c => c.Data).ToList());
 
-    public Task<bool> FecharPeloSistemaAsync(
+    public Task<ResultadoFechamento?> FecharPeloSistemaAsync(
         Guid caixaId, DateTimeOffset fechadoEm, CancellationToken cancellationToken)
     {
         var caixa = caixas.GetValueOrDefault(caixaId);
         if (caixa is null || caixa.Status != StatusCaixa.ABERTO)
         {
-            return Task.FromResult(false);
+            return Task.FromResult<ResultadoFechamento?>(null);
         }
 
         var totalSaidas = (despesas.GetValueOrDefault(caixaId) ?? []).Sum(d => d.Valor);
@@ -156,7 +185,9 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
             FechadoPeloSistema = true,
             DiariasPendentes = true
         };
-        return Task.FromResult(true);
+        return Task.FromResult<ResultadoFechamento?>(new ResultadoFechamento(
+            caixaId, caixa.Data, Entradas, totalSaidas, caixa.SaldoInicial + Entradas - totalSaidas, 0,
+            GavetaCaixa.DinheiroEsperado(caixa.SaldoInicial, EntradasDetalhadas, totalSaidas)));
     }
 
     public Task<IReadOnlyList<CaixaDiariasPendentes>> ListComDiariasPendentesAsync(

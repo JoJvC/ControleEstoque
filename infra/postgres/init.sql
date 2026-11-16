@@ -534,6 +534,10 @@ ALTER TABLE venda_pagamentos ADD COLUMN IF NOT EXISTS lancamento_fiado_id UUID R
 CREATE INDEX IF NOT EXISTS idx_venda_pagamentos_lancamento_fiado
     ON venda_pagamentos (lancamento_fiado_id) WHERE lancamento_fiado_id IS NOT NULL;
 
+-- Forma do recebimento de fiado: o pagamento sem venda em aberto (ou a sobra que vira crédito) não gera linha em
+-- venda_pagamentos, então a forma fica no próprio lançamento (detalhe do caixa). NULL nas linhas anteriores.
+ALTER TABLE lancamentos_fiado ADD COLUMN IF NOT EXISTS forma forma_pagamento;
+
 -- ----------------------------------------------------------------------------
 -- FINANCEIRO — CAIXA
 -- ----------------------------------------------------------------------------

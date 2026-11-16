@@ -6,6 +6,8 @@ public interface ICaixaService
 {
     Task<Caixa> AbrirAsync(DateOnly? data, decimal saldoInicial, CancellationToken cancellationToken);
     Task<ResumoCaixa> ObterResumoAsync(DateOnly data, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ItemListaCaixa>> ListarAsync(DateOnly inicio, DateOnly fim, CancellationToken cancellationToken);
+    Task<DetalheCaixa> ObterDetalheAsync(Guid caixaId, CancellationToken cancellationToken);
     Task AdicionarDespesaAsync(
         Guid caixaId, Guid tipoDespesaId, decimal valor, string? descricao,
         CancellationToken cancellationToken);
@@ -62,6 +64,41 @@ public sealed class CaixaService : ICaixaService
             await caixas.ListComDiariasPendentesAsync(cancellationToken));
     }
 
+    // ponytail: uma leitura de entradas e despesas por caixa; para intervalos longos, trazer tudo numa consulta só.
+    public async Task<IReadOnlyList<ItemListaCaixa>> ListarAsync(
+        DateOnly inicio, DateOnly fim, CancellationToken cancellationToken)
+    {
+        if (inicio > fim)
+        {
+            throw new RequestValidationException("PERIODO_INVALIDO", "A data inicial não pode ser maior que a final.");
+        }
+
+        await FecharVencidosAsync(cancellationToken);
+
+        var itens = new List<ItemListaCaixa>();
+        foreach (var caixa in await caixas.ListByPeriodoAsync(inicio, fim, cancellationToken))
+        {
+            var entradas = await caixas.ListEntradasAsync(caixa.Data, cancellationToken);
+            var despesas = await caixas.ListDespesasAsync(caixa.Id, cancellationToken);
+            itens.Add(new ItemListaCaixa(caixa, GavetaCaixa.TotaisDo(caixa, entradas, despesas)));
+        }
+
+        return itens;
+    }
+
+    public async Task<DetalheCaixa> ObterDetalheAsync(Guid caixaId, CancellationToken cancellationToken)
+    {
+        await FecharVencidosAsync(cancellationToken);
+
+        var caixa = await ObterCaixaAsync(caixaId, cancellationToken);
+        return GavetaCaixa.Detalhe(
+            caixa,
+            await caixas.ListEntradasAsync(caixa.Data, cancellationToken),
+            await caixas.ListDespesasAsync(caixaId, cancellationToken),
+            await caixas.ListDiariasAsync(caixaId, cancellationToken),
+            await caixas.GetAuditoriaAsync(caixaId, cancellationToken));
+    }
+
     public async Task AdicionarDespesaAsync(
         Guid caixaId, Guid tipoDespesaId, decimal valor, string? descricao,
         CancellationToken cancellationToken)
@@ -102,7 +139,7 @@ public sealed class CaixaService : ICaixaService
         foreach (var caixa in await caixas.ListAbertosAntesDeAsync(hoje, cancellationToken))
         {
             if (await caixas.FecharPeloSistemaAsync(
-                    caixa.Id, RelogioCaixa.MeiaNoiteSeguinte(caixa.Data), cancellationToken))
+                    caixa.Id, RelogioCaixa.MeiaNoiteSeguinte(caixa.Data), cancellationToken) is not null)
             {
                 fechados++;
             }

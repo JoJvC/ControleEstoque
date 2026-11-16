@@ -265,8 +265,9 @@ public sealed class FechamentoAutomaticoTests
         Assert.Contains("diarias_pendentes = true", sql);
         Assert.DoesNotContain("lancamentos_funcionario", sql);
         var repo = Ler("src", "financeiro", "ControleEstoque.Financeiro.Repository", "PostgresCaixaRepository.cs");
-        var metodo = repo[repo.IndexOf("public async Task<bool> FecharPeloSistemaAsync", StringComparison.Ordinal)..];
-        metodo = metodo[..metodo.IndexOf("ListComDiariasPendentesAsync", StringComparison.Ordinal)];
+        var metodo = repo[repo.IndexOf("public async Task<ResultadoFechamento?> FecharPeloSistemaAsync", StringComparison.Ordinal)..];
+        var fim = metodo.IndexOf("public async Task", 1, StringComparison.Ordinal);
+        metodo = fim < 0 ? metodo : metodo[..fim];
         Assert.DoesNotContain("InsertDiaria", metodo);
     }
 

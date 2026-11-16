@@ -46,7 +46,6 @@ import { PassoAPasso } from '../../ui/organisms/passo-a-passo';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import {
   ItemCarrinho,
-  abatidaDe,
   categoriasDe,
   fiadoDe,
   filtrarPorCategoria,
@@ -55,14 +54,8 @@ import {
   mesmoItem,
   paraCreateVendaRequest,
   rascunhoDeVenda,
-  totaisDe,
   totalItemDe,
   totalPagoDe,
-  totalVasilhameDe,
-  totalVasilhamesDe,
-  vasilhameNovo,
-  vasilhamesPorTipo,
-  valorDoAtalho,
   valorDescontoDe,
   VasilhameCarrinho,
 } from './carrinho';
@@ -79,32 +72,19 @@ import {
 } from './busca-produto';
 import {
   QuantidadesPorTipo,
-  descontoSucataDe,
   linhasCascoPorTipo,
-  previaCascoDoTipo,
   cascosComEle,
   cascosAFavor,
-  quantidadeDevolvida,
-  sucataExcede,
-  tiposCascoDoCarrinho,
 } from './cascos-por-tipo';
-import {
-  CascoTipoEstado,
-  CobrarAcao,
-  CobrarEstado,
-  CobrarPainel,
-  VasilhameEstado,
-} from './cobrar-painel';
+import { CobrarAcao, CobrarPainel } from './cobrar-painel';
+import { PAGAMENTO_PADRAO, criarCobranca } from './cobranca';
 import { ItemVendaSheet, ItemVendaSheetDados, ItemVendaSheetResultado } from './item-venda-sheet';
 import { PassoCascos } from './passo-cascos';
 import { PassoPagamento } from './passo-pagamento';
 import { ROTULO_PASSO, passosDaVenda, podeAvancarPasso } from './passos-venda';
 import { VendaStore } from './venda-store';
-import { creditoNaEdicao, limitarPagamentos } from './pagamento-credito';
+import { limitarPagamentos } from './pagamento-credito';
 import { rotuloStatusPagamento } from './venda-rotulos';
-
-// Uma forma já escolhida, sem valor (protótipo): "Tudo fiado" a limpa e a venda sem valor vai toda para fiado.
-const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor: null }];
 
 @Component({
   selector: 'ce-pdv-page',
@@ -901,86 +881,39 @@ export class PdvPage implements OnInit {
     return [...filtrarPorTexto(porSugestao, this.termoProduto()), ...vasilhames];
   });
 
-  protected readonly carrinhoVazio = computed(
-    () => this.itens().length === 0 && this.vasilhames().length === 0,
+  // Saldos do cliente vêm do servidor e são exibidos como chegaram (Regra 8.6); só o chip de casco soma localmente os saldos positivos por tipo.
+  protected readonly saldos = signal<SaldosResponse | null>(null);
+
+  // O CobrarEstado e as ações de cascos e pagamento (a conclusão de pedido usa a mesma extração).
+  private readonly cobranca = criarCobranca(
+    {
+      itens: this.itens,
+      vasilhames: this.vasilhames,
+      cascosDevolvidos: this.cascosDevolvidos,
+      cascosNaHora: this.cascosNaHora,
+      sucataEntregue: this.sucataEntregue,
+      sucataValores: this.sucataValores,
+      pagamentos: this.pagamentos,
+      tiposCasco: this.tiposCasco,
+      saldos: this.saldos,
+    },
+    {
+      edicao: () => this.id() !== undefined,
+      creditoEdicao: this.creditoEdicao,
+      vendaCarregada: this.vendaCarregada,
+      rotuloConfirmar: () => (this.id() ? 'Salvar alterações' : 'Confirmar venda'),
+      enderecoOk: () => this.enderecoOk(),
+      nomeDoCliente: () => this.clienteSelecionado()?.nome ?? '',
+      erro: this.erro,
+      enviando: this.enviando,
+    },
   );
-  // Crédito de galão por tipo = max(0, −saldo); na edição o saldo não é carregado.
-  private readonly creditosVasilhame = computed<QuantidadesPorTipo>(() => {
-    const base = this.saldoBaseDeCascos();
-    return base === null
-      ? this.creditoEdicao()
-      : Object.fromEntries(base.map((c) => [c.tipoCascoId, Math.max(0, -c.saldo)]));
-  });
-  // Uma linha por tipo de casco do carrinho (retornáveis e vasilhames já lançados); sem lançamento, começa em 0.
-  protected readonly vasilhamesEstado = computed<VasilhameEstado[]>(() => {
-    const creditos = this.creditosVasilhame();
-    const lancados = this.vasilhames();
-    const ids = new Set([
-      ...this.tiposDoCarrinho().map((t) => t.tipoCascoId),
-      ...lancados.map((v) => v.tipoCascoId),
-    ]);
-    const linhas: VasilhameEstado[] = [];
-    for (const tipo of this.tiposCasco().filter((t) => ids.has(t.id))) {
-      const v = lancados.find((l) => l.tipoCascoId === tipo.id) ?? vasilhameNovo(tipo, 0);
-      const credito = creditos[tipo.id] ?? 0;
-      linhas.push({
-        ...v,
-        nome: tipo.nome,
-        abatida: abatidaDe(v, credito),
-        total: totalVasilhameDe(v, credito),
-        escolhaModo: credito > 0 || v.modo === 'COMPRAR',
-      });
-    }
-    return linhas;
-  });
-  protected readonly totalVasilhames = computed(() =>
-    totalVasilhamesDe(this.vasilhames(), this.creditosVasilhame()),
-  );
-  protected readonly descontoSucata = computed(() =>
-    descontoSucataDe(this.tiposDoCarrinho(), this.sucataEntregue(), this.sucataValores()),
-  );
-  protected readonly totais = computed(() =>
-    totaisDe(this.itens(), this.totalVasilhames(), this.descontoSucata()),
-  );
-  protected readonly sucataPassaDoTotal = computed(() =>
-    sucataExcede(this.descontoSucata(), this.totais().liquido + this.descontoSucata()),
-  );
+  protected readonly carrinhoVazio = this.cobranca.carrinhoVazio;
+  protected readonly totais = this.cobranca.totais;
+  protected readonly sucataPassaDoTotal = this.cobranca.sucataPassaDoTotal;
+  protected readonly cobrarEstado = this.cobranca.estado;
   protected readonly pago = computed(() => totalPagoDe(this.pagamentos()));
   protected readonly fiado = computed(() => fiadoDe(this.totais().liquido, this.pagamentos()));
-  // Feedback ao vivo (Regra 8.6): em venda nova com saldo carregado, o saldo do cliente por tipo entra
-  // na conta; na edição o saldo já inclui a venda original, então só conta o casco desta venda.
-  private readonly saldoBaseDeCascos = computed(() =>
-    this.id() === undefined ? (this.saldos()?.cascosPorTipo ?? null) : null,
-  );
-  private readonly tiposDoCarrinho = computed(() =>
-    tiposCascoDoCarrinho(this.itens(), this.tiposCasco(), vasilhamesPorTipo(this.vasilhames())),
-  );
-  protected readonly cascos = computed<CascoTipoEstado[]>(() => {
-    const base = this.saldoBaseDeCascos();
-    return this.tiposDoCarrinho().map((tipo) => {
-      const { valor, travado } = quantidadeDevolvida(
-        tipo,
-        this.cascosNaHora(),
-        this.cascosDevolvidos()[tipo.tipoCascoId] ?? 0,
-      );
-      const saldo = base?.find((c) => c.tipoCascoId === tipo.tipoCascoId)?.saldo ?? 0;
-      // Na edição o saldo não é carregado: o abatido já está no saldo gravado, não entra na prévia.
-      const abatidos =
-        base === null
-          ? 0
-          : (this.vasilhamesEstado().find((v) => v.tipoCascoId === tipo.tipoCascoId)?.abatida ?? 0);
-      const { naRua, aMais } = previaCascoDoTipo(saldo, tipo.vendidosEmTroca, valor, abatidos);
-      return {
-        ...tipo,
-        devolvidos: valor,
-        travado,
-        sucata: this.sucataEntregue()[tipo.tipoCascoId] ?? 0,
-        valorSucata: this.sucataValores()[tipo.tipoCascoId] ?? 0,
-        naRua,
-        aMais,
-      };
-    });
-  });
   protected readonly cascosAbertos = signal(false);
   protected readonly cascosComSaldo = computed(() =>
     linhasCascoPorTipo(this.saldos()?.cascosPorTipo ?? []),
@@ -990,17 +923,10 @@ export class PdvPage implements OnInit {
   protected readonly cascosComEle = cascosComEle;
   protected readonly cascosAFavor = cascosAFavor;
 
-  // Saldos do cliente vêm do servidor e são exibidos como chegaram (Regra 8.6); só o chip de casco soma localmente os saldos positivos por tipo.
-  protected readonly saldos = signal<SaldosResponse | null>(null);
-
   private readonly enderecoOk = computed(() => {
     const c = this.clienteSelecionado();
     return c !== null && (c.enderecos.length <= 1 || this.enderecoId() !== null);
   });
-
-  protected readonly podeRegistrar = computed(
-    () => this.enderecoOk() && !this.carrinhoVazio() && !this.sucataPassaDoTotal(),
-  );
 
   // Resumo da barra do celular
   protected readonly quantidadeTotal = computed(
@@ -1012,36 +938,6 @@ export class PdvPage implements OnInit {
     const n = this.quantidadeTotal();
     return `${n} ${n === 1 ? 'item' : 'itens'}`;
   });
-
-  // Crédito para pagar a venda: o disponível do servidor; na edição, o que o servidor devolveria
-  // com os lançamentos da própria venda estornados (usa o saldo, não o disponível, que já é ≥ 0).
-  private readonly creditoDisponivel = computed(() => {
-    const saldos = this.saldos();
-    if (saldos === null) {
-      return null;
-    }
-    const original = this.vendaCarregada();
-    return original === null ? saldos.creditoDisponivel : creditoNaEdicao(saldos.saldo, original);
-  });
-
-  protected readonly cobrarEstado = computed<CobrarEstado>(() => ({
-    itens: this.itens(),
-    totais: this.totais(),
-    vasilhames: this.vasilhamesEstado(),
-    totalVasilhames: this.totalVasilhames(),
-    descontoSucata: this.descontoSucata(),
-    sucataExcede: this.sucataPassaDoTotal(),
-    cascos: this.cascos(),
-    cascosNaHora: this.cascosNaHora(),
-    clienteNome: this.saldoBaseDeCascos() === null ? null : (this.clienteSelecionado()?.nome ?? ''),
-    pagamentos: this.pagamentos(),
-    creditoDisponivel: this.creditoDisponivel(),
-    nomeDoCliente: this.clienteSelecionado()?.nome ?? '',
-    erro: this.erro(),
-    enviando: this.enviando(),
-    podeRegistrar: this.podeRegistrar(),
-    rotuloConfirmar: this.id() ? 'Salvar alterações' : 'Confirmar venda',
-  }));
 
   // Repetir última venda (só em venda nova, com cliente e carrinho vazio)
   protected readonly repetir = signal<
@@ -1222,7 +1118,7 @@ export class PdvPage implements OnInit {
           this.saldos.set(saldos);
           // O crédito pode ter mudado: a linha de crédito não passa do que o servidor diz agora.
           this.pagamentos.update((atual) =>
-            limitarPagamentos(atual, this.creditoDisponivel(), this.totais().liquido),
+            limitarPagamentos(atual, this.cobranca.creditoDisponivel(), this.totais().liquido),
           );
         }
       },
@@ -1315,27 +1211,7 @@ export class PdvPage implements OnInit {
 
   /** Lista do PDV: tocar em 'Vasilhame <tipo>' soma 1 no quadro; quantidade 0 tira o vasilhame do pedido (a linha do tipo segue no quadro enquanto há retornável do tipo). */
   protected definirVasilhame(tipo: TipoCascoResponse, quantidade: number): void {
-    this.alterarVasilhame(tipo.id, { quantidade });
-  }
-
-  private alterarVasilhame(
-    tipoCascoId: string,
-    mudanca: Partial<Pick<VasilhameCarrinho, 'quantidade' | 'precoUnitario' | 'modo'>>,
-  ): void {
-    const quantidade = mudanca.quantidade;
-    const tipo = this.tiposCasco().find((t) => t.id === tipoCascoId);
-    if (this.quantidadeDeVasilhame(tipoCascoId) === 0 && tipo && quantidade && quantidade > 0) {
-      this.vasilhames.update((atual) => [
-        ...atual,
-        { ...vasilhameNovo(tipo, quantidade), ...mudanca },
-      ]);
-      return;
-    }
-    this.vasilhames.update((atual) =>
-      mudanca.quantidade !== undefined && mudanca.quantidade <= 0
-        ? atual.filter((v) => v.tipoCascoId !== tipoCascoId)
-        : atual.map((v) => (v.tipoCascoId === tipoCascoId ? { ...v, ...mudanca } : v)),
-    );
+    this.cobranca.alterarVasilhame(tipo.id, { quantidade });
   }
 
   protected itemDe({ produto, marca }: LinhaProduto): ItemCarrinho | undefined {
@@ -1458,65 +1334,11 @@ export class PdvPage implements OnInit {
   }
 
   protected agir(acao: CobrarAcao): void {
-    switch (acao.tipo) {
-      case 'cascos':
-        this.cascosDevolvidos.update((m) => ({ ...m, [acao.tipoCascoId]: acao.valor }));
-        break;
-      case 'naHora':
-        this.alternarNaHora(acao.valor);
-        break;
-      case 'sucata':
-        this.sucataEntregue.update((m) => ({ ...m, [acao.tipoCascoId]: acao.valor }));
-        break;
-      case 'sucataValor':
-        this.sucataValores.update((m) => ({ ...m, [acao.tipoCascoId]: acao.valor }));
-        break;
-      case 'vasilhame':
-        this.alterarVasilhame(acao.tipoCascoId, acao.mudanca);
-        break;
-      case 'pagamentos':
-        this.pagamentos.set(
-          limitarPagamentos(acao.valor, this.creditoDisponivel(), this.totais().liquido),
-        );
-        break;
-      case 'atalho':
-        this.aplicarAtalho(acao);
-        break;
-      case 'tudoFiado':
-        this.pagamentos.set([]);
-        break;
-      case 'registrar':
-        void this.registrar();
-        break;
+    if (acao.tipo === 'registrar') {
+      void this.registrar();
+    } else {
+      this.cobranca.agir(acao);
     }
-  }
-
-  // Cascos
-
-  protected alternarNaHora(ligado: boolean): void {
-    // Marcado, o devolvido de cada tipo é o vendido em troca (travado); ao desmarcar, o campo
-    // fica editável a partir do valor que tinha.
-    if (!ligado && this.cascosNaHora()) {
-      this.cascosDevolvidos.set(
-        Object.fromEntries(this.cascos().map((c) => [c.tipoCascoId, c.devolvidos])),
-      );
-    }
-    this.cascosNaHora.set(ligado);
-  }
-
-  // Pagamento
-
-  protected aplicarAtalho({ indice, qual }: { indice: number; qual: 'tudo' | 'metade' }): void {
-    const valor = valorDoAtalho(qual, this.totais().liquido, this.pagamentos(), indice);
-    this.pagamentos.update((atual) =>
-      limitarPagamentos(
-        indice < atual.length
-          ? atual.map((p, i) => (i === indice ? { ...p, valor } : p))
-          : [...atual, { forma: 'DINHEIRO', valor }],
-        this.creditoDisponivel(),
-        this.totais().liquido,
-      ),
-    );
   }
 
   // Registro

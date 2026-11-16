@@ -29,8 +29,19 @@ import {
   IniciarPedidoResultado,
   IniciarPedidoSheet,
 } from './iniciar-pedido-sheet';
-import { podeCancelar, podeIniciar, rotuloStatus } from './pedido-form';
+import {
+  podeCancelar,
+  podeConcluir,
+  podeIniciar,
+  podeRegistrarPerdas,
+  rotuloStatus,
+} from './pedido-form';
 import { PedidosStore } from './pedidos-store';
+import {
+  RegistrarPerdasDados,
+  RegistrarPerdasResultado,
+  RegistrarPerdasSheet,
+} from './registrar-perdas-sheet';
 
 const MOTIVOS: Record<MotivoPerda, string> = { PERDIDO: 'Perdido', QUEBRADO: 'Quebrado' };
 
@@ -122,7 +133,12 @@ const MOTIVOS: Record<MotivoPerda, string> = { PERDIDO: 'Perdido', QUEBRADO: 'Qu
               <p class="erro" role="alert">{{ mensagem }}</p>
             }
 
-            <!-- Ações por status. A fatia de conclusão põe 'Concluir' no bloco EM_ANDAMENTO. -->
+            @if (store.perdasPendentes()[pedido.id]?.length) {
+              <p class="aviso" role="status" data-testid="perdas-pendentes">
+                A venda foi registrada, mas as perdas não. Registre de novo.
+              </p>
+            }
+
             <div class="acoes">
               @if (podeIniciar(pedido.status)) {
                 <ce-button
@@ -131,6 +147,24 @@ const MOTIVOS: Record<MotivoPerda, string> = { PERDIDO: 'Perdido', QUEBRADO: 'Qu
                   (click)="iniciar(pedido)"
                 >
                   Iniciar
+                </ce-button>
+              }
+              @if (podeConcluir(pedido.status)) {
+                <ce-button
+                  *cePermissao="'vendas.registrar'"
+                  [block]="true"
+                  (click)="concluir(pedido)"
+                >
+                  Concluir
+                </ce-button>
+              }
+              @if (podeRegistrarPerdas(pedido.status)) {
+                <ce-button
+                  *cePermissao="'vendas.registrar'"
+                  [block]="true"
+                  (click)="registrarPerdas(pedido)"
+                >
+                  Registrar perdas
                 </ce-button>
               }
               @if (podeCancelar(pedido.status)) {
@@ -212,6 +246,12 @@ const MOTIVOS: Record<MotivoPerda, string> = { PERDIDO: 'Perdido', QUEBRADO: 'Qu
       font-size: var(--ce-font-sm);
     }
 
+    .aviso {
+      color: var(--ce-warning);
+      font-size: var(--ce-font-sm);
+      font-weight: 600;
+    }
+
     .carregando {
       display: flex;
       justify-content: center;
@@ -230,6 +270,8 @@ export class PedidoDetalhePage {
   protected readonly rotuloStatus = rotuloStatus;
   protected readonly podeIniciar = podeIniciar;
   protected readonly podeCancelar = podeCancelar;
+  protected readonly podeConcluir = podeConcluir;
+  protected readonly podeRegistrarPerdas = podeRegistrarPerdas;
   protected readonly erro = signal<string | null>(null);
   protected readonly cancelando = signal(false);
 
@@ -296,6 +338,23 @@ export class PedidoDetalhePage {
     });
     const resultado = await firstValueFrom(ref.closed);
     // Sucesso: a store já atualizou o pedido. 'erro': a situação mudou e a store já recarregou.
+    if (resultado && 'erro' in resultado) {
+      this.erro.set(resultado.erro);
+    }
+  }
+
+  protected concluir(pedido: PedidoResponse): void {
+    void this.router.navigateByUrl(`/pedidos/${pedido.id}/conclusao`);
+  }
+
+  protected async registrarPerdas(pedido: PedidoResponse): Promise<void> {
+    this.erro.set(null);
+    const ref = this.sheet.abrir<RegistrarPerdasResultado, RegistrarPerdasDados>(
+      RegistrarPerdasSheet,
+      { pedido, ocorrencias: this.store.perdasPendentes()[pedido.id] ?? [] },
+    );
+    const resultado = await firstValueFrom(ref.closed);
+    // Sucesso: a store já gravou o pedido e limpou as pendentes. 'erro': a situação mudou e a store já recarregou.
     if (resultado && 'erro' in resultado) {
       this.erro.set(resultado.erro);
     }

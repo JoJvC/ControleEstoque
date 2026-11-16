@@ -70,3 +70,7 @@ export const podeIniciar = (status: StatusPedido): boolean => status === 'PENDEN
 
 export const podeCancelar = (status: StatusPedido): boolean =>
   status === 'PENDENTE' || status === 'EM_ANDAMENTO';
+
+export const podeConcluir = (status: StatusPedido): boolean => status === 'EM_ANDAMENTO';
+
+export const podeRegistrarPerdas = (status: StatusPedido): boolean => status === 'CONCLUIDO';

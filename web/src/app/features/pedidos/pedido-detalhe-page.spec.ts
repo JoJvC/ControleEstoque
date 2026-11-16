@@ -14,6 +14,8 @@ import { StorageService } from '../../core/platform/storage-service';
 import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { IniciarPedidoSheet } from './iniciar-pedido-sheet';
 import { PedidoDetalhePage } from './pedido-detalhe-page';
+import { PedidosStore } from './pedidos-store';
+import { RegistrarPerdasSheet } from './registrar-perdas-sheet';
 
 const PEDIDOS = '/api/vendas/v1/pedidos';
 const CLIENTES = '/api/clientes/v1/clientes';
@@ -73,7 +75,7 @@ async function montar(status: string, extra: object = {}, permissoes: string[] =
   const sheet = TestBed.inject(SheetService);
   const confirmar = vi.spyOn(sheet, 'confirmar');
   const abrir = vi.spyOn(sheet, 'abrir');
-  vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+  const navegar = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
   const fixture = TestBed.createComponent(PedidoDetalhePage);
   fixture.componentRef.setInput('id', 'p-1');
   fixture.detectChanges();
@@ -85,7 +87,7 @@ async function montar(status: string, extra: object = {}, permissoes: string[] =
   const el = fixture.nativeElement as HTMLElement;
   const botao = (texto: string) =>
     Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.trim() === texto);
-  return { fixture, el, http, confirmar, abrir, botao };
+  return { fixture, el, http, confirmar, abrir, botao, navegar };
 }
 
 describe('PedidoDetalhePage', () => {
@@ -212,5 +214,79 @@ describe('PedidoDetalhePage', () => {
       expect.objectContaining({ pedido: expect.objectContaining({ id: 'p-1' }) }),
     );
     expect(t.el.querySelector('[role="alert"]')?.textContent).toContain('A situação deste pedido');
+  });
+
+  describe('conclusão e perdas', () => {
+    const PENDENTE = {
+      galao: 'VAZIO' as const,
+      produtoId: null,
+      marcaId: null,
+      tipoCascoId: 't-1',
+      quantidade: 2,
+      motivo: 'PERDIDO' as const,
+    };
+
+    it('Concluir só aparece em EM_ANDAMENTO e leva a /pedidos/p-1/conclusao', async () => {
+      for (const status of ['PENDENTE', 'CONCLUIDO', 'CANCELADO']) {
+        const t = await montar(status);
+        expect(t.botao('Concluir')).toBeUndefined();
+        TestBed.resetTestingModule();
+      }
+      const t = await montar('EM_ANDAMENTO');
+      t.botao('Concluir')!.click();
+      expect(t.navegar).toHaveBeenCalledWith('/pedidos/p-1/conclusao');
+      expect(t.botao('Cancelar')).toBeDefined();
+    });
+
+    it('Registrar perdas só aparece em CONCLUIDO e abre a folha com o pedido e sem pendentes', async () => {
+      for (const status of ['PENDENTE', 'EM_ANDAMENTO', 'CANCELADO']) {
+        const t = await montar(status);
+        expect(t.botao('Registrar perdas')).toBeUndefined();
+        TestBed.resetTestingModule();
+      }
+      const t = await montar('CONCLUIDO');
+      t.abrir.mockReturnValue({ closed: of(undefined) } as never);
+      t.botao('Registrar perdas')!.click();
+      await assentar(t.fixture);
+      expect(t.abrir).toHaveBeenCalledWith(RegistrarPerdasSheet, {
+        pedido: expect.objectContaining({ id: 'p-1' }),
+        ocorrencias: [],
+      });
+      expect(t.el.querySelector('[data-testid="perdas-pendentes"]')).toBeNull();
+    });
+
+    it('com perdas pendentes: o aviso aparece e a folha abre com elas', async () => {
+      const t = await montar('CONCLUIDO');
+      TestBed.inject(PedidosStore).guardarPerdasPendentes('p-1', [PENDENTE]);
+      await assentar(t.fixture);
+      expect(t.el.querySelector('[data-testid="perdas-pendentes"]')?.textContent).toContain(
+        'A venda foi registrada, mas as perdas não. Registre de novo.',
+      );
+      t.abrir.mockReturnValue({ closed: of(undefined) } as never);
+      t.botao('Registrar perdas')!.click();
+      await assentar(t.fixture);
+      expect(t.abrir).toHaveBeenCalledWith(RegistrarPerdasSheet, {
+        pedido: expect.objectContaining({ id: 'p-1' }),
+        ocorrencias: [PENDENTE],
+      });
+    });
+
+    it('a folha fechando com { erro } mostra a mensagem', async () => {
+      const t = await montar('CONCLUIDO');
+      t.abrir.mockReturnValue({ closed: of({ erro: 'A situação deste pedido mudou.' }) } as never);
+      t.botao('Registrar perdas')!.click();
+      await assentar(t.fixture);
+      expect(t.el.querySelector('[role="alert"]')?.textContent).toContain(
+        'A situação deste pedido',
+      );
+    });
+
+    it('sem a permissão vendas.registrar não há Concluir nem Registrar perdas', async () => {
+      const a = await montar('EM_ANDAMENTO', {}, []);
+      expect(a.botao('Concluir')).toBeUndefined();
+      TestBed.resetTestingModule();
+      const b = await montar('CONCLUIDO', {}, []);
+      expect(b.botao('Registrar perdas')).toBeUndefined();
+    });
   });
 });

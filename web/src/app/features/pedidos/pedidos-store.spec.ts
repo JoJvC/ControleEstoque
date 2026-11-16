@@ -164,4 +164,81 @@ describe('PedidosStore', () => {
     req.flush(pedido());
     expect((await p).id).toBe('p-1');
   });
+
+  it('concluir: POST da conclusão, devolve a venda e marca o pedido CONCLUIDO na lista', async () => {
+    store.carregarLista();
+    http.expectOne((r) => r.url === PEDIDOS).flush([resumo('p-1', 'c-1', 'EM_ANDAMENTO')]);
+    http.expectOne(`${CLIENTES}/c-1`).flush(cliente('c-1', 'Ana'));
+
+    const corpo = { funcionarioId: 'f1', itens: [] } as never;
+    const p = store.concluir('p-1', corpo);
+    const req = http.expectOne(`${PEDIDOS}/p-1/conclusao`);
+    expect(req.request.body).toBe(corpo);
+    req.flush({ id: 'v-1' });
+    expect((await p).id).toBe('v-1');
+    expect(store.pedidos()[0].status).toBe('CONCLUIDO');
+  });
+
+  it('concluir: 409 PEDIDO_STATUS_INVALIDO relança e recarrega o pedido', async () => {
+    const p = store.concluir('p-1', {} as never);
+    http
+      .expectOne(`${PEDIDOS}/p-1/conclusao`)
+      .flush(
+        { code: 'PEDIDO_STATUS_INVALIDO', message: 'x', traceId: 't' },
+        { status: 409, statusText: 'x' },
+      );
+    await expect(p).rejects.toBeInstanceOf(ApiError);
+    http.expectOne(`${PEDIDOS}/p-1`).flush(pedido('CANCELADO'));
+    http.expectOne(`${CLIENTES}/c-1`).flush(cliente('c-1', 'Ana'));
+    expect(store.pedido()?.status).toBe('CANCELADO');
+  });
+
+  describe('registrarPerdas', () => {
+    const ocorrencia = {
+      galao: 'VAZIO' as const,
+      produtoId: 'pr-9',
+      marcaId: 'm-9',
+      tipoCascoId: 'tc-1',
+      quantidade: 2,
+      motivo: 'PERDIDO' as const,
+    };
+
+    it('envia o funcionarioId do operador e as ocorrências com os nulos certos; grava o pedido', async () => {
+      const p = store.registrarPerdas('p-1', [ocorrencia]);
+      const req = http.expectOne(`${PEDIDOS}/p-1/perdas`);
+      expect(req.request.body).toEqual({
+        funcionarioId: 'f1',
+        ocorrencias: [
+          {
+            galao: 'VAZIO',
+            produtoId: null,
+            marcaId: null,
+            tipoCascoId: 'tc-1',
+            quantidade: 2,
+            motivo: 'PERDIDO',
+          },
+        ],
+      });
+      req.flush(pedido('CONCLUIDO'));
+      await p;
+      expect(store.pedido()?.status).toBe('CONCLUIDO');
+    });
+
+    it('sucesso limpa as pendentes do pedido; erro mantém', async () => {
+      store.guardarPerdasPendentes('p-1', [ocorrencia]);
+      store.guardarPerdasPendentes('p-2', [ocorrencia]);
+      expect(store.perdasPendentes()['p-1']).toEqual([ocorrencia]);
+
+      const falha = store.registrarPerdas('p-1', [ocorrencia]);
+      http.expectOne(`${PEDIDOS}/p-1/perdas`).flush({}, { status: 500, statusText: 'x' });
+      await expect(falha).rejects.toBeDefined();
+      expect(store.perdasPendentes()['p-1']).toEqual([ocorrencia]);
+
+      const p = store.registrarPerdas('p-1', [ocorrencia]);
+      http.expectOne(`${PEDIDOS}/p-1/perdas`).flush(pedido('CONCLUIDO'));
+      await p;
+      expect(store.perdasPendentes()['p-1']).toBeUndefined();
+      expect(store.perdasPendentes()['p-2']).toEqual([ocorrencia]);
+    });
+  });
 });

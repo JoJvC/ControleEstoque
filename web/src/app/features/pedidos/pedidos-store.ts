@@ -4,7 +4,9 @@ import { Observable, Subscription, firstValueFrom } from 'rxjs';
 import { ClientesApi } from '../../core/api/clientes-api';
 import { PedidosApi } from '../../core/api/pedidos-api';
 import { ClienteResponse } from '../../core/api/models/clientes';
+import { VendaResponse } from '../../core/api/models/vendas';
 import {
+  ConcluirPedidoRequest,
   CriarPedidoRequest,
   PedidoResponse,
   PedidoResumoResponse,
@@ -12,6 +14,7 @@ import {
 } from '../../core/api/models/pedidos';
 import { ApiError } from '../../core/http/api-error';
 import { OperatorStore } from '../../core/operator/operator-store';
+import { Ocorrencia, paraOcorrenciaRequest } from './perdas-form';
 
 type Status = 'idle' | 'loading' | 'ok' | 'error';
 
@@ -36,6 +39,11 @@ export class PedidosStore {
   private readonly nomesInterno = signal<Readonly<Record<string, string>>>({});
   private readonly nomesPedidos = new Set<string>();
 
+  /** Ocorrências de perda que a conclusão não conseguiu gravar, por pedido; só em memória. */
+  private readonly perdasPendentesInterno = signal<Readonly<Record<string, readonly Ocorrencia[]>>>(
+    {},
+  );
+
   private buscaLista?: Subscription;
   private buscaPedido?: Subscription;
 
@@ -47,6 +55,7 @@ export class PedidosStore {
   readonly erroPedido = this.erroPedidoInterno.asReadonly();
   readonly cliente = this.clienteInterno.asReadonly();
   readonly nomes = this.nomesInterno.asReadonly();
+  readonly perdasPendentes = this.perdasPendentesInterno.asReadonly();
   /** Só a primeira página (50): o backend não devolve total. */
   readonly linhas = computed(() =>
     this.pedidosInterno().map((p) => ({
@@ -113,6 +122,42 @@ export class PedidosStore {
 
   cancelar(id: string): Promise<PedidoResponse> {
     return this.mudar(id, () => this.api.cancelar(id, { funcionarioId: this.funcionarioId() }));
+  }
+
+  /** O servidor devolve a venda; o pedido volta a ser lido pela página. Em PEDIDO_STATUS_INVALIDO recarrega e relança. */
+  async concluir(id: string, request: ConcluirPedidoRequest): Promise<VendaResponse> {
+    try {
+      const venda = await firstValueFrom(this.api.concluir(id, request));
+      this.pedidosInterno.update((lista) =>
+        lista.map((p) => (p.id === id ? { ...p, status: 'CONCLUIDO' } : p)),
+      );
+      return venda;
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'PEDIDO_STATUS_INVALIDO') {
+        this.carregar(id);
+      }
+      throw e;
+    }
+  }
+
+  /** Só pedido CONCLUIDO; sucesso grava o pedido devolvido e limpa as pendentes dele. */
+  async registrarPerdas(id: string, ocorrencias: readonly Ocorrencia[]): Promise<PedidoResponse> {
+    const pedido = await this.mudar(id, () =>
+      this.api.registrarPerdas(id, {
+        funcionarioId: this.funcionarioId(),
+        ocorrencias: ocorrencias.map(paraOcorrenciaRequest),
+      }),
+    );
+    this.guardarPerdasPendentes(id, []);
+    return pedido;
+  }
+
+  /** Lista vazia tira o pedido das pendentes. */
+  guardarPerdasPendentes(id: string, ocorrencias: readonly Ocorrencia[]): void {
+    this.perdasPendentesInterno.update((atual) => {
+      const resto = Object.fromEntries(Object.entries(atual).filter(([chave]) => chave !== id));
+      return ocorrencias.length > 0 ? { ...resto, [id]: ocorrencias } : resto;
+    });
   }
 
   /** Atualiza pedido aberto e lista; em PEDIDO_STATUS_INVALIDO recarrega o pedido e relança. */

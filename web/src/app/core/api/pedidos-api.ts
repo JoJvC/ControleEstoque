@@ -3,12 +3,15 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ConfigStore } from '../config/app-config';
+import { VendaResponse } from './models/vendas';
 import {
   CancelarPedidoRequest,
+  ConcluirPedidoRequest,
   CriarPedidoRequest,
   IniciarPedidoRequest,
   PedidoResponse,
   PedidoResumoResponse,
+  RegistrarPerdasRequest,
   StatusPedido,
 } from './models/pedidos';
 
@@ -44,5 +47,13 @@ export class PedidosApi {
 
   cancelar(id: string, request: CancelarPedidoRequest): Observable<PedidoResponse> {
     return this.http.post<PedidoResponse>(`${this.base}/${id}/cancelamento`, request);
+  }
+
+  concluir(id: string, request: ConcluirPedidoRequest): Observable<VendaResponse> {
+    return this.http.post<VendaResponse>(`${this.base}/${id}/conclusao`, request);
+  }
+
+  registrarPerdas(id: string, request: RegistrarPerdasRequest): Observable<PedidoResponse> {
+    return this.http.post<PedidoResponse>(`${this.base}/${id}/perdas`, request);
   }
 }

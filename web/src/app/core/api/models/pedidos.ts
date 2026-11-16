@@ -1,6 +1,13 @@
 // Espelho manual de src/vendas/ControleEstoque.Vendas.Contracts (VendasContracts.cs:134-188) — não inventar campos.
 
-import { DescontoRequest, ItemVendaRequest } from './vendas';
+import {
+  CascoPorTipoRequest,
+  DescontoRequest,
+  ItemVendaRequest,
+  PagamentoRequest,
+  SucataEntregueRequest,
+  VasilhameRequest,
+} from './vendas';
 
 export type StatusPedido = 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDO' | 'CANCELADO';
 export type GalaoPerda = 'CHEIO' | 'VAZIO';
@@ -23,6 +30,33 @@ export interface IniciarPedidoRequest {
 
 export interface CancelarPedidoRequest {
   funcionarioId: string;
+}
+
+/** Cliente e endereço vêm do pedido; os itens são os do pedido, já editados. */
+export interface ConcluirPedidoRequest {
+  funcionarioId: string;
+  itens: ItemVendaRequest[];
+  vasilhames: VasilhameRequest[];
+  pagamentos: PagamentoRequest[];
+  cascosDevolvidos: CascoPorTipoRequest[];
+  sucataEntregue: SucataEntregueRequest[];
+  observacao: string | null;
+}
+
+/** CHEIO leva produto+marca; VAZIO leva o tipo de casco. */
+export interface OcorrenciaPerdaRequest {
+  galao: GalaoPerda;
+  produtoId: string | null;
+  marcaId: string | null;
+  tipoCascoId: string | null;
+  quantidade: number;
+  motivo: MotivoPerda;
+}
+
+/** Os responsáveis são os funcionários do pedido: o request não leva o campo. */
+export interface RegistrarPerdasRequest {
+  funcionarioId: string;
+  ocorrencias: OcorrenciaPerdaRequest[];
 }
 
 export interface PedidoResumoResponse {

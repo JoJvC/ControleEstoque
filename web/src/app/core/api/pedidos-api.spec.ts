@@ -80,4 +80,24 @@ describe('PedidosApi', () => {
     expect(req.request.body).toBe(body);
     req.flush({ id: ID });
   });
+
+  it('concluir: POST /pedidos/{id}/conclusao com o corpo e devolve a venda', () => {
+    let resp: unknown;
+    api.concluir(ID, body).subscribe((r) => (resp = r));
+    const req = http.expectOne(`${BASE}/${ID}/conclusao`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toBe(body);
+    req.flush({ id: 'v-1' });
+    expect(resp).toEqual({ id: 'v-1' });
+  });
+
+  it('registrarPerdas: POST /pedidos/{id}/perdas com o corpo e devolve o pedido', () => {
+    let resp: unknown;
+    api.registrarPerdas(ID, body).subscribe((r) => (resp = r));
+    const req = http.expectOne(`${BASE}/${ID}/perdas`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toBe(body);
+    req.flush({ id: ID, perdas: [] });
+    expect(resp).toEqual({ id: ID, perdas: [] });
+  });
 });

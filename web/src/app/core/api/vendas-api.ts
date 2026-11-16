@@ -12,7 +12,7 @@ import {
   VendaDetalheResponse,
   VendaResponse,
 } from './models/vendas';
-import { RelatorioFaturamento, VendasPorFuncionario } from './models/relatorios';
+import { RelatorioFaturamento, RelatorioVendasPorFuncionario } from './models/relatorios';
 import { periodoParams } from './periodo-params';
 
 export interface VendaFiltros {
@@ -108,9 +108,15 @@ export class VendasApi {
     return this.http.get<RelatorioFaturamento>(`${this.base}/relatorios/faturamento`, { params });
   }
 
-  relatorioVendasPorFuncionario(inicio?: string, fim?: string): Observable<VendasPorFuncionario[]> {
-    return this.http.get<VendasPorFuncionario[]>(`${this.base}/relatorios/vendas-por-funcionario`, {
-      params: periodoParams(inicio, fim),
-    });
+  relatorioVendasPorFuncionario(
+    inicio?: string,
+    fim?: string,
+  ): Observable<RelatorioVendasPorFuncionario> {
+    return this.http.get<RelatorioVendasPorFuncionario>(
+      `${this.base}/relatorios/vendas-por-funcionario`,
+      {
+        params: periodoParams(inicio, fim),
+      },
+    );
   }
 }

@@ -1,6 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
+import { LinhaVendasPorFuncionario } from '../../core/api/models/relatorios';
+import { rotuloDaMarca } from '../../core/api/produto-leitura';
+import { Icon } from '../../ui/atoms/icon';
 import { EmptyState } from '../../ui/molecules/empty-state';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
@@ -12,7 +15,7 @@ import { RelatoriosStore } from './relatorios-store';
 @Component({
   selector: 'ce-vendas-por-funcionario-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, EmptyState, EstadoRelatorio, FiltroPeriodo, PrecoPipe],
+  imports: [AppHeader, EmptyState, EstadoRelatorio, FiltroPeriodo, Icon, PrecoPipe],
   styleUrl: './relatorio.scss',
   template: `
     <ce-app-header titulo="Vendas por funcionário" [mostrarVoltar]="true" (voltar)="voltar()" />
@@ -22,8 +25,8 @@ import { RelatoriosStore } from './relatorios-store';
       [fim]="fim()"
       [erro]="erroPeriodo()"
       [carregando]="estado().carregando"
-      (inicioChange)="inicio.set($event)"
-      (fimChange)="fim.set($event)"
+      (inicioChange)="mudarInicio($event)"
+      (fimChange)="mudarFim($event)"
       (buscar)="buscar()"
     />
 
@@ -34,43 +37,67 @@ import { RelatoriosStore } from './relatorios-store';
         [temDados]="!!estado().dados"
         (recarregar)="buscar()"
       />
-      @if (estado().dados; as linhas) {
-        @if (linhas.length === 0) {
+      @if (estado().dados; as r) {
+        @if (r.funcionarios.length === 0) {
           <ce-empty-state icone="alerta" titulo="Nenhuma venda no período" />
         } @else {
-          <ul class="cards">
-            @for (f of linhas; track f.funcionarioId) {
-              <li class="card">
-                <dl>
-                  <dt class="card__titulo">{{ f.nome }}</dt>
-                  <dt>Vendas</dt>
-                  <dd>{{ f.quantidadeVendas }}</dd>
-                  <dt>Total líquido</dt>
-                  <dd>{{ f.totalLiquido | cePreco }}</dd>
-                </dl>
+          <dl class="totais">
+            <div class="total">
+              <dt>Vendas</dt>
+              <dd>{{ r.totais.quantidadeVendas }}</dd>
+            </div>
+            <div class="total">
+              <dt>Entregas</dt>
+              <dd>{{ r.totais.quantidadeEntregas }}</dd>
+            </div>
+            <div class="total">
+              <dt>Total</dt>
+              <dd>{{ r.totais.totalLiquido | cePreco }}</dd>
+            </div>
+          </dl>
+          <ul class="funcionarios">
+            @for (f of r.funcionarios; track f.funcionarioId) {
+              <li class="funcionario">
+                <button
+                  type="button"
+                  class="funcionario__cab"
+                  [attr.aria-expanded]="aberto(f.funcionarioId)"
+                  (click)="alternar(f.funcionarioId)"
+                >
+                  <ce-icon
+                    class="funcionario__seta"
+                    [class.funcionario__seta--aberta]="aberto(f.funcionarioId)"
+                    nome="seta-direita"
+                    [tamanho]="20"
+                  />
+                  <span class="funcionario__nome">{{ f.nome }}</span>
+                  <span class="funcionario__resumo">
+                    {{ f.quantidadeVendas }} vendas · {{ f.quantidadeEntregas }} entregas ·
+                    {{ f.totalLiquido | cePreco }}
+                  </span>
+                </button>
+                @if (aberto(f.funcionarioId)) {
+                  <ul class="funcionario__detalhe">
+                    @for (l of f.itens; track $index) {
+                      <li>
+                        <span>{{ descricao(l) }}</span>
+                        <span class="funcionario__detalhe-qtd">{{ l.quantidade }}</span>
+                        <span class="funcionario__detalhe-valor">{{ l.total | cePreco }}</span>
+                      </li>
+                    }
+                    @if (f.descontoSucata > 0) {
+                      <li class="funcionario__detalhe-sucata">
+                        <span>Desconto por sucata</span>
+                        <span class="funcionario__detalhe-valor">{{
+                          f.descontoSucata | cePreco
+                        }}</span>
+                      </li>
+                    }
+                  </ul>
+                }
               </li>
             }
           </ul>
-          <div class="tabela">
-            <table>
-              <thead>
-                <tr>
-                  <th>Funcionário</th>
-                  <th class="num">Vendas</th>
-                  <th class="num">Total líquido</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (f of linhas; track f.funcionarioId) {
-                  <tr>
-                    <td>{{ f.nome }}</td>
-                    <td class="num">{{ f.quantidadeVendas }}</td>
-                    <td class="num">{{ f.totalLiquido | cePreco }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
         }
       }
     </div>
@@ -88,7 +115,37 @@ export class VendasPorFuncionarioPage {
     periodoInvertido(this.inicio(), this.fim()) ? MSG_PERIODO_INVERTIDO : null,
   );
 
+  private readonly abertos = signal<ReadonlySet<string>>(new Set());
+
   constructor() {
+    this.buscar();
+  }
+
+  protected aberto(id: string): boolean {
+    return this.abertos().has(id);
+  }
+
+  protected alternar(id: string): void {
+    const novo = new Set(this.abertos());
+    if (!novo.delete(id)) {
+      novo.add(id);
+    }
+    this.abertos.set(novo);
+  }
+
+  protected descricao(l: LinhaVendasPorFuncionario): string {
+    return l.tipo === 'VASILHAME'
+      ? `Vasilhame ${l.tipoCascoNome}`
+      : `${l.produtoNome} ${rotuloDaMarca(l.marcaNome ?? '')}`;
+  }
+
+  protected mudarInicio(valor: string): void {
+    this.inicio.set(valor);
+    this.buscar();
+  }
+
+  protected mudarFim(valor: string): void {
+    this.fim.set(valor);
     this.buscar();
   }
 

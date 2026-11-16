@@ -123,3 +123,81 @@ h2 {
 .abaixo-minimo {
   background: var(--ce-warning-soft);
 }
+
+.funcionarios,
+.funcionario__detalhe {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.funcionarios {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ce-space-2);
+}
+
+.funcionario {
+  border-radius: 20px;
+  background: var(--ce-surface);
+}
+
+.funcionario__cab {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ce-space-1) var(--ce-space-3);
+  inline-size: 100%;
+  padding: var(--ce-space-3) var(--ce-space-4);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.funcionario__nome {
+  flex: 1;
+  font-weight: 600;
+}
+
+.funcionario__resumo {
+  font-family: var(--ce-font-family-titulo);
+  font-weight: 600;
+  @include mixins.tabular-numbers;
+}
+
+.funcionario__seta {
+  transition: transform 0.15s;
+}
+
+.funcionario__seta--aberta {
+  transform: rotate(90deg);
+}
+
+.funcionario__detalhe {
+  padding: 0 var(--ce-space-4) var(--ce-space-3);
+  @include mixins.tabular-numbers;
+
+  li {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: var(--ce-space-3);
+    padding: var(--ce-space-1) 0;
+    border-top: 1px solid var(--ce-border);
+  }
+}
+
+.funcionario__detalhe-qtd,
+.funcionario__detalhe-valor {
+  text-align: right;
+}
+
+.funcionario__detalhe-sucata {
+  color: var(--ce-text-muted);
+}
+
+.funcionario__detalhe-sucata .funcionario__detalhe-valor {
+  grid-column: 3;
+}

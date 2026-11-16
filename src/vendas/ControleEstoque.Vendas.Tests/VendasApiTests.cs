@@ -31,6 +31,30 @@ public sealed class VendasApiTests : IClassFixture<VendasApiTests.Fabrica>
     }
 
     [Fact]
+    public async Task VendasPorFuncionarioDevolveOFormatoComTotaisEDetalhamento()
+    {
+        var resposta = await fabrica.CreateClient()
+            .GetAsync("/v1/relatorios/vendas-por-funcionario?inicio=2026-11-01&fim=2026-11-15");
+
+        Assert.Equal(HttpStatusCode.OK, resposta.StatusCode);
+        using var json = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync());
+        var raiz = json.RootElement;
+        Assert.Equal("2026-11-01", raiz.GetProperty("inicio").GetString());
+        var totais = raiz.GetProperty("totais");
+        Assert.Equal(1, totais.GetProperty("quantidadeVendas").GetInt32());
+        Assert.Equal(0, totais.GetProperty("quantidadeEntregas").GetInt32());
+        Assert.Equal(55m, totais.GetProperty("totalLiquido").GetDecimal());
+        var ana = raiz.GetProperty("funcionarios")[0];
+        Assert.Equal("Ana", ana.GetProperty("nome").GetString());
+        Assert.Equal(0m, ana.GetProperty("descontoSucata").GetDecimal());
+        var itens = ana.GetProperty("itens");
+        Assert.Equal("PRODUTO", itens[0].GetProperty("tipo").GetString());
+        Assert.Equal("Indaiá", itens[0].GetProperty("marcaNome").GetString());
+        Assert.Equal("VASILHAME", itens[1].GetProperty("tipo").GetString());
+        Assert.Equal("20L", itens[1].GetProperty("tipoCascoNome").GetString());
+    }
+
+    [Fact]
     public async Task FaturamentoComInicioDepoisDeFimRecusaPeriodo()
     {
         var resposta = await fabrica.CreateClient().GetAsync("/v1/relatorios/faturamento?inicio=2026-11-16&fim=2026-11-15");
@@ -488,14 +512,19 @@ public sealed class VendasApiTests : IClassFixture<VendasApiTests.Fabrica>
 
         private sealed class RelatorioFalso : IRelatorioVendasRepository
         {
+            private static readonly VendaParaRelatorio VendaBalcao = new(
+                Guid.NewGuid(), new FuncionarioRelatorio(Guid.NewGuid(), "Ana"), false, [], 55m, 0m,
+                [new ItemVendaRelatorio(Guid.NewGuid(), "Água 20L", Guid.NewGuid(), "Indaiá", 2, 30m)],
+                [new VasilhameVendaRelatorio(Guid.NewGuid(), "20L", 1, 25m)]);
+
             public Task<RelatorioFaturamento> FaturamentoAsync(
                 DateOnly? inicio, DateOnly? fim, Guid? produtoId, CancellationToken cancellationToken) =>
                 Task.FromResult(new RelatorioFaturamento(
                     100m, 0m, 100m, [], [new FaturamentoPorDia(Dia, 100m, 90m, 40m)], [], 90m, 40m));
 
-            public Task<IReadOnlyList<VendasPorFuncionario>> VendasPorFuncionarioAsync(
+            public Task<RelatorioVendasPorFuncionario> VendasPorFuncionarioAsync(
                 DateOnly? inicio, DateOnly? fim, CancellationToken cancellationToken) =>
-                Task.FromResult<IReadOnlyList<VendasPorFuncionario>>([]);
+                Task.FromResult(VendasPorFuncionarioAgrupado.Montar(inicio, fim, [VendaBalcao]));
         }
     }
 }

@@ -13,8 +13,8 @@ import {
   SaldoCascoRelatorio,
   SaldoFiadoCliente,
   SaldoFuncionario,
+  RelatorioVendasPorFuncionario,
   SucataEntregueRelatorio,
-  VendasPorFuncionario,
 } from '../../core/api/models/relatorios';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { RhApi } from '../../core/api/rh-api';
@@ -47,7 +47,7 @@ export class RelatoriosStore {
   private readonly operatorStore = inject(OperatorStore);
 
   private readonly faturamentoInterno = signal(vazio<RelatorioFaturamento>());
-  private readonly vendasPorFuncionarioInterno = signal(vazio<VendasPorFuncionario[]>());
+  private readonly vendasPorFuncionarioInterno = signal(vazio<RelatorioVendasPorFuncionario>());
   private readonly caixaInterno = signal(vazio<RelatorioCaixa>());
   private readonly fiadoInterno = signal(vazio<SaldoFiadoCliente[]>());
   private readonly cascosInterno = signal(vazio<SaldoCascoRelatorio[]>());
@@ -126,15 +126,26 @@ export class RelatoriosStore {
     return this.carregar(this.contaFuncionariosInterno, this.rh.relatorioContaFuncionarios());
   }
 
+  /** Cada relatório guarda só a última chamada: resposta de uma anterior que chega depois é descartada. */
+  private readonly ultimaChamada = new WeakMap<object, number>();
+
   /** Recarga mantém os dados antigos até a resposta; falha limpa os dados e guarda a mensagem. */
   private async carregar<T>(
     alvo: { set(v: EstadoRelatorio<T>): void; (): EstadoRelatorio<T> },
     origem: Observable<T>,
   ): Promise<void> {
+    const chamada = (this.ultimaChamada.get(alvo) ?? 0) + 1;
+    this.ultimaChamada.set(alvo, chamada);
     alvo.set({ dados: alvo().dados, carregando: true, erro: null });
     try {
-      alvo.set({ dados: await firstValueFrom(origem), carregando: false, erro: null });
+      const dados = await firstValueFrom(origem);
+      if (this.ultimaChamada.get(alvo) === chamada) {
+        alvo.set({ dados, carregando: false, erro: null });
+      }
     } catch (e) {
+      if (this.ultimaChamada.get(alvo) !== chamada) {
+        return;
+      }
       const erro = e instanceof ApiError ? e.userMessage : 'Não foi possível carregar o relatório.';
       alvo.set({ dados: null, carregando: false, erro });
     }

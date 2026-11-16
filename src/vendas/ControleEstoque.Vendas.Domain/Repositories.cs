@@ -168,6 +168,6 @@ public interface IRelatorioVendasRepository
 {
     Task<RelatorioFaturamento> FaturamentoAsync(
         DateOnly? inicio, DateOnly? fim, Guid? produtoId, CancellationToken cancellationToken);
-    Task<IReadOnlyList<VendasPorFuncionario>> VendasPorFuncionarioAsync(
+    Task<RelatorioVendasPorFuncionario> VendasPorFuncionarioAsync(
         DateOnly? inicio, DateOnly? fim, CancellationToken cancellationToken);
 }

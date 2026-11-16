@@ -80,21 +80,59 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
             recebidoPorDia.Values.Sum(), fiadoPorDia.Values.Sum());
     }
 
-    public async Task<IReadOnlyList<VendasPorFuncionario>> VendasPorFuncionarioAsync(
+    public async Task<RelatorioVendasPorFuncionario> VendasPorFuncionarioAsync(
         DateOnly? inicio, DateOnly? fim, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(Sql.PorFuncionario, connection);
-        AddFiltros(command, inicio, fim, null);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var results = new List<VendasPorFuncionario>();
-        while (await reader.ReadAsync(cancellationToken))
+
+        var cabecalhos = new List<(Guid Id, FuncionarioRelatorio Funcionario, bool DePedido, decimal TotalLiquido, decimal DescontoSucata)>();
+        await foreach (var r in LerAsync(connection, Sql.PorFuncionarioVendas, inicio, fim, cancellationToken))
         {
-            results.Add(new VendasPorFuncionario(
-                reader.GetGuid(0), reader.GetString(1), reader.GetInt64(2), reader.GetDecimal(3)));
+            cabecalhos.Add((r.GetGuid(0), new FuncionarioRelatorio(r.GetGuid(1), r.GetString(2)), r.GetBoolean(3),
+                r.GetDecimal(4), r.GetDecimal(5)));
         }
 
-        return results;
+        var funcionariosPedido = new Dictionary<Guid, List<FuncionarioRelatorio>>();
+        await foreach (var r in LerAsync(connection, Sql.PorFuncionarioPedido, inicio, fim, cancellationToken))
+        {
+            Lista(funcionariosPedido, r.GetGuid(0)).Add(new FuncionarioRelatorio(r.GetGuid(1), r.GetString(2)));
+        }
+
+        var itens = new Dictionary<Guid, List<ItemVendaRelatorio>>();
+        await foreach (var r in LerAsync(connection, Sql.PorFuncionarioItens, inicio, fim, cancellationToken))
+        {
+            Lista(itens, r.GetGuid(0)).Add(new ItemVendaRelatorio(
+                r.GetGuid(1), r.GetString(2), r.GetGuid(3), r.GetString(4), r.GetInt32(5), r.GetDecimal(6)));
+        }
+
+        var vasilhames = new Dictionary<Guid, List<VasilhameVendaRelatorio>>();
+        await foreach (var r in LerAsync(connection, Sql.PorFuncionarioVasilhames, inicio, fim, cancellationToken))
+        {
+            Lista(vasilhames, r.GetGuid(0)).Add(new VasilhameVendaRelatorio(
+                r.GetGuid(1), r.GetString(2), r.GetInt32(3), r.GetDecimal(4)));
+        }
+
+        var vendas = cabecalhos.Select(c => new VendaParaRelatorio(
+            c.Id, c.Funcionario, c.DePedido,
+            funcionariosPedido.GetValueOrDefault(c.Id) ?? [], c.TotalLiquido, c.DescontoSucata,
+            itens.GetValueOrDefault(c.Id) ?? [], vasilhames.GetValueOrDefault(c.Id) ?? [])).ToList();
+        return VendasPorFuncionarioAgrupado.Montar(inicio, fim, vendas);
+    }
+
+    private static List<T> Lista<T>(Dictionary<Guid, List<T>> destino, Guid chave) =>
+        destino.TryGetValue(chave, out var lista) ? lista : destino[chave] = [];
+
+    private static async IAsyncEnumerable<NpgsqlDataReader> LerAsync(
+        NpgsqlConnection connection, string sql, DateOnly? inicio, DateOnly? fim,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(sql, connection);
+        AddFiltros(command, inicio, fim, null);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            yield return reader;
+        }
     }
 
     private static async Task LerPorDiaAsync(
@@ -214,15 +252,48 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
             ORDER BY v.data::date
             """;
 
-        public const string PorFuncionario = """
-            SELECT v.funcionario_id, f.nome, COUNT(*)::bigint, COALESCE(SUM(v.total_liquido), 0)
+        // Quatro leituras do mesmo período (venda, funcionários do pedido, itens, vasilhames); a atribuição é do domínio.
+        public const string PorFuncionarioVendas = """
+            SELECT v.id, v.funcionario_id, f.nome, (p.id IS NOT NULL), v.total_liquido, v.desconto_sucata
             FROM vendas v
             JOIN funcionarios f ON f.id = v.funcionario_id
+            LEFT JOIN pedidos p ON p.venda_id = v.id
             WHERE v.deleted_at IS NULL
               AND (@inicio IS NULL OR v.data::date >= @inicio)
               AND (@fim IS NULL OR v.data::date <= @fim)
-            GROUP BY v.funcionario_id, f.nome
-            ORDER BY SUM(v.total_liquido) DESC
+            """;
+
+        public const string PorFuncionarioPedido = """
+            SELECT p.venda_id, pf.funcionario_id, f.nome
+            FROM pedidos p
+            JOIN vendas v ON v.id = p.venda_id
+            JOIN pedido_funcionarios pf ON pf.pedido_id = p.id
+            JOIN funcionarios f ON f.id = pf.funcionario_id
+            WHERE v.deleted_at IS NULL
+              AND (@inicio IS NULL OR v.data::date >= @inicio)
+              AND (@fim IS NULL OR v.data::date <= @fim)
+            """;
+
+        public const string PorFuncionarioItens = """
+            SELECT i.venda_id, pm.produto_id, p.nome, pm.marca_id, m.nome, i.quantidade, i.total_item
+            FROM venda_itens i
+            JOIN vendas v ON v.id = i.venda_id
+            JOIN produto_marcas pm ON pm.id = i.produto_marca_id
+            JOIN produtos p ON p.id = pm.produto_id
+            JOIN marcas m ON m.id = pm.marca_id
+            WHERE i.deleted_at IS NULL AND v.deleted_at IS NULL
+              AND (@inicio IS NULL OR v.data::date >= @inicio)
+              AND (@fim IS NULL OR v.data::date <= @fim)
+            """;
+
+        public const string PorFuncionarioVasilhames = """
+            SELECT vv.venda_id, vv.tipo_casco_id, tc.nome, vv.quantidade, vv.total
+            FROM venda_vasilhames vv
+            JOIN vendas v ON v.id = vv.venda_id
+            JOIN tipos_casco tc ON tc.id = vv.tipo_casco_id
+            WHERE vv.deleted_at IS NULL AND v.deleted_at IS NULL
+              AND (@inicio IS NULL OR v.data::date >= @inicio)
+              AND (@fim IS NULL OR v.data::date <= @fim)
             """;
     }
 }

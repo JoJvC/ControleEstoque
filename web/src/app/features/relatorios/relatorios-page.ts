@@ -242,7 +242,7 @@ export class RelatoriosPage {
     {
       rota: 'vendas-por-funcionario',
       titulo: 'Vendas por funcionário',
-      descricao: 'Vendas e total líquido de cada funcionário.',
+      descricao: 'Vendas, entregas e itens de cada funcionário no período.',
       icone: 'usuario',
     },
     {

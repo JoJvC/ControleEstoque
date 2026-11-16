@@ -78,9 +78,42 @@ describe('RelatoriosStore', () => {
     await p2;
   });
 
+  it('duas cargas pendentes respondendo fora de ordem: fica a última chamada', async () => {
+    const p1 = store.carregarVendasPorFuncionario('2020-01-01', '2020-01-31');
+    const p2 = store.carregarVendasPorFuncionario('2020-02-01', '2020-02-29');
+    const [r1, r2] = http.match((r) => r.url === `${VENDAS}/vendas-por-funcionario`);
+    const rel = (total: number) => ({
+      inicio: null,
+      fim: null,
+      totais: { quantidadeVendas: 1, quantidadeEntregas: 0, totalLiquido: total },
+      funcionarios: [],
+    });
+    r2.flush(rel(2));
+    await p2;
+    r1.flush(rel(1));
+    await p1;
+    expect(store.vendasPorFuncionario().dados?.totais.totalLiquido).toBe(2);
+    expect(store.vendasPorFuncionario().carregando).toBe(false);
+  });
+
   it('vendas por funcionário, caixa e fiado guardam a resposta e têm erro próprio', async () => {
     const pv = store.carregarVendasPorFuncionario('2026-11-01', '2026-11-13');
-    const vendas = [{ funcionarioId: 'f1', nome: 'Ana', quantidadeVendas: 2, totalLiquido: 50 }];
+    const vendas = {
+      inicio: '2026-11-01',
+      fim: '2026-11-13',
+      totais: { quantidadeVendas: 2, quantidadeEntregas: 1, totalLiquido: 80 },
+      funcionarios: [
+        {
+          funcionarioId: 'f1',
+          nome: 'Ana',
+          quantidadeVendas: 2,
+          quantidadeEntregas: 1,
+          totalLiquido: 80,
+          descontoSucata: 0,
+          itens: [{ tipo: 'VASILHAME' as const, tipoCascoNome: '20L', quantidade: 1, total: 25 }],
+        },
+      ],
+    };
     http.expectOne((r) => r.url === `${VENDAS}/vendas-por-funcionario`).flush(vendas);
     await pv;
     expect(store.vendasPorFuncionario().dados).toEqual(vendas);

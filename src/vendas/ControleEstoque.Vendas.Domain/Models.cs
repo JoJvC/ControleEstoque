@@ -184,7 +184,36 @@ public sealed record RelatorioFaturamento(
     decimal Recebido,
     decimal FiadoGerado);
 
-public sealed record VendasPorFuncionario(Guid FuncionarioId, string Nome, long QuantidadeVendas, decimal TotalLiquido);
+public sealed record FuncionarioRelatorio(Guid Id, string Nome);
+
+public sealed record ItemVendaRelatorio(
+    Guid ProdutoId, string ProdutoNome, Guid MarcaId, string MarcaNome, int Quantidade, decimal Total);
+
+public sealed record VasilhameVendaRelatorio(Guid TipoCascoId, string TipoCascoNome, int Quantidade, decimal Total);
+
+/// <summary>
+/// Venda já lida do banco. DePedido = a venda veio de um Pedido (pedidos.venda_id); FuncionariosPedido são
+/// os funcionários desse pedido (vazia em venda de balcão e no pedido sem funcionários, caso de borda).
+/// </summary>
+public sealed record VendaParaRelatorio(
+    Guid Id, FuncionarioRelatorio Funcionario, bool DePedido, IReadOnlyList<FuncionarioRelatorio> FuncionariosPedido,
+    decimal TotalLiquido, decimal DescontoSucata,
+    IReadOnlyList<ItemVendaRelatorio> Itens, IReadOnlyList<VasilhameVendaRelatorio> Vasilhames);
+
+/// <summary>Tipo = "PRODUTO" (produto+marca) ou "VASILHAME" (tipo de casco); os ids/nomes do outro tipo ficam nulos.</summary>
+public sealed record LinhaRelatorioFuncionario(
+    string Tipo, Guid? ProdutoId, string? ProdutoNome, Guid? MarcaId, string? MarcaNome,
+    Guid? TipoCascoId, string? TipoCascoNome, int Quantidade, decimal Total);
+
+public sealed record ResumoFuncionarioVendas(
+    Guid FuncionarioId, string Nome, long QuantidadeVendas, long QuantidadeEntregas, decimal TotalLiquido,
+    decimal DescontoSucata, IReadOnlyList<LinhaRelatorioFuncionario> Itens);
+
+public sealed record TotaisVendasPorFuncionario(long QuantidadeVendas, long QuantidadeEntregas, decimal TotalLiquido);
+
+public sealed record RelatorioVendasPorFuncionario(
+    DateOnly? Inicio, DateOnly? Fim, TotaisVendasPorFuncionario Totais,
+    IReadOnlyList<ResumoFuncionarioVendas> Funcionarios);
 
 /// <summary>Item = produto+marca, como na venda; o pedido ainda não calcula totais.</summary>
 public sealed record NovoPedido(

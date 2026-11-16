@@ -35,11 +35,34 @@ export interface RelatorioFaturamento {
   fiadoGerado: number;
 }
 
-export interface VendasPorFuncionario {
+// vendas — Vendas.Domain/Models.cs (RelatorioVendasPorFuncionario)
+export interface LinhaVendasPorFuncionario {
+  tipo: 'PRODUTO' | 'VASILHAME';
+  produtoId?: string | null;
+  produtoNome?: string | null;
+  marcaId?: string | null;
+  marcaNome?: string | null;
+  tipoCascoId?: string | null;
+  tipoCascoNome?: string | null;
+  quantidade: number;
+  total: number;
+}
+
+export interface ResumoVendasPorFuncionario {
   funcionarioId: string;
   nome: string;
   quantidadeVendas: number;
+  quantidadeEntregas: number;
   totalLiquido: number;
+  descontoSucata: number;
+  itens: LinhaVendasPorFuncionario[];
+}
+
+export interface RelatorioVendasPorFuncionario {
+  inicio: string | null;
+  fim: string | null;
+  totais: { quantidadeVendas: number; quantidadeEntregas: number; totalLiquido: number };
+  funcionarios: ResumoVendasPorFuncionario[];
 }
 
 // financeiro — Financeiro.Domain/Models.cs

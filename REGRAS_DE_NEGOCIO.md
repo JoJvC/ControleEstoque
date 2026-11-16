@@ -227,7 +227,14 @@ Controles envolvidos:
 - **Permissões**: sistema 100% configurável. Existe um cargo nativo (ADM) com acesso total; demais cargos são criados livremente pelo usuário, com permissões granulares atribuíveis, e vinculados aos funcionários.
 
 ## 6. Relatórios e Indicadores
-- Relatório de Vendas por funcionário.
+- Relatório de Vendas por funcionário, no período (`v.data::date` entre início e fim, inclusive): para cada funcionário, nº de vendas de balcão, nº de entregas, total líquido em R$ e o detalhamento das unidades e do R$ de cada produto+marca e de cada vasilhame vendido (uma linha por tipo de casco, `Vasilhame <tipo>`).
+  - **Venda de balcão** (sem Pedido): creditada a quem a fez (`vendas.funcionario_id`), como 1 venda.
+  - **Venda que veio de Pedido**: é uma entrega, creditada inteira (1 entrega, todas as unidades e o total) a **cada** funcionário do Pedido. Quem concluiu o Pedido só recebe se também estiver nele. Pedido sem nenhum funcionário (caso de borda): a entrega vai para `vendas.funcionario_id`.
+  - **Total do período**: nº de vendas, nº de entregas e R$ contam cada venda uma vez só, nunca a soma das linhas por funcionário (uma entrega com dois funcionários aparece para os dois e uma vez no total).
+  - **Desconto por sucata** é da venda e não se rateia: o R$ do funcionário é a soma do total líquido das vendas creditadas a ele, e o desconto aparece à parte (`Desconto por sucata`) no detalhamento.
+  - A linha de vasilhame mostra a quantidade vendida inteira, inclusive as unidades abatidas por crédito de galão, e como R$ só o que foi cobrado (um vasilhame todo abatido aparece com R$ 0,00).
+  - Vendas canceladas ficam de fora. Só aparece funcionário com venda ou entrega no período; ordem por total decrescente e nome.
+  - Permissão `relatorios.ver` só na tela e no menu: o servidor não checa (como nos demais relatórios, exceto o de lucro).
 - Relatório de Faturamento por período e/ou por produto.
 - Relatório de Estoque (por produto+marca; cascos vazios e sucata por tipo de casco; e alertas de estoque mínimo por produto+marca). Cada linha traz também o estoque geral do produto, vindo do servidor; a lista de vasilhames mostra só os tipos com saldo diferente de zero, com estado vazio.
 - Relatório de Caixa (incluindo diárias lançadas e despesas por tipo).

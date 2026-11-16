@@ -192,8 +192,14 @@ describe('VendasApi', () => {
       expect(req.request.params.keys().sort()).toEqual(['fim', 'inicio']);
       expect(req.request.params.get('inicio')).toBe('2026-11-01');
       expect(req.request.params.get('fim')).toBe('2026-11-13');
-      req.flush([{ funcionarioId: 'f1' }]);
-      expect(resp).toEqual([{ funcionarioId: 'f1' }]);
+      const corpo = {
+        inicio: '2026-11-01',
+        fim: '2026-11-13',
+        totais: { quantidadeVendas: 1, quantidadeEntregas: 1, totalLiquido: 385 },
+        funcionarios: [],
+      };
+      req.flush(corpo);
+      expect(resp).toEqual(corpo);
     });
   });
 

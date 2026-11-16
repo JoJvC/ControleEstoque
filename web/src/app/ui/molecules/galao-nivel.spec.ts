@@ -4,9 +4,11 @@ import { EstoqueItemResponse } from '../../core/api/models/estoque';
 import { GalaoNivel } from './galao-nivel';
 
 const BASE: EstoqueItemResponse = {
+  produtoMarcaId: 'pm-a1',
   produtoId: 'a1',
   tipo: 'RETORNAVEL',
   nome: 'Água 20L',
+  marcaId: 'm-1',
   marca: 'Cristal',
   categoria: null,
   tamanho: null,

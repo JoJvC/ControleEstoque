@@ -1,40 +1,35 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
-import { EstoqueItemResponse } from '../../core/api/models/estoque';
+import { ProdutoMarcaResponse, ProdutoResponse } from '../../core/api/models/estoque';
+import { rotuloDaMarca } from '../../core/api/produto-leitura';
 import { SheetService } from '../../core/overlay/sheet-service';
 import { CePermissao } from '../../core/permissions/ce-permissao';
 import { PermissionService } from '../../core/permissions/permission-service';
 import { ToastService } from '../../core/toast/toast-service';
 import { Button } from '../../ui/atoms/button';
-import { Chip } from '../../ui/atoms/chip';
-import { Icon, IconeNome } from '../../ui/atoms/icon';
+import { Icon } from '../../ui/atoms/icon';
 import { iconeDoProduto } from '../../ui/atoms/icone-do-produto';
 import { Skeleton } from '../../ui/atoms/skeleton';
-import { BarraEstoque } from '../../ui/molecules/barra-estoque';
 import { EmptyState } from '../../ui/molecules/empty-state';
-import { GalaoNivel } from '../../ui/molecules/galao-nivel';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { AjusteSheet, AjusteSheetDados } from './ajuste-sheet';
 import { BaixaCascoSheet } from './baixa-casco-sheet';
-import { agruparEstoque, maiorEstoque } from './estoque-grupos';
+import {
+  agruparEstoque,
+  cascosComSaldo,
+  maiorEstoque,
+  nomeComTamanho,
+  proporcao,
+} from './estoque-grupos';
 import { EstoqueStore } from './estoque-store';
 
 @Component({
   selector: 'ce-estoque-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    CePermissao,
-    AppHeader,
-    Button,
-    Chip,
-    EmptyState,
-    Icon,
-    Skeleton,
-    GalaoNivel,
-    BarraEstoque,
-  ],
+  imports: [NgTemplateOutlet, CePermissao, AppHeader, Button, EmptyState, Icon, Skeleton],
   template: `
     <ce-app-header
       titulo="Estoque"
@@ -55,7 +50,7 @@ import { EstoqueStore } from './estoque-store';
           </ce-empty-state>
         }
         @case ('ok') {
-          @if (store.itens().length === 0) {
+          @if (store.produtos().length === 0 && vasilhames().length === 0) {
             <ce-empty-state
               titulo="Estoque vazio"
               descricao="Registre um abastecimento para começar."
@@ -65,55 +60,39 @@ import { EstoqueStore } from './estoque-store';
               {{ resumoMinimo() }}
             </p>
             <div class="grade">
-              @if (grupos().agua.length > 0) {
-                <section class="secao" aria-labelledby="sec-agua">
-                  <h2 id="sec-agua">Água</h2>
-                  <div class="galoes">
-                    @for (item of grupos().agua; track item.produtoId) {
-                      <button type="button" class="alvo" (click)="ajustar(item)">
-                        <ce-galao-nivel [item]="item" [maiorDoGrupo]="maiorAgua()" />
-                      </button>
-                    }
-                  </div>
-                </section>
-              }
-              @if (grupos().vasilhames.length > 0) {
-                <section class="secao" aria-labelledby="sec-vasilhames">
-                  <h2 id="sec-vasilhames">Vasilhames</h2>
-                  <div class="chips">
-                    @for (item of grupos().vasilhames; track item.produtoId) {
-                      <button
-                        type="button"
-                        class="alvo"
-                        [attr.data-abaixo-minimo]="item.abaixoMinimo ? '' : null"
-                        (click)="ajustar(item)"
-                      >
-                        <ce-chip tom="agua" [icone]="iconeDe(item)">
-                          {{ rotuloDe(item) }}: {{ item.quantidade }}
-                          @if (item.abaixoMinimo) {
-                            · abaixo do mínimo ({{ item.estoqueMinimo }})
-                          }
-                        </ce-chip>
-                      </button>
-                    }
-                  </div>
-                </section>
-              }
-              @if (grupos().descartaveis.length > 0) {
-                <section class="secao secao--larga" aria-labelledby="sec-descartaveis">
-                  <h2 id="sec-descartaveis">Descartáveis</h2>
-                  @for (grupo of grupos().descartaveis; track grupo.categoria) {
+              @for (secao of secoes(); track secao.id) {
+                <section class="secao" [attr.aria-labelledby]="'sec-' + secao.id">
+                  <h2 [id]="'sec-' + secao.id">{{ secao.titulo }}</h2>
+                  @for (grupo of secao.grupos; track grupo.categoria) {
                     <h3>{{ grupo.categoria }}</h3>
-                    <div class="barras">
-                      @for (item of grupo.itens; track item.produtoId) {
-                        <button type="button" class="alvo" (click)="ajustar(item)">
-                          <ce-barra-estoque [item]="item" [maiorDoGrupo]="maiorDe(grupo.itens)" />
-                        </button>
+                    <ul class="produtos">
+                      @for (produto of grupo.produtos; track produto.id) {
+                        <ng-container
+                          [ngTemplateOutlet]="linhaProduto"
+                          [ngTemplateOutletContext]="{ produto, maior: maiorDe(grupo.produtos) }"
+                        />
                       }
-                    </div>
+                    </ul>
                   }
                 </section>
               }
+              <section class="secao secao--larga" aria-labelledby="sec-vasilhames">
+                <h2 id="sec-vasilhames">Vasilhames</h2>
+                @if (vasilhames().length === 0) {
+                  <ce-empty-state icone="galao" titulo="Nenhum vasilhame em estoque" />
+                } @else {
+                  <ul class="vasilhames">
+                    @for (casco of vasilhames(); track casco.tipoCascoId) {
+                      <li class="vasilhame">
+                        <ce-icon nome="galao" [tamanho]="22" />
+                        <span class="vasilhame__nome">{{ casco.nome }}</span>
+                        <span class="vasilhame__saldo">Vazios: {{ casco.vazios }}</span>
+                        <span class="vasilhame__saldo">Sucata: {{ casco.sucata }}</span>
+                      </li>
+                    }
+                  </ul>
+                }
+              </section>
             </div>
           }
         }
@@ -124,6 +103,55 @@ import { EstoqueStore } from './estoque-store';
         }
       }
     </div>
+
+    <ng-template #linhaProduto let-produto="produto" let-maior="maior">
+      <li class="produto" [attr.data-abaixo-minimo]="abaixoDe(produto) ? '' : null">
+        <button
+          type="button"
+          class="produto__cabecalho alvo"
+          [attr.aria-expanded]="aberto(produto.id)"
+          (click)="alternar(produto.id)"
+        >
+          <ce-icon [nome]="iconeDe(produto)" [tamanho]="24" />
+          <span class="produto__nome">
+            {{ nomeDe(produto) }}
+          </span>
+          @if (abaixoDe(produto)) {
+            <span class="produto__alerta"
+              ><ce-icon nome="alerta" [tamanho]="16" /> abaixo do mínimo</span
+            >
+          }
+          <span class="produto__geral">{{ produto.estoqueGeral }}</span>
+          <span class="produto__barra" aria-hidden="true">
+            <span
+              class="produto__nivel"
+              [style.width.%]="100 * proporcao(produto.estoqueGeral, maior)"
+            ></span>
+          </span>
+        </button>
+        @if (aberto(produto.id)) {
+          <ul class="marcas">
+            @for (marca of produto.marcas; track marca.id) {
+              <li>
+                <button
+                  type="button"
+                  class="marca alvo"
+                  [attr.data-abaixo-minimo]="marca.abaixoMinimo ? '' : null"
+                  (click)="ajustar(produto, marca)"
+                >
+                  <span class="marca__nome">{{ rotuloDe(marca) }}</span>
+                  <span class="marca__qtd">{{ marca.quantidade }}</span>
+                  <span class="marca__minimo">mín. {{ marca.estoqueMinimo }}</span>
+                  @if (marca.abaixoMinimo) {
+                    <span class="marca__alerta">abaixo do mínimo</span>
+                  }
+                </button>
+              </li>
+            }
+          </ul>
+        }
+      </li>
+    </ng-template>
 
     <div class="acoes">
       <ce-button *cePermissao="'estoque.editar'" [block]="true" (click)="abastecer()">
@@ -177,20 +205,102 @@ import { EstoqueStore } from './estoque-store';
       margin: var(--ce-space-3) 0 var(--ce-space-2);
     }
 
-    .galoes,
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--ce-space-3);
-    }
-
-    .barras {
+    .produtos,
+    .marcas,
+    .vasilhames {
       display: grid;
       gap: var(--ce-space-2);
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
 
-      @include mixins.from-desktop {
-        grid-template-columns: 1fr 1fr;
-      }
+    .produto {
+      border: 1px solid var(--ce-border);
+      border-radius: var(--ce-radius-controle);
+      background: var(--ce-surface);
+    }
+
+    .alvo.produto__cabecalho {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: var(--ce-space-1) var(--ce-space-3);
+      width: 100%;
+      padding: var(--ce-space-2) var(--ce-space-3);
+      text-align: left;
+    }
+
+    .produto__nome {
+      font-weight: 600;
+    }
+
+    .produto__geral {
+      font-size: var(--ce-font-lg);
+      font-weight: 700;
+    }
+
+    .produto__alerta,
+    .marca__alerta {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--ce-space-1);
+      color: var(--ce-danger);
+      font-size: var(--ce-font-sm);
+      font-weight: 600;
+    }
+
+    .produto__barra {
+      grid-column: 1 / -1;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--ce-surface-muted);
+      overflow: hidden;
+    }
+
+    .produto__nivel {
+      display: block;
+      height: 100%;
+      background: var(--ce-primary);
+    }
+
+    .marcas {
+      padding: 0 var(--ce-space-3) var(--ce-space-2);
+    }
+
+    .alvo.marca {
+      display: flex;
+      align-items: center;
+      gap: var(--ce-space-3);
+      width: 100%;
+      text-align: left;
+    }
+
+    .marca__nome {
+      flex: 1;
+    }
+
+    .marca__qtd {
+      font-weight: 600;
+    }
+
+    .marca__minimo {
+      color: var(--ce-text-muted);
+      font-size: var(--ce-font-sm);
+    }
+
+    .vasilhame {
+      display: flex;
+      align-items: center;
+      gap: var(--ce-space-3);
+      padding: var(--ce-space-2) var(--ce-space-3);
+      border: 1px solid var(--ce-border);
+      border-radius: var(--ce-radius-controle);
+    }
+
+    .vasilhame__nome {
+      flex: 1;
+      font-weight: 600;
     }
 
     .alvo {
@@ -203,10 +313,6 @@ import { EstoqueStore } from './estoque-store';
       color: inherit;
       font: inherit;
       cursor: pointer;
-    }
-
-    .barras .alvo {
-      width: 100%;
     }
 
     // Barra fixa do botão principal (DESIGN.md §5), acima da bottom-nav
@@ -238,9 +344,15 @@ export class EstoquePage {
     this.store.carregar();
   }
 
-  protected readonly grupos = computed(() => agruparEstoque(this.store.itens()));
+  protected readonly grupos = computed(() => agruparEstoque(this.store.produtos()));
+  protected readonly vasilhames = computed(() => cascosComSaldo(this.store.cascos()));
+  /** Conta as marcas que o servidor marcou; o front não compara quantidade com mínimo. */
   protected readonly abaixoMinimo = computed(
-    () => this.store.itens().filter((i) => i.abaixoMinimo).length,
+    () =>
+      this.store
+        .produtos()
+        .flatMap((p) => p.marcas)
+        .filter((m) => m.abaixoMinimo).length,
   );
   protected readonly resumoMinimo = computed(() => {
     const n = this.abaixoMinimo();
@@ -248,26 +360,47 @@ export class EstoquePage {
       ? 'Tudo acima do mínimo'
       : `${n} ${n === 1 ? 'item abaixo' : 'itens abaixo'} do mínimo`;
   });
-  protected readonly maiorAgua = computed(() => maiorEstoque(this.grupos().agua));
+  protected readonly secoes = computed(() => {
+    const g = this.grupos();
+    return [
+      { id: 'retornaveis', titulo: 'Retornáveis', grupos: g.retornaveis },
+      { id: 'descartaveis', titulo: 'Descartáveis', grupos: g.descartaveis },
+    ].filter((s) => s.grupos.length > 0);
+  });
+  private readonly abertos = signal<ReadonlySet<string>>(new Set());
 
-  protected maiorDe(itens: readonly EstoqueItemResponse[]): number {
-    return maiorEstoque(itens);
+  protected readonly proporcao = proporcao;
+  protected readonly iconeDe = iconeDoProduto;
+  protected readonly rotuloDe = (m: ProdutoMarcaResponse): string => rotuloDaMarca(m.marcaNome);
+
+  protected nomeDe(produto: ProdutoResponse): string {
+    return nomeComTamanho(produto.nome, produto.tamanho);
   }
 
-  protected iconeDe(item: EstoqueItemResponse): IconeNome {
-    return iconeDoProduto(item);
+  protected maiorDe(produtos: readonly ProdutoResponse[]): number {
+    return maiorEstoque(produtos);
   }
 
-  protected rotuloDe(item: EstoqueItemResponse): string {
-    return [item.nome, item.marca, item.tamanho]
-      .filter((parte): parte is string => !!parte)
-      .join(' ');
+  protected abaixoDe(produto: ProdutoResponse): boolean {
+    return produto.marcas.some((m) => m.abaixoMinimo);
   }
 
-  protected async ajustar(item: EstoqueItemResponse): Promise<void> {
+  protected aberto(id: string): boolean {
+    return this.abertos().has(id);
+  }
+
+  protected alternar(id: string): void {
+    this.abertos.update((atual) => {
+      const novo = new Set(atual);
+      if (!novo.delete(id)) novo.add(id);
+      return novo;
+    });
+  }
+
+  protected async ajustar(produto: ProdutoResponse, marca: ProdutoMarcaResponse): Promise<void> {
     // a linha é o alvo do clique: some só a ação, não o item de consulta
     if (!this.permissions.has('estoque.editar')) return;
-    const ref = this.sheet.abrir<boolean, AjusteSheetDados>(AjusteSheet, { item });
+    const ref = this.sheet.abrir<boolean, AjusteSheetDados>(AjusteSheet, { produto, marca });
     if (await firstValueFrom(ref.closed)) {
       this.toast.success('Ajuste registrado!');
     }

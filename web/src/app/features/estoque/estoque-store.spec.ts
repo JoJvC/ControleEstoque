@@ -3,19 +3,25 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 
 import { ConfigStore } from '../../core/config/app-config';
-import { EstoqueItemResponse } from '../../core/api/models/estoque';
+import { EstoqueCascoResponse } from '../../core/api/models/estoque';
+import { marcaResp, produtoResp } from '../../core/api/testing';
 import { EstoqueStore } from './estoque-store';
 
-const ITEM: EstoqueItemResponse = {
-  produtoId: 'p1',
-  tipo: 'RETORNAVEL',
-  nome: 'Casco vazio',
+const BASE = '/api/estoque/v1';
+const PRODUTO = produtoResp({
+  id: 'p1',
+  nome: 'Água 20L',
+  estoqueGeral: 7,
+  marcas: [marcaResp({ id: 'pm1', quantidade: 7 })],
+});
+const CASCO: EstoqueCascoResponse = {
+  tipoCascoId: 't1',
+  nome: 'Casco 20L',
+  marcaId: null,
   marca: null,
-  categoria: null,
-  tamanho: '20L',
-  quantidade: 10,
-  estoqueMinimo: 2,
-  abaixoMinimo: false,
+  aceitaSucata: true,
+  vazios: 3,
+  sucata: 1,
 };
 
 function criarStore(): { store: EstoqueStore; http: HttpTestingController } {
@@ -29,54 +35,81 @@ function criarStore(): { store: EstoqueStore; http: HttpTestingController } {
   return { store: TestBed.inject(EstoqueStore), http: TestBed.inject(HttpTestingController) };
 }
 
+function responder(http: HttpTestingController, produtos = [PRODUTO], cascos = [CASCO]): void {
+  http.expectOne(`${BASE}/produtos`).flush(produtos);
+  http.expectOne(`${BASE}/estoque/cascos`).flush(cascos);
+}
+
 describe('EstoqueStore', () => {
-  it('carregar popula os itens e muda o status para ok', () => {
+  it('carregar busca /produtos e /estoque/cascos e muda o status para ok', () => {
     const { store, http } = criarStore();
 
     store.carregar();
     expect(store.status()).toBe('loading');
-
-    http.expectOne('/api/estoque/v1/estoque').flush([ITEM]);
+    responder(http);
 
     expect(store.status()).toBe('ok');
-    expect(store.itens()).toEqual([ITEM]);
+    expect(store.produtos()).toEqual([PRODUTO]);
+    expect(store.cascos()).toEqual([CASCO]);
+    expect(store.erro()).toBeNull();
     http.verify();
   });
 
-  it('carregar com falha muda o status para error', () => {
+  it('itens é uma linha por produto+marca, com os números do servidor', () => {
+    const { store, http } = criarStore();
+    store.carregar();
+    responder(http);
+    expect(store.itens()).toEqual([
+      expect.objectContaining({ produtoMarcaId: 'pm1', produtoId: 'p1', quantidade: 7 }),
+    ]);
+  });
+
+  it('carregar com falha muda o status para error e expõe o erro', () => {
     const { store, http } = criarStore();
 
     store.carregar();
-    http.expectOne('/api/estoque/v1/estoque').flush(null, { status: 500, statusText: 'Erro' });
+    http.expectOne(`${BASE}/produtos`).flush(null, { status: 500, statusText: 'Erro' });
 
     expect(store.status()).toBe('error');
-    http.verify();
+    expect(store.erro()).not.toBeNull();
+    http.verify({ ignoreCancelled: true });
   });
 
-  it('ajustar envia o movimento e recarrega a lista do servidor', async () => {
+  it('ajustar envia produtoMarcaId e recarrega do servidor', async () => {
     const { store, http } = criarStore();
 
-    const ajuste = store.ajustar({ produtoId: 'p1', quantidade: -2, observacao: null });
-    http
-      .expectOne('/api/estoque/v1/estoque/movimentos')
-      .flush(null, { status: 201, statusText: 'Created' });
+    const ajuste = store.ajustar({ produtoMarcaId: 'pm1', quantidade: -2, observacao: null });
+    const req = http.expectOne(`${BASE}/estoque/movimentos`);
+    expect(req.request.body).toEqual({ produtoMarcaId: 'pm1', quantidade: -2, observacao: null });
+    req.flush(null, { status: 201, statusText: 'Created' });
     await ajuste;
 
-    http.expectOne('/api/estoque/v1/estoque').flush([{ ...ITEM, quantidade: 8 }]);
-    expect(store.itens()[0].quantidade).toBe(8);
+    responder(http, [{ ...PRODUTO, estoqueGeral: 5 }]);
+    expect(store.produtos()[0].estoqueGeral).toBe(5);
     http.verify();
   });
 
-  it('baixarCasco envia a baixa e recarrega a lista do servidor', async () => {
+  it('baixarCasco envia tipoCascoId e recarrega os cascos', async () => {
     const { store, http } = criarStore();
 
-    const baixa = store.baixarCasco({ quantidade: 1, motivo: 'quebra', responsaveisIds: ['f1'] });
-    http
-      .expectOne('/api/estoque/v1/estoque/cascos/baixas')
-      .flush({ id: 'b1' }, { status: 201, statusText: 'Created' });
+    const baixa = store.baixarCasco({
+      tipoCascoId: 't1',
+      quantidade: 1,
+      motivo: 'quebra',
+      responsaveisIds: ['f1'],
+    });
+    const req = http.expectOne(`${BASE}/estoque/cascos/baixas`);
+    expect(req.request.body).toEqual({
+      tipoCascoId: 't1',
+      quantidade: 1,
+      motivo: 'quebra',
+      responsaveisIds: ['f1'],
+    });
+    req.flush({ id: 'b1' }, { status: 201, statusText: 'Created' });
     await baixa;
 
-    http.expectOne('/api/estoque/v1/estoque').flush([ITEM]);
+    responder(http, [PRODUTO], [{ ...CASCO, vazios: 2, sucata: 2 }]);
+    expect(store.cascos()[0]).toEqual(expect.objectContaining({ vazios: 2, sucata: 2 }));
     expect(store.status()).toBe('ok');
     http.verify();
   });

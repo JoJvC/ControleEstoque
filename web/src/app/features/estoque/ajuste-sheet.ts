@@ -2,7 +2,8 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 
-import { EstoqueItemResponse } from '../../core/api/models/estoque';
+import { ProdutoMarcaResponse, ProdutoResponse } from '../../core/api/models/estoque';
+import { rotuloDaMarca } from '../../core/api/produto-leitura';
 import { ApiError } from '../../core/http/api-error';
 import { Button } from '../../ui/atoms/button';
 import { TextInput } from '../../ui/atoms/text-input';
@@ -12,7 +13,8 @@ import { SheetShell } from '../../ui/organisms/sheet-shell';
 import { EstoqueStore } from './estoque-store';
 
 export interface AjusteSheetDados {
-  readonly item: EstoqueItemResponse;
+  readonly produto: ProdutoResponse;
+  readonly marca: ProdutoMarcaResponse;
 }
 
 /** Ajuste manual de estoque (entrada/saída) — fecha devolvendo true se registrou. */
@@ -21,10 +23,10 @@ export interface AjusteSheetDados {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ReactiveFormsModule, SheetShell, Button, TextInput, FormField, QuantityStepper],
   template: `
-    <ce-sheet-shell [titulo]="'Ajustar — ' + dados.item.nome" (fechar)="ref.close()">
+    <ce-sheet-shell [titulo]="titulo" (fechar)="ref.close()">
       <form class="form" (submit)="$event.preventDefault(); salvar()">
         <p class="atual">
-          Quantidade atual: <strong>{{ dados.item.quantidade }}</strong>
+          Quantidade atual: <strong>{{ dados.marca.quantidade }}</strong>
         </p>
 
         <div class="direcao" role="radiogroup" aria-label="Tipo de ajuste">
@@ -114,6 +116,7 @@ export class AjusteSheet {
   protected readonly dados = inject<AjusteSheetDados>(DIALOG_DATA);
   private readonly store = inject(EstoqueStore);
 
+  protected readonly titulo = `Ajustar — ${this.dados.produto.nome} · ${rotuloDaMarca(this.dados.marca.marcaNome)}`;
   protected readonly direcao = signal<'entrada' | 'saida'>('entrada');
   protected readonly quantidade = new FormControl(1, { nonNullable: true });
   protected readonly observacao = new FormControl('', { nonNullable: true });
@@ -127,7 +130,7 @@ export class AjusteSheet {
     try {
       const sinal = this.direcao() === 'saida' ? -1 : 1;
       await this.store.ajustar({
-        produtoId: this.dados.item.produtoId,
+        produtoMarcaId: this.dados.marca.id,
         quantidade: sinal * this.quantidade.value,
         observacao: this.observacao.value.trim() || null,
       });

@@ -72,9 +72,11 @@ export interface ProdutoResponse {
 }
 
 export interface EstoqueItemResponse {
+  produtoMarcaId: string;
   produtoId: string;
   tipo: TipoProduto;
   nome: string;
+  marcaId: string;
   marca: string | null;
   categoria: string | null;
   tamanho: string | null;
@@ -83,8 +85,18 @@ export interface EstoqueItemResponse {
   abaixoMinimo: boolean;
 }
 
+export interface EstoqueCascoResponse {
+  tipoCascoId: string;
+  nome: string;
+  marcaId: string | null;
+  marca: string | null;
+  aceitaSucata: boolean;
+  vazios: number;
+  sucata: number;
+}
+
 export interface CreateMovimentoRequest {
-  produtoId: string;
+  produtoMarcaId: string;
   quantidade: number;
   observacao: string | null;
 }
@@ -104,6 +116,7 @@ export interface CreateAbastecimentoRequest {
 }
 
 export interface CreateBaixaCascoRequest {
+  tipoCascoId: string;
   quantidade: number;
   motivo: string | null;
   responsaveisIds: string[];

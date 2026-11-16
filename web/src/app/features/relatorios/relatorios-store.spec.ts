@@ -33,7 +33,7 @@ describe('RelatoriosStore', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => http.verify({ ignoreCancelled: true }));
 
   it('faturamento: carregando até a resposta e depois guarda exatamente o que o servidor devolveu', async () => {
     expect(store.faturamento()).toEqual({ dados: null, carregando: false, erro: null });
@@ -110,7 +110,6 @@ describe('RelatoriosStore', () => {
       'carregarSucata',
       [{ clienteId: 'c1', nome: 'A', totalEntregue: 2 }],
     ],
-    ['estoque', 'estoque', 'estoque', 'carregarEstoque', { itens: [], alertasEstoqueMinimo: [] }],
     [
       'contaFuncionarios',
       'rh',
@@ -138,4 +137,26 @@ describe('RelatoriosStore', () => {
       expect(store[campo]().carregando).toBe(false);
     },
   );
+
+  it('estoque: carregarEstoque busca /relatorios/estoque e /produtos juntos', async () => {
+    const relatorio = { itens: [], alertasEstoqueMinimo: [], cascos: [] };
+    const p = store.carregarEstoque();
+    expect(store.estoque().carregando).toBe(true);
+    http.expectOne('/api/estoque/v1/relatorios/estoque').flush(relatorio);
+    http.expectOne('/api/estoque/v1/produtos').flush([]);
+    await p;
+    expect(store.estoque()).toEqual({
+      dados: { ...relatorio, produtos: [] },
+      carregando: false,
+      erro: null,
+    });
+
+    const p2 = store.carregarEstoque();
+    http
+      .expectOne('/api/estoque/v1/relatorios/estoque')
+      .flush({}, { status: 500, statusText: 'Erro' });
+    await p2;
+    expect(store.estoque().dados).toBeNull();
+    expect(store.estoque().erro).toBeTruthy();
+  });
 });

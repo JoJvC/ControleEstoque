@@ -1,9 +1,10 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { Observable, firstValueFrom } from 'rxjs';
+import { Observable, firstValueFrom, forkJoin, map } from 'rxjs';
 
 import { ClientesApi } from '../../core/api/clientes-api';
 import { EstoqueApi } from '../../core/api/estoque-api';
 import { FinanceiroApi } from '../../core/api/financeiro-api';
+import { ProdutoResponse } from '../../core/api/models/estoque';
 import {
   RelatorioCaixa,
   RelatorioEstoque,
@@ -22,6 +23,11 @@ export interface EstadoRelatorio<T> {
   dados: T | null;
   carregando: boolean;
   erro: string | null;
+}
+
+/** O relatório não traz o estoque geral: ele vem dos produtos (GET /v1/produtos). */
+export interface RelatorioEstoqueTela extends RelatorioEstoque {
+  produtos: ProdutoResponse[];
 }
 
 function vazio<T>(): EstadoRelatorio<T> {
@@ -43,7 +49,7 @@ export class RelatoriosStore {
   private readonly fiadoInterno = signal(vazio<SaldoFiadoCliente[]>());
   private readonly cascosInterno = signal(vazio<SaldoCascoRelatorio[]>());
   private readonly sucataInterno = signal(vazio<SucataEntregueRelatorio[]>());
-  private readonly estoqueInterno = signal(vazio<RelatorioEstoque>());
+  private readonly estoqueInterno = signal(vazio<RelatorioEstoqueTela>());
   private readonly contaFuncionariosInterno = signal(vazio<SaldoFuncionario[]>());
 
   readonly faturamento = this.faturamentoInterno.asReadonly();
@@ -86,7 +92,12 @@ export class RelatoriosStore {
   }
 
   carregarEstoque(): Promise<void> {
-    return this.carregar(this.estoqueInterno, this.estoqueApi.relatorioEstoque());
+    return this.carregar(
+      this.estoqueInterno,
+      forkJoin([this.estoqueApi.relatorioEstoque(), this.estoqueApi.listarProdutos()]).pipe(
+        map(([relatorio, produtos]) => ({ ...relatorio, produtos })),
+      ),
+    );
   }
 
   carregarContaFuncionarios(): Promise<void> {

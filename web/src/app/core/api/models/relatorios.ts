@@ -1,7 +1,7 @@
 // Espelho manual dos DTOs de relatório nos Domain/Contracts de cada contexto — não inventar campos.
 // DateOnly serializa como yyyy-MM-dd; decimal e long como number.
 import { StatusCaixa } from './financeiro';
-import { EstoqueItemResponse } from './estoque';
+import { EstoqueCascoResponse, EstoqueItemResponse } from './estoque';
 
 // vendas — Vendas.Domain/Models.cs
 export interface FaturamentoPorProduto {
@@ -95,6 +95,7 @@ export interface SucataEntregueRelatorio {
 export interface RelatorioEstoque {
   itens: EstoqueItemResponse[];
   alertasEstoqueMinimo: EstoqueItemResponse[];
+  cascos: EstoqueCascoResponse[];
 }
 
 // rh — RH.Domain/Models.cs

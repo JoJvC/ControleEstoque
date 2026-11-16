@@ -11,6 +11,7 @@ import {
   CreateProdutoMarcaRequest,
   CreateProdutoRequest,
   CreatedResponse,
+  EstoqueCascoResponse,
   EstoqueItemResponse,
   FotoResponse,
   MarcaResponse,
@@ -116,6 +117,10 @@ export class EstoqueApi {
 
   obterEstoque(): Observable<EstoqueItemResponse[]> {
     return this.http.get<EstoqueItemResponse[]>(`${this.base}/estoque`);
+  }
+
+  obterEstoqueCascos(): Observable<EstoqueCascoResponse[]> {
+    return this.http.get<EstoqueCascoResponse[]>(`${this.base}/estoque/cascos`);
   }
 
   criarMovimento(request: CreateMovimentoRequest): Observable<void> {

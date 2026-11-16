@@ -4,9 +4,11 @@ import { EstoqueItemResponse } from '../../core/api/models/estoque';
 import { BarraEstoque } from './barra-estoque';
 
 const BASE: EstoqueItemResponse = {
+  produtoMarcaId: 'pm-d1',
   produtoId: 'd1',
   tipo: 'DESCARTAVEL',
   nome: 'Copo',
+  marcaId: 'm-1',
   marca: null,
   categoria: 'Copos',
   tamanho: null,

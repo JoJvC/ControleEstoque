@@ -4,23 +4,14 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
-import { EstoqueItemResponse } from '../../core/api/models/estoque';
+import { marcaResp, produtoResp } from '../../core/api/testing';
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { AjusteSheet } from './ajuste-sheet';
 
 const BASE = '/api/estoque/v1';
-const ITEM: EstoqueItemResponse = {
-  produtoId: 'p1',
-  tipo: 'DESCARTAVEL',
-  nome: 'Copo 200ml',
-  marca: null,
-  categoria: null,
-  tamanho: null,
-  quantidade: 10,
-  estoqueMinimo: 0,
-  abaixoMinimo: false,
-};
+const MARCA = marcaResp({ id: 'pm1', marcaNome: 'Genérica', quantidade: 10 });
+const PRODUTO = produtoResp({ id: 'p1', tipo: 'DESCARTAVEL', nome: 'Copo 200ml', marcas: [MARCA] });
 
 async function montar() {
   const close = vi.fn();
@@ -30,7 +21,7 @@ async function montar() {
       provideHttpClient(withInterceptors([apiErrorInterceptor])),
       provideHttpClientTesting(),
       { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
-      { provide: DIALOG_DATA, useValue: { item: ITEM } },
+      { provide: DIALOG_DATA, useValue: { produto: PRODUTO, marca: MARCA } },
       { provide: DialogRef, useValue: { close } },
     ],
   }).compileComponents();
@@ -54,7 +45,7 @@ describe('AjusteSheet', () => {
 
   it('renderiza o item e as duas direções, com Entrada marcada', async () => {
     const t = await montar();
-    expect(t.el.textContent).toContain('Ajustar — Copo 200ml');
+    expect(t.el.textContent).toContain('Ajustar — Copo 200ml · sem marca');
     expect(t.botao('Entrada').getAttribute('aria-checked')).toBe('true');
     expect(t.botao('Saída').getAttribute('aria-checked')).toBe('false');
   });
@@ -64,10 +55,11 @@ describe('AjusteSheet', () => {
 
     t.botao('Confirmar ajuste').click();
     const req = t.http.expectOne(`${BASE}/estoque/movimentos`);
-    expect(req.request.body).toEqual({ produtoId: 'p1', quantidade: 1, observacao: null });
+    expect(req.request.body).toEqual({ produtoMarcaId: 'pm1', quantidade: 1, observacao: null });
     req.flush(null);
     await t.fixture.whenStable();
-    t.http.expectOne(`${BASE}/estoque`).flush([]);
+    t.http.expectOne(`${BASE}/produtos`).flush([]);
+    t.http.expectOne(`${BASE}/estoque/cascos`).flush([]);
     await t.fixture.whenStable();
     expect(t.close).toHaveBeenCalledWith(true);
   });
@@ -82,6 +74,7 @@ describe('AjusteSheet', () => {
     expect(req.request.body.quantidade).toBe(-1);
     req.flush(null);
     await t.fixture.whenStable();
-    t.http.expectOne(`${BASE}/estoque`).flush([]);
+    t.http.expectOne(`${BASE}/produtos`).flush([]);
+    t.http.expectOne(`${BASE}/estoque/cascos`).flush([]);
   });
 });

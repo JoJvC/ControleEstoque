@@ -124,6 +124,13 @@ describe('EstoqueApi', () => {
     req.flush([]);
   });
 
+  it('obterEstoqueCascos: GET /estoque/cascos', () => {
+    api.obterEstoqueCascos().subscribe();
+    const req = http.expectOne(`${BASE}/estoque/cascos`);
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
+
   it('criarMovimento: POST /estoque/movimentos com o corpo', () => {
     api.criarMovimento(body).subscribe();
     const req = http.expectOne(`${BASE}/estoque/movimentos`);

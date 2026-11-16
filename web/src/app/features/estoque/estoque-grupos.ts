@@ -1,32 +1,48 @@
-import { EstoqueItemResponse, TipoProduto } from '../../core/api/models/estoque';
+import { EstoqueCascoResponse, ProdutoResponse } from '../../core/api/models/estoque';
 
 export interface GrupoCategoria {
   categoria: string;
-  itens: EstoqueItemResponse[];
+  produtos: ProdutoResponse[];
 }
 
 export interface EstoqueAgrupado {
-  agua: EstoqueItemResponse[];
-  vasilhames: EstoqueItemResponse[];
+  retornaveis: GrupoCategoria[];
   descartaveis: GrupoCategoria[];
 }
 
-const SEM_CATEGORIA = 'Sem categoria';
-// ponytail: o estoque de cascos vem de GET /v1/estoque/cascos na fatia 7; até lá não há vasilhame por produto.
-const ORDEM_VASILHAME: TipoProduto[] = [];
+const SEM_CATEGORIA = 'Outros';
 
-/** Casco, sucata e galão completo ficam em itens separados: nunca se somam (DESIGN.md §1). */
-export function agruparEstoque(itens: readonly EstoqueItemResponse[]): EstoqueAgrupado {
-  const porCategoria = new Map<string, EstoqueItemResponse[]>();
-  for (const item of itens.filter((i) => i.tipo === 'DESCARTAVEL')) {
-    const categoria = item.categoria?.trim() || SEM_CATEGORIA;
-    porCategoria.set(categoria, [...(porCategoria.get(categoria) ?? []), item]);
+function porCategoria(produtos: readonly ProdutoResponse[]): GrupoCategoria[] {
+  const mapa = new Map<string, ProdutoResponse[]>();
+  for (const produto of produtos) {
+    const categoria = produto.categoria?.trim() || SEM_CATEGORIA;
+    mapa.set(categoria, [...(mapa.get(categoria) ?? []), produto]);
   }
+  return Array.from(mapa, ([categoria, grupo]) => ({ categoria, produtos: grupo }));
+}
+
+/** O total do produto é o `estoqueGeral` do servidor; aqui só se separa por tipo e categoria. */
+export function agruparEstoque(produtos: readonly ProdutoResponse[]): EstoqueAgrupado {
   return {
-    agua: itens.filter((i) => i.tipo === 'RETORNAVEL'),
-    vasilhames: ORDEM_VASILHAME.flatMap((tipo) => itens.filter((i) => i.tipo === tipo)),
-    descartaveis: Array.from(porCategoria, ([categoria, grupo]) => ({ categoria, itens: grupo })),
+    retornaveis: porCategoria(produtos.filter((p) => p.tipo === 'RETORNAVEL')),
+    descartaveis: porCategoria(produtos.filter((p) => p.tipo === 'DESCARTAVEL')),
   };
+}
+
+function normaliza(texto: string): string {
+  return texto.replace(/\s+/g, '').toLowerCase();
+}
+
+/** Anexa o tamanho ao nome só quando o nome ainda não o contém (sem caixa/espaço). */
+export function nomeComTamanho(nome: string, tamanho: string | null | undefined): string {
+  const t = tamanho?.trim();
+  if (!t || normaliza(nome).includes(normaliza(t))) return nome;
+  return `${nome} ${t}`;
+}
+
+/** O servidor não filtra os saldos zerados; negativo fica, é divergência a mostrar. */
+export function cascosComSaldo(cascos: readonly EstoqueCascoResponse[]): EstoqueCascoResponse[] {
+  return cascos.filter((c) => c.vazios !== 0 || c.sucata !== 0);
 }
 
 function fracao(valor: number, maior: number): number {
@@ -42,6 +58,6 @@ export function marcaMinimo(estoqueMinimo: number, maiorDoGrupo: number): number
   return fracao(estoqueMinimo, maiorDoGrupo);
 }
 
-export function maiorEstoque(itens: readonly EstoqueItemResponse[]): number {
-  return itens.reduce((m, i) => Math.max(m, i.quantidade), 0);
+export function maiorEstoque(produtos: readonly ProdutoResponse[]): number {
+  return produtos.reduce((m, p) => Math.max(m, p.estoqueGeral), 0);
 }

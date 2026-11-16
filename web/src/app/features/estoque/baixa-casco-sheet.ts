@@ -1,5 +1,5 @@
 import { DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { RhApi } from '../../core/api/rh-api';
@@ -8,6 +8,7 @@ import { ApiError } from '../../core/http/api-error';
 import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
 import { Icon } from '../../ui/atoms/icon';
+import { Select, SelectOpcao } from '../../ui/atoms/select';
 import { Spinner } from '../../ui/atoms/spinner';
 import { TextInput } from '../../ui/atoms/text-input';
 import { FormField } from '../../ui/molecules/form-field';
@@ -26,6 +27,7 @@ import { EstoqueStore } from './estoque-store';
     Button,
     Checkbox,
     Icon,
+    Select,
     Spinner,
     TextInput,
     FormField,
@@ -38,6 +40,15 @@ import { EstoqueStore } from './estoque-store';
           <ce-icon nome="info" [tamanho]="16" />
           O casco baixado sai do estoque de casco vazio e entra no estoque de sucata.
         </p>
+
+        <ce-form-field rotulo="Tipo de casco" [obrigatorio]="true">
+          <ce-select
+            rotulo="Tipo de casco"
+            placeholder="Escolha o tipo"
+            [opcoes]="tipos()"
+            [formControl]="tipoCascoId"
+          />
+        </ce-form-field>
 
         <ce-form-field rotulo="Quantidade quebrada" [obrigatorio]="true">
           <ce-quantity-stepper [formControl]="quantidade" [min]="1" />
@@ -136,6 +147,14 @@ export class BaixaCascoSheet {
   private readonly store = inject(EstoqueStore);
   private readonly rhApi = inject(RhApi);
 
+  protected readonly tipoCascoId = new FormControl<string | null>(null);
+  /** Só os tipos com vazios para baixar; o saldo vem do servidor. */
+  protected readonly tipos = computed<SelectOpcao[]>(() =>
+    this.store
+      .cascos()
+      .filter((c) => c.vazios > 0)
+      .map((c) => ({ value: c.tipoCascoId, label: `${c.nome} (${c.vazios} vazios)` })),
+  );
   protected readonly quantidade = new FormControl(1, { nonNullable: true });
   protected readonly motivo = new FormControl('', { nonNullable: true });
 
@@ -173,6 +192,11 @@ export class BaixaCascoSheet {
 
   protected async salvar(): Promise<void> {
     this.erro.set(null);
+    const tipoCascoId = this.tipoCascoId.value;
+    if (!tipoCascoId) {
+      this.erro.set('Escolha o tipo de casco.');
+      return;
+    }
     if (this.selecionados().size === 0) {
       this.erro.set('Informe ao menos um funcionário responsável pela quebra.');
       return;
@@ -181,6 +205,7 @@ export class BaixaCascoSheet {
     this.salvando.set(true);
     try {
       await this.store.baixarCasco({
+        tipoCascoId,
         quantidade: this.quantidade.value,
         motivo: this.motivo.value.trim() || null,
         responsaveisIds: [...this.selecionados()],

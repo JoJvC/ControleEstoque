@@ -35,6 +35,7 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 - Entrada e saída por produto+marca, incluindo abastecimento (frete terceirizado ou caminhão/funcionário próprio da loja) e ajuste manual. O estoque geral do produto é a soma do estoque das marcas, calculado pelo servidor.
 - **Alerta de estoque mínimo**: por produto+marca, quando a quantidade é menor que o estoque mínimo e só se o mínimo for maior que 0 (quantidade igual ao mínimo não alerta; mínimo 0 nunca alerta).
 - Cascos têm estoque próprio por tipo de casco, de vazios e de sucata (ver 3.6).
+- Na exibição, o estoque geral do produto vem do servidor (a tela não soma as marcas) e os vasilhames aparecem por tipo de casco só quando vazios ou sucata são diferentes de zero; sem nenhum, a tela mostra o estado vazio.
 
 ### 3.4 Registro de Vendas
 - Uma venda pode conter N itens; cada item é um produto+marca (a associação precisa estar ativa), retornável ou descartável, combinados livremente na mesma venda.
@@ -187,7 +188,7 @@ Controles envolvidos:
 ## 6. Relatórios e Indicadores
 - Relatório de Vendas por funcionário.
 - Relatório de Faturamento por período e/ou por produto.
-- Relatório de Estoque (por produto+marca; cascos vazios e sucata por tipo de casco; e alertas de estoque mínimo por produto+marca).
+- Relatório de Estoque (por produto+marca; cascos vazios e sucata por tipo de casco; e alertas de estoque mínimo por produto+marca). Cada linha traz também o estoque geral do produto, vindo do servidor; a lista de vasilhames mostra só os tipos com saldo diferente de zero, com estado vazio.
 - Relatório de Caixa (incluindo diárias lançadas e despesas por tipo).
 - Relatório de Conta Corrente de Clientes (fiado, conversões de casco/sucata, saldo devedor).
 - Relatório de Saldo de Casco Normal por Cliente (emprestados, débitos pendentes).

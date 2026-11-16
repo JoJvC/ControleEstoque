@@ -102,17 +102,70 @@ export interface CreateMovimentoRequest {
 }
 
 export interface AbastecimentoItemRequest {
-  produtoId: string;
+  produtoMarcaId: string;
   quantidade: number;
-  custoUnitario: number;
 }
 
+export interface AbastecimentoCascoRequest {
+  tipoCascoId: string;
+  quantidade: number;
+}
+
+/** Momento 1: só quantidades; o custo vem depois (LancarCustosAbastecimentoRequest). */
 export interface CreateAbastecimentoRequest {
   tipoFrete: TipoFrete;
-  custoTotal: number;
   funcionarioId: string | null;
   observacao: string | null;
   itens: AbastecimentoItemRequest[];
+  cascos: AbastecimentoCascoRequest[];
+}
+
+/** `id` é o da linha da carga, não o produtoMarcaId nem o tipoCascoId. */
+export interface CustoLinhaRequest {
+  id: string;
+  custoUnitario: number;
+}
+
+export interface LancarCustosAbastecimentoRequest {
+  funcionarioId: string | null;
+  frete: number | null;
+  itens: CustoLinhaRequest[];
+  cascos: CustoLinhaRequest[];
+}
+
+export interface AbastecimentoLinhaResponse {
+  id: string;
+  /** Só nas linhas de item. */
+  produtoMarcaId?: string | null;
+  /** Só nas linhas de casco. */
+  tipoCascoId?: string | null;
+  quantidade: number;
+  custoUnitario: number | null;
+  custoDaUnidade: number | null;
+}
+
+export interface AbastecimentoDetalheResponse {
+  id: string;
+  data: string;
+  tipoFrete: TipoFrete;
+  funcionarioId: string;
+  observacao: string | null;
+  frete: number | null;
+  custoPendente: boolean;
+  totalUnidades: number;
+  /** Calculado pelo servidor (com rateio do frete); o front nunca soma. */
+  custoTotal: number | null;
+  itens: AbastecimentoLinhaResponse[];
+  cascos: AbastecimentoLinhaResponse[];
+}
+
+export interface AbastecimentoPendenteResponse {
+  id: string;
+  data: string;
+  tipoFrete: TipoFrete;
+  totalUnidades: number;
+  linhasSemCusto: number;
+  freteFaltando: boolean;
 }
 
 export interface CreateBaixaCascoRequest {

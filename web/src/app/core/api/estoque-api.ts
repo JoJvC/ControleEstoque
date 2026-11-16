@@ -4,6 +4,8 @@ import { Observable } from 'rxjs';
 
 import { ConfigStore } from '../config/app-config';
 import {
+  AbastecimentoDetalheResponse,
+  AbastecimentoPendenteResponse,
   CreateAbastecimentoRequest,
   CreateBaixaCascoRequest,
   CreateMarcaRequest,
@@ -14,6 +16,7 @@ import {
   EstoqueCascoResponse,
   EstoqueItemResponse,
   FotoResponse,
+  LancarCustosAbastecimentoRequest,
   MarcaResponse,
   ProdutoResponse,
   TipoCascoRequest,
@@ -129,6 +132,38 @@ export class EstoqueApi {
 
   criarAbastecimento(request: CreateAbastecimentoRequest): Observable<CreatedResponse> {
     return this.http.post<CreatedResponse>(`${this.base}/abastecimentos`, request);
+  }
+
+  lancarCustosAbastecimento(
+    id: string,
+    request: LancarCustosAbastecimentoRequest,
+  ): Observable<AbastecimentoDetalheResponse> {
+    return this.http.put<AbastecimentoDetalheResponse>(
+      `${this.base}/abastecimentos/${id}/custos`,
+      request,
+    );
+  }
+
+  obterAbastecimento(
+    id: string,
+    funcionarioId: string | null,
+  ): Observable<AbastecimentoDetalheResponse> {
+    return this.http.get<AbastecimentoDetalheResponse>(`${this.base}/abastecimentos/${id}`, {
+      params: this.paramsDoFuncionario(funcionarioId),
+    });
+  }
+
+  listarCustosPendentes(funcionarioId: string | null): Observable<AbastecimentoPendenteResponse[]> {
+    return this.http.get<AbastecimentoPendenteResponse[]>(
+      `${this.base}/abastecimentos/custos-pendentes`,
+      { params: this.paramsDoFuncionario(funcionarioId) },
+    );
+  }
+
+  private paramsDoFuncionario(funcionarioId: string | null): HttpParams {
+    return funcionarioId === null
+      ? new HttpParams()
+      : new HttpParams({ fromObject: { funcionarioId } });
   }
 
   criarBaixaCasco(request: CreateBaixaCascoRequest): Observable<CreatedResponse> {

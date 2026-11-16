@@ -12,4 +12,16 @@ export const ESTOQUE_ROUTES: Routes = [
     canActivate: [permissaoGuard('estoque.editar')],
     loadComponent: () => import('./abastecimento-page').then((m) => m.AbastecimentoPage),
   },
+  {
+    path: 'abastecimento/pendentes',
+    canActivate: [permissaoGuard('estoque.custos')],
+    loadComponent: () =>
+      import('./abastecimento-pendentes-page').then((m) => m.AbastecimentoPendentesPage),
+  },
+  {
+    path: 'abastecimento/:id/custos',
+    canActivate: [permissaoGuard('estoque.custos')],
+    loadComponent: () =>
+      import('./abastecimento-custos-page').then((m) => m.AbastecimentoCustosPage),
+  },
 ];

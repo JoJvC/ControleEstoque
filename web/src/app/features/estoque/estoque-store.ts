@@ -3,7 +3,6 @@ import { firstValueFrom, forkJoin } from 'rxjs';
 
 import { EstoqueApi } from '../../core/api/estoque-api';
 import {
-  CreateAbastecimentoRequest,
   CreateBaixaCascoRequest,
   CreateMovimentoRequest,
   EstoqueCascoResponse,
@@ -30,7 +29,7 @@ export class EstoqueStore {
     this.statusInterno() === 'error' ? 'Não foi possível carregar o estoque.' : null,
   );
 
-  /** Uma linha por produto+marca, no formato de GET /v1/estoque (a abastecimento-page ainda a lê). */
+  /** Uma linha por produto+marca, no formato de GET /v1/estoque. */
   readonly itens = computed<EstoqueItemResponse[]>(() =>
     this.produtosInterno().flatMap((p) =>
       p.marcas.map((m) => ({
@@ -67,11 +66,6 @@ export class EstoqueStore {
   /** Lança ApiError — quem chama trata. Saldos sempre re-consultados do servidor (Regra 8.6). */
   async ajustar(request: CreateMovimentoRequest): Promise<void> {
     await firstValueFrom(this.api.criarMovimento(request));
-    this.carregar();
-  }
-
-  async abastecer(request: CreateAbastecimentoRequest): Promise<void> {
-    await firstValueFrom(this.api.criarAbastecimento(request));
     this.carregar();
   }
 

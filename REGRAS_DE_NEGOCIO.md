@@ -78,10 +78,11 @@ Controles envolvidos:
 ### 3.7 Abastecimento
 - Registro de abastecimento do estoque da loja, que pode ser feito via frete terceirizado ou com caminhão/funcionário próprio da loja.
 - O abastecimento pode trazer galão completo (casco + água) e/ou casco vazio separadamente, cada um dando entrada no respectivo estoque (produto+marca e vazios por tipo de casco).
-- **Dois momentos**: (1) a carga é lançada só com quantidades, por produto+marca e cascos vazios por tipo, sem valor; (2) quem tem a permissão `estoque.custos` lança o custo unitário de cada linha (produtos e cascos; zero é válido) e o frete da carga. Não há campo de custo total: o servidor calcula total = soma(quantidade × custo unitário) + frete.
+- **Dois momentos**: (1) a carga é lançada só com quantidades, por produto+marca e cascos vazios por tipo, sem valor; (2) quem tem a permissão `estoque.custos` lança o custo unitário de cada linha (produtos e cascos; zero é válido: digitar 0 no custo ou no frete é enviado como 0) e o frete da carga. Ao salvar, a tela confirma com o total do servidor ou com o que ainda falta. Não há campo de custo total: o servidor calcula total = soma(quantidade × custo unitário) + frete.
 - **Custo pendente**: a carga com frete ou algum custo unitário faltando fica pendente e aparece na listagem de cargas pendentes, até o custo ser completado. Carga anterior a esta regra aparece pendente até o frete ser informado.
 - **Custo da unidade** (base do lucro) = custo unitário + frete ÷ total de unidades da carga; o casco vazio conta como unidade no rateio.
 - O custo do abastecimento não é vinculado ao caixa.
+- **Na tela**: o vasilhame vazio entra na mesma lista dos produtos, como 'Vasilhame <tipo de casco>', e só linha com quantidade maior que zero vai na carga. As telas do segundo momento (lançar custos da carga e lista de cargas com custo pendente, com a ação de completar o custo) só existem para quem tem `estoque.custos`; o total exibido é o calculado pelo servidor, nunca somado na tela.
 
 ### 3.8 Conta Corrente de Funcionários
 - Cada diária lançada no fechamento de caixa (ver 3.5) credita a conta corrente do funcionário.

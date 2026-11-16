@@ -113,6 +113,19 @@ const textoVasilhames = (el: HTMLElement) =>
       .join(' | '),
   );
 
+describe('EstoquePage — permissão estoque.custos', () => {
+  it('sem a chave: o botão "Custos pendentes" não aparece', async () => {
+    const t = await montar(['estoque.editar']);
+    expect(t.botao('Custos pendentes')).toBeUndefined();
+  });
+
+  it.each([['estoque.custos'], ['*']])('com %s: o botão leva às pendentes', async (chave) => {
+    const t = await montar([chave]);
+    t.botao('Custos pendentes')!.click();
+    expect(t.navegar).toHaveBeenCalledWith('/estoque/abastecimento/pendentes');
+  });
+});
+
 describe('EstoquePage — permissão estoque.editar', () => {
   it('sem a chave: botões somem; clicar na marca não abre o ajuste', async () => {
     const t = await montar([]);

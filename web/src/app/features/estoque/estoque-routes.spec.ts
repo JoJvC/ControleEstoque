@@ -5,7 +5,11 @@ import { PERMISSOES } from '../../core/permissions/permissoes';
 import { rodarGuardDaRota } from '../../core/permissions/testing';
 import { ESTOQUE_ROUTES } from './estoque-routes';
 
-const GUARDADAS: Record<string, string> = { abastecimento: 'estoque.editar' };
+const GUARDADAS: Record<string, string> = {
+  abastecimento: 'estoque.editar',
+  'abastecimento/pendentes': 'estoque.custos',
+  'abastecimento/:id/custos': 'estoque.custos',
+};
 
 describe('ESTOQUE_ROUTES', () => {
   it.each(Object.entries(GUARDADAS))('rota "%s" exige %s', (path, chave) => {
@@ -17,6 +21,13 @@ describe('ESTOQUE_ROUTES', () => {
     expect(rodarGuardDaRota(rota, ['*'])).toBe(true);
     expect(rodarGuardDaRota(rota, [chave])).toBe(true);
     expect(PERMISSOES.map((p) => p.chave)).toContain(chave);
+  });
+
+  it('pendentes vem antes de :id/custos', () => {
+    const paths = ESTOQUE_ROUTES.map((r) => r.path);
+    expect(paths.indexOf('abastecimento/pendentes')).toBeLessThan(
+      paths.indexOf('abastecimento/:id/custos'),
+    );
   });
 
   it('rotas de consulta continuam sem guard', () => {

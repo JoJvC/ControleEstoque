@@ -147,6 +147,34 @@ describe('EstoqueApi', () => {
     req.flush({ id: 'a1' });
   });
 
+  it('lancarCustosAbastecimento: PUT /abastecimentos/{id}/custos com o corpo', () => {
+    let resp: unknown;
+    api.lancarCustosAbastecimento('a1', body).subscribe((r) => (resp = r));
+    const req = http.expectOne(`${BASE}/abastecimentos/a1/custos`);
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual(body);
+    req.flush({ id: 'a1', custoTotal: 548 });
+    expect(resp).toEqual({ id: 'a1', custoTotal: 548 });
+  });
+
+  it('obterAbastecimento: GET /abastecimentos/{id} com funcionarioId na query', () => {
+    api.obterAbastecimento('a1', 'f1').subscribe();
+    const req = http.expectOne((r) => r.url === `${BASE}/abastecimentos/a1`);
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('funcionarioId')).toBe('f1');
+    req.flush({ id: 'a1' });
+  });
+
+  it('listarCustosPendentes: GET /abastecimentos/custos-pendentes com funcionarioId na query', () => {
+    let resp: unknown;
+    api.listarCustosPendentes('f1').subscribe((r) => (resp = r));
+    const req = http.expectOne((r) => r.url === `${BASE}/abastecimentos/custos-pendentes`);
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('funcionarioId')).toBe('f1');
+    req.flush([{ id: 'a1' }]);
+    expect(resp).toEqual([{ id: 'a1' }]);
+  });
+
   it('criarBaixaCasco: POST /estoque/cascos/baixas com o corpo', () => {
     api.criarBaixaCasco(body).subscribe();
     const req = http.expectOne(`${BASE}/estoque/cascos/baixas`);

@@ -47,21 +47,32 @@ async function criarProduto(request: APIRequestContext, suf: string, estoqueMini
   });
   const nome = `Água E2E ${suf}`;
   const produto = await criar<{ id: string }>(request, '/api/estoque/v1/produtos', {
-    tipo: 'AGUA',
+    tipo: 'DESCARTAVEL',
     nome,
-    marcaId: marca.id,
+    categoria: null,
     tamanho: '20L',
-    precoReferencia: 50,
-    estoqueMinimo,
+    tipoCascoId: null,
   });
-  return { id: produto.id, nome };
+  const comMarca = await criar<{ marcas: { id: string }[] }>(
+    request,
+    `/api/estoque/v1/produtos/${produto.id}/marcas`,
+    { marcaId: marca.id, precoReferencia: 50, estoqueMinimo, tipoCascoId: null },
+  );
+  return { id: produto.id, produtoMarcaId: comMarca.marcas[0].id, nome };
 }
 
-async function abastecer(request: APIRequestContext, produtoId: string, quantidade: number) {
+// Momento 1: só quantidades; o custo é lançado depois (estoque.custos).
+async function abastecer(
+  request: APIRequestContext,
+  funcionarioId: string,
+  produtoMarcaId: string,
+  quantidade: number,
+) {
   await criar(request, '/api/estoque/v1/abastecimentos', {
     tipoFrete: 'PROPRIO',
-    custoTotal: quantidade * 30,
-    itens: [{ produtoId, quantidade, custoUnitario: 30 }],
+    funcionarioId,
+    itens: [{ produtoMarcaId, quantidade }],
+    cascos: [],
   });
 }
 
@@ -159,14 +170,12 @@ test('operador → PDV em uma tela → venda com pagamento parcial → caixa', a
   const funcionario = await criarOperador(request, suf);
   await criar(request, '/api/clientes/v1/clientes', { nome: nomeCliente });
   const agua = await criarProduto(request, suf, 5);
-  const cascos = await (await request.get('/api/estoque/v1/produtos?tipo=CASCO')).json();
+  const tiposCasco = await (await request.get('/api/estoque/v1/tipos-casco')).json();
   await criar(request, '/api/estoque/v1/abastecimentos', {
     tipoFrete: 'PROPRIO',
-    custoTotal: 100,
-    itens: [
-      { produtoId: agua.id, quantidade: 20, custoUnitario: 30 },
-      { produtoId: cascos[0].id, quantidade: 10, custoUnitario: 0 },
-    ],
+    funcionarioId: funcionario.id,
+    itens: [{ produtoMarcaId: agua.produtoMarcaId, quantidade: 20 }],
+    cascos: [{ tipoCascoId: tiposCasco[0].id, quantidade: 10 }],
   });
   const entradasAntes = (await garantirCaixaAberto(request)).entradas;
 
@@ -217,7 +226,7 @@ test('Repetir última venda: PDV recarrega o item da venda anterior', async ({ p
   const funcionario = await criarOperador(request, suf);
   await criar(request, '/api/clientes/v1/clientes', { nome: nomeCliente });
   const agua = await criarProduto(request, suf, 0);
-  await abastecer(request, agua.id, 10);
+  await abastecer(request, funcionario.id, agua.produtoMarcaId, 10);
   await garantirCaixaAberto(request);
   await selecionarOperador(page, funcionario.nome);
 
@@ -271,7 +280,7 @@ test('reposição: Repor na Home → abastecimento com o produto → entrada', a
   const suf = String(Date.now());
   const operador = await criarOperador(request, suf);
   const agua = await criarProduto(request, suf, 5);
-  await abastecer(request, agua.id, 2); // 2 < mínimo 5
+  await abastecer(request, operador.id, agua.produtoMarcaId, 2); // 2 < mínimo 5
   await selecionarOperador(page, operador.nome);
 
   await page.getByRole('button', { name: `Repor ${agua.nome}` }).click();
@@ -279,10 +288,10 @@ test('reposição: Repor na Home → abastecimento com o produto → entrada', a
   await expect(page.getByRole('heading', { level: 1, name: 'Chegou mercadoria' })).toBeVisible();
   await expect(page.getByText(agua.nome).first()).toBeVisible();
 
-  // O produto vem com a quantidade sugerida e pede o custo unitário.
-  await page.getByLabel('Custo unitário').fill('30,00');
+  // Só quantidade: a tela não pede custo (momento 1); o produto vem pré-filtrado.
+  await page.getByRole('textbox', { name: 'Quantidade' }).first().fill('12');
   await page.getByRole('button', { name: 'Retirada nossa' }).click();
-  await page.getByLabel('Custo total da carga (R$)').fill('360,00');
+  await expect(page.getByLabel('Custo total da carga (R$)')).toHaveCount(0);
   await page.getByRole('button', { name: 'Chegou mercadoria' }).click();
   await expect(page).toHaveURL(/\/estoque$/);
 

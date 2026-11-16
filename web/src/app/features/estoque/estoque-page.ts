@@ -160,6 +160,9 @@ import { EstoqueStore } from './estoque-store';
       <ce-button *cePermissao="'estoque.editar'" variante="ghost" (click)="baixaCasco()"
         >Baixa de casco</ce-button
       >
+      <ce-button *cePermissao="'estoque.custos'" variante="ghost" (click)="custosPendentes()"
+        >Custos pendentes</ce-button
+      >
     </div>
   `,
   styles: `
@@ -415,6 +418,10 @@ export class EstoquePage {
 
   protected abastecer(): void {
     this.router.navigateByUrl('/estoque/abastecimento');
+  }
+
+  protected custosPendentes(): void {
+    this.router.navigateByUrl('/estoque/abastecimento/pendentes');
   }
 
   protected voltarParaMais(): void {

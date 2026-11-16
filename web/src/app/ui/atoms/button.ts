@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { Spinner } from './spinner';
 
-export type BotaoVariante = 'primary' | 'ghost' | 'danger';
+export type BotaoVariante = 'primary' | 'ghost' | 'danger' | 'claro';
 
 @Component({
   selector: 'ce-button',
@@ -62,6 +62,13 @@ export type BotaoVariante = 'primary' | 'ghost' | 'danger';
       background: transparent;
       color: var(--ce-primary);
       border: 1px solid var(--ce-border);
+    }
+
+    // para fundo escuro (barra do passo a passo): texto e borda claros nos 4 temas
+    .botao--claro {
+      background: transparent;
+      color: var(--ce-texto-sobre-topo);
+      border: 1px solid var(--ce-texto-sobre-topo);
     }
 
     .botao--danger {

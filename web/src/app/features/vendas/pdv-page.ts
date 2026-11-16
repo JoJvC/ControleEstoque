@@ -1,4 +1,3 @@
-import { DialogRef } from '@angular/cdk/dialog';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { NgTemplateOutlet } from '@angular/common';
 import {
@@ -43,6 +42,7 @@ import { SearchBox } from '../../ui/molecules/search-box';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { DataList, DataListStatus } from '../../ui/organisms/data-list';
 import { PagamentoEdicao } from '../../ui/organisms/pagamento-lista';
+import { PassoAPasso } from '../../ui/organisms/passo-a-passo';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import {
   ItemCarrinho,
@@ -92,11 +92,12 @@ import {
   CobrarAcao,
   CobrarEstado,
   CobrarPainel,
-  CobrarSheet,
-  CobrarSheetDados,
   VasilhameEstado,
 } from './cobrar-painel';
 import { ItemVendaSheet, ItemVendaSheetDados, ItemVendaSheetResultado } from './item-venda-sheet';
+import { PassoCascos } from './passo-cascos';
+import { PassoPagamento } from './passo-pagamento';
+import { ROTULO_PASSO, passosDaVenda, podeAvancarPasso } from './passos-venda';
 import { VendaStore } from './venda-store';
 import { creditoNaEdicao, limitarPagamentos } from './pagamento-credito';
 import { rotuloStatusPagamento } from './venda-rotulos';
@@ -117,6 +118,9 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
     DataList,
     Icon,
     NgTemplateOutlet,
+    PassoAPasso,
+    PassoCascos,
+    PassoPagamento,
     PrecoPipe,
     QuantityStepper,
     SearchBox,
@@ -186,10 +190,45 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
           [attr.inert]="somenteLeitura() ? '' : null"
         >
           <div class="grade">
-            <div class="grade__catalogo">
-              <ng-container *ngTemplateOutlet="tplCliente" />
-              <ng-container *ngTemplateOutlet="tplCatalogo" />
-            </div>
+            @if (emPassos()) {
+              <ce-passo-a-passo
+                [passos]="rotulosDosPassos()"
+                [atual]="passoAtual()"
+                [podeAvancar]="podeAvancarNoPasso()"
+                [rotuloFinal]="cobrarEstado().rotuloConfirmar"
+                [carregando]="enviando()"
+                (voltar)="voltarPasso()"
+                (avancar)="avancarPasso()"
+                (concluir)="registrar()"
+              >
+                <ng-container resumo>
+                  <small>
+                    {{ rotuloItens() }}
+                    @if (totais().desconto > 0) {
+                      · desc. {{ totais().desconto | cePreco }}
+                    }
+                  </small>
+                  <strong>{{ totais().liquido | cePreco }}</strong>
+                </ng-container>
+                @switch (passosAtivos()[passoAtual()]) {
+                  @case ('cascos') {
+                    <ce-passo-cascos [estado]="cobrarEstado()" (acao)="agir($event)" />
+                  }
+                  @case ('pagamento') {
+                    <ce-passo-pagamento [estado]="cobrarEstado()" (acao)="agir($event)" />
+                  }
+                  @default {
+                    <ng-container *ngTemplateOutlet="tplCliente" />
+                    <ng-container *ngTemplateOutlet="tplCatalogo" />
+                  }
+                }
+              </ce-passo-a-passo>
+            } @else {
+              <div class="grade__catalogo">
+                <ng-container *ngTemplateOutlet="tplCliente" />
+                <ng-container *ngTemplateOutlet="tplCatalogo" />
+              </div>
+            }
             @if (desktop()) {
               <aside class="grade__venda" aria-label="Venda atual">
                 <h2 class="grade__titulo">
@@ -462,23 +501,6 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
         </ng-template>
       </ce-data-list>
     </ng-template>
-
-    @if (!desktop() && !venda() && carga() === 'ok' && !somenteLeitura()) {
-      <div class="barra">
-        <div class="barra__resumo">
-          <small>
-            {{ rotuloItens() }}
-            @if (totais().desconto > 0) {
-              · desc. {{ totais().desconto | cePreco }}
-            }
-          </small>
-          <strong>{{ totais().liquido | cePreco }}</strong>
-        </div>
-        <ce-button [disabled]="!podeCobrar()" (click)="abrirCobrar()">
-          {{ rotuloCobrar() }}
-        </ce-button>
-      </div>
-    }
   `,
   styles: `
     @use 'mixins';
@@ -766,27 +788,6 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
       flex-direction: column;
       gap: var(--ce-space-3);
     }
-
-    // barra fixa do celular, acima da bottom-nav
-    .barra {
-      position: sticky;
-      bottom: calc(var(--ce-nav-height) + env(safe-area-inset-bottom, 0px));
-      display: flex;
-      align-items: center;
-      gap: var(--ce-space-3);
-      margin: 0 var(--ce-space-3) var(--ce-space-2);
-      padding: var(--ce-space-2) var(--ce-space-2) var(--ce-space-2) var(--ce-space-4);
-      border-radius: 20px;
-      background: var(--ce-topo);
-      color: var(--ce-texto-sobre-topo);
-    }
-
-    .barra__resumo {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      font-weight: 700;
-    }
   `,
 })
 export class PdvPage implements OnInit {
@@ -800,7 +801,7 @@ export class PdvPage implements OnInit {
   private readonly router = inject(Router);
   private readonly breakpoints = inject(BreakpointObserver);
 
-  // A partir de 960 px a cobrança é o painel à direita (DESIGN.md §5); abaixo, a sheet Cobrar.
+  // A partir de 960 px a cobrança é o painel à direita (DESIGN.md §5); abaixo, o passo a passo.
   protected readonly desktop = toSignal(
     this.breakpoints.observe('(min-width: 960px)').pipe(map((r) => r.matches)),
     { initialValue: false },
@@ -885,18 +886,27 @@ export class PdvPage implements OnInit {
       ? this.creditoEdicao()
       : Object.fromEntries(base.map((c) => [c.tipoCascoId, Math.max(0, -c.saldo)]));
   });
+  // Uma linha por tipo de casco do carrinho (retornáveis e vasilhames já lançados); sem lançamento, começa em 0.
   protected readonly vasilhamesEstado = computed<VasilhameEstado[]>(() => {
     const creditos = this.creditosVasilhame();
-    return this.vasilhames().map((v) => {
-      const credito = creditos[v.tipoCascoId] ?? 0;
-      return {
+    const lancados = this.vasilhames();
+    const ids = new Set([
+      ...this.tiposDoCarrinho().map((t) => t.tipoCascoId),
+      ...lancados.map((v) => v.tipoCascoId),
+    ]);
+    const linhas: VasilhameEstado[] = [];
+    for (const tipo of this.tiposCasco().filter((t) => ids.has(t.id))) {
+      const v = lancados.find((l) => l.tipoCascoId === tipo.id) ?? vasilhameNovo(tipo, 0);
+      const credito = creditos[tipo.id] ?? 0;
+      linhas.push({
         ...v,
-        nome: this.tiposCasco().find((t) => t.id === v.tipoCascoId)?.nome ?? '',
+        nome: tipo.nome,
         abatida: abatidaDe(v, credito),
         total: totalVasilhameDe(v, credito),
         escolhaModo: credito > 0 || v.modo === 'COMPRAR',
-      };
-    });
+      });
+    }
+    return linhas;
   });
   protected readonly totalVasilhames = computed(() =>
     totalVasilhamesDe(this.vasilhames(), this.creditosVasilhame()),
@@ -966,7 +976,7 @@ export class PdvPage implements OnInit {
     () => this.enderecoOk() && !this.carrinhoVazio() && !this.sucataPassaDoTotal(),
   );
 
-  // Barra fixa do celular
+  // Resumo da barra do celular
   protected readonly quantidadeTotal = computed(
     () =>
       this.itens().reduce((soma, i) => soma + i.quantidade, 0) +
@@ -975,16 +985,6 @@ export class PdvPage implements OnInit {
   protected readonly rotuloItens = computed(() => {
     const n = this.quantidadeTotal();
     return `${n} ${n === 1 ? 'item' : 'itens'}`;
-  });
-  protected readonly podeCobrar = computed(() => this.enderecoOk() && !this.carrinhoVazio());
-  protected readonly rotuloCobrar = computed(() => {
-    if (this.clienteSelecionado() === null) {
-      return 'Escolha o cliente';
-    }
-    if (this.carrinhoVazio()) {
-      return 'Adicione itens';
-    }
-    return this.enderecoOk() ? 'Cobrar' : 'Escolha o endereço';
   });
 
   // Crédito para pagar a venda: o disponível do servidor; na edição, o que o servidor devolveria
@@ -1027,7 +1027,23 @@ export class PdvPage implements OnInit {
     () => this.id() === undefined && this.carrinhoVazio() && this.repetir().estado !== 'sem-venda',
   );
 
-  private cobrarRef: DialogRef<void> | null = null;
+  // Passo a passo do celular: o índice é a única coisa que ele guarda; o rascunho fica nos signals acima.
+  private readonly passo = signal(0);
+  protected readonly emPassos = computed(() => !this.desktop() && !this.somenteLeitura());
+  protected readonly passosAtivos = computed(() => passosDaVenda(this.itens(), this.vasilhames()));
+  protected readonly rotulosDosPassos = computed(() =>
+    this.passosAtivos().map((p) => ROTULO_PASSO[p]),
+  );
+  protected readonly passoAtual = computed(() =>
+    Math.min(this.passo(), this.passosAtivos().length - 1),
+  );
+  protected readonly podeAvancarNoPasso = computed(() =>
+    podeAvancarPasso(this.passosAtivos()[this.passoAtual()], {
+      carrinhoVazio: this.carrinhoVazio(),
+      enderecoOk: this.enderecoOk(),
+      sucataExcede: this.sucataPassaDoTotal(),
+    }),
+  );
 
   private produtosPronto: Promise<void> = Promise.resolve();
 
@@ -1035,7 +1051,7 @@ export class PdvPage implements OnInit {
     this.carregarProdutos();
     effect(() => {
       if (this.desktop()) {
-        this.cobrarRef?.close();
+        this.passo.set(0);
       }
     });
   }
@@ -1271,19 +1287,24 @@ export class PdvPage implements OnInit {
     return this.vasilhames().find((v) => v.tipoCascoId === tipoCascoId)?.quantidade ?? 0;
   }
 
-  /** Lista do PDV: tocar em 'Vasilhame <tipo>' soma 1 no quadro; quantidade 0 tira o tipo do quadro. */
+  /** Lista do PDV: tocar em 'Vasilhame <tipo>' soma 1 no quadro; quantidade 0 tira o vasilhame do pedido (a linha do tipo segue no quadro enquanto há retornável do tipo). */
   protected definirVasilhame(tipo: TipoCascoResponse, quantidade: number): void {
-    if (this.quantidadeDeVasilhame(tipo.id) === 0 && quantidade > 0) {
-      this.vasilhames.update((atual) => [...atual, vasilhameNovo(tipo, quantidade)]);
-    } else {
-      this.alterarVasilhame(tipo.id, { quantidade });
-    }
+    this.alterarVasilhame(tipo.id, { quantidade });
   }
 
   private alterarVasilhame(
     tipoCascoId: string,
     mudanca: Partial<Pick<VasilhameCarrinho, 'quantidade' | 'precoUnitario' | 'modo'>>,
   ): void {
+    const quantidade = mudanca.quantidade;
+    const tipo = this.tiposCasco().find((t) => t.id === tipoCascoId);
+    if (this.quantidadeDeVasilhame(tipoCascoId) === 0 && tipo && quantidade && quantidade > 0) {
+      this.vasilhames.update((atual) => [
+        ...atual,
+        { ...vasilhameNovo(tipo, quantidade), ...mudanca },
+      ]);
+      return;
+    }
     this.vasilhames.update((atual) =>
       mudanca.quantidade !== undefined && mudanca.quantidade <= 0
         ? atual.filter((v) => v.tipoCascoId !== tipoCascoId)
@@ -1400,20 +1421,14 @@ export class PdvPage implements OnInit {
     return firstValueFrom(ref.closed);
   }
 
-  // Cobrança: sheet no celular, painel no desktop (mesmo componente, mesmas ações)
+  // Cobrança: passo a passo no celular, painel no desktop (mesmas ações)
 
-  protected abrirCobrar(): void {
-    const dados: CobrarSheetDados = {
-      estado: this.cobrarEstado,
-      agir: (acao) => this.agir(acao),
-    };
-    const ref = this.sheet.abrir<void, CobrarSheetDados>(CobrarSheet, dados);
-    this.cobrarRef = ref;
-    ref.closed.subscribe(() => {
-      if (this.cobrarRef === ref) {
-        this.cobrarRef = null;
-      }
-    });
+  protected avancarPasso(): void {
+    this.passo.set(Math.min(this.passoAtual() + 1, this.passosAtivos().length - 1));
+  }
+
+  protected voltarPasso(): void {
+    this.passo.set(Math.max(this.passoAtual() - 1, 0));
   }
 
   protected agir(acao: CobrarAcao): void {
@@ -1514,7 +1529,7 @@ export class PdvPage implements OnInit {
         this.venda.set(await this.vendaStore.criar(request));
         this.carregarSaldos(cliente.id); // Regra 8.6: saldos novos vêm do servidor
       }
-      this.cobrarRef?.close();
+      this.passo.set(0);
     } catch (e) {
       // Rede/5xx já viraram toast no interceptor; 4xx (CAIXA_FECHADO, 400/422) fica inline.
       if (!(e instanceof ApiError)) {

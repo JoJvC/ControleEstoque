@@ -15,7 +15,6 @@ import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { SheetService } from '../../core/overlay/sheet-service';
 import { ItemCarrinho, itemNovo } from './carrinho';
-import { CobrarSheet } from './cobrar-painel';
 import { ItemVendaSheet } from './item-venda-sheet';
 import { PdvPage } from './pdv-page';
 
@@ -118,7 +117,7 @@ const SALDOS_ZERO: SaldosResponse = {
 };
 const SALDOS_CREDITO: SaldosResponse = { ...SALDOS_ZERO, saldo: 30, creditoDisponivel: 30 };
 
-// A sheet Cobrar é a SheetService de verdade (Esc e Fechar valem); só a sheet do item é dublê.
+// A SheetService é a de verdade; só a sheet do item é dublê. No celular a cobrança é o passo a passo (sem sheet).
 async function montar(
   idVenda?: string,
   opcoes: {
@@ -181,8 +180,10 @@ async function montar(
   }
   await assentar(fixture);
 
-  // O painel de cobrança é um só: dentro da sheet (celular) ou na coluna da direita (desktop).
-  const painel = () => document.querySelector<HTMLElement>('ce-cobrar-painel')!;
+  // Onde a cobrança aparece: o painel na coluna da direita (desktop) ou o passo atual do passo a passo (celular).
+  const painel = () =>
+    el.querySelector<HTMLElement>('ce-cobrar-painel') ??
+    el.querySelector<HTMLElement>('ce-passo-a-passo')!;
   const botaoEm = (raiz: ParentNode, texto: string): HTMLButtonElement => {
     const achado = Array.from(raiz.querySelectorAll('button')).find((b) =>
       b.textContent?.includes(texto),
@@ -271,14 +272,25 @@ async function montar(
     await assentar(fixture);
   };
   const barra = () => texto(el.querySelector('.barra')!);
-  const cobrar = () => clicar('Cobrar');
-  const escape = async () => {
-    document.body.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }),
-    );
+  const botaoContinuar = () =>
+    el.querySelector<HTMLButtonElement>('[data-testid="passo-continuar"] button')!;
+  const botaoVoltar = () =>
+    el.querySelector<HTMLButtonElement>('[data-testid="passo-voltar"] button');
+  const trilho = () => el.querySelector('[data-testid="passo-trilho"]')?.textContent?.trim();
+  const continuar = async () => {
+    botaoContinuar().click();
     await assentar(fixture);
   };
-  const aberta = () => document.querySelector('ce-cobrar-painel') !== null;
+  const voltar = async () => {
+    botaoVoltar()!.click();
+    await assentar(fixture);
+  };
+  // Vai até o último passo (Pagamento), o que o antigo toque em 'Cobrar' abria.
+  const cobrar = async () => {
+    while (el.querySelector('[data-testid="passo-continuar"]')) {
+      await continuar();
+    }
+  };
   // Depois do POST: a lista de vendas recarrega e os saldos do cliente são consultados de novo.
   const depoisDoPost = async (saldos: SaldosResponse = SALDOS_ZERO) => {
     http.expectOne((r) => r.method === 'GET' && r.url === URL_VENDAS).flush([]);
@@ -322,8 +334,11 @@ async function montar(
     diminuir,
     barra,
     cobrar,
-    escape,
-    aberta,
+    botaoContinuar,
+    botaoVoltar,
+    trilho,
+    continuar,
+    voltar,
     aposRegistro,
     depoisDoPost,
   };
@@ -456,14 +471,14 @@ describe('PdvPage: venda em uma tela', () => {
 
   it('tocar na linha adiciona o item; −/+ muda a quantidade; a barra mostra itens e total', async () => {
     const t = await montar();
-    expect(t.botao('Escolha o cliente').disabled).toBe(true);
+    expect(t.botaoContinuar().disabled).toBe(true);
     await t.escolherCliente(cliente('c-1', 'Ana'));
-    expect(t.botao('Adicione itens').disabled).toBe(true);
+    expect(t.botaoContinuar().disabled).toBe(true);
     expect(t.barra()).toContain('0 itens');
 
     await t.tocar(AGUA);
     expect(t.barra()).toMatch(/1 item R\$ 50,00/);
-    expect(t.botao('Cobrar').disabled).toBe(false);
+    expect(t.botaoContinuar().disabled).toBe(false);
 
     await t.aumentar(AGUA);
     await t.tocar(GELO);
@@ -475,7 +490,7 @@ describe('PdvPage: venda em uma tela', () => {
     await t.diminuir(GELO);
     expect(t.el.querySelectorAll('.prod--sel')).toHaveLength(0);
     expect(t.barra()).toContain('0 itens');
-    expect(t.botao('Adicione itens').disabled).toBe(true);
+    expect(t.botaoContinuar().disabled).toBe(true);
     expect(t.el.querySelector('ce-page-placeholder')).toBeNull();
   });
 
@@ -567,12 +582,12 @@ describe('PdvPage: venda em uma tela', () => {
     const t = await montar();
     await t.escolherCliente(cliente('c-1', 'Ana', 2));
     await t.tocar(GALAO);
-    expect(t.botao('Escolha o endereço').disabled).toBe(true);
+    expect(t.botaoContinuar().disabled).toBe(true);
 
     t.el.querySelectorAll<HTMLElement>('[role="radio"]')[1].click();
     await assentar(t.fixture);
 
-    expect(t.botao('Cobrar').disabled).toBe(false);
+    expect(t.botaoContinuar().disabled).toBe(false);
   });
 
   it('Enter com a busca do debounce ainda em voo seleciona o cliente da resposta nova', async () => {
@@ -601,30 +616,8 @@ describe('PdvPage: venda em uma tela', () => {
   });
 });
 
-describe('PdvPage: cobrar no celular (sheet)', () => {
+describe('PdvPage: cobrar no celular (passo a passo)', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
-
-  it('Cobrar abre a sheet; o botão Fechar e o Esc a fecham', async () => {
-    const t = await montar();
-    await t.escolherCliente(cliente('c-1', 'Ana'));
-    await t.tocar(AGUA);
-    expect(t.aberta()).toBe(false);
-
-    await t.cobrar();
-    expect(t.aberta()).toBe(true);
-    expect(document.querySelector('.ce-sheet-panel')?.textContent).toContain('Fechar venda');
-    expect(t.texto(t.painel())).toContain('1× Água 20L — Indaiá');
-
-    document.querySelector<HTMLElement>('.ce-sheet-panel button[aria-label="Fechar"]')!.click();
-    await assentar(t.fixture);
-    expect(t.aberta()).toBe(false);
-
-    await t.cobrar();
-    expect(t.aberta()).toBe(true);
-    await t.escape();
-    expect(t.aberta()).toBe(false);
-    expect(t.barra()).toContain('1 item');
-  });
 
   it('chip de saldo positivo é "Crédito R$ x" em tom pago', async () => {
     const t = await montar();
@@ -643,7 +636,7 @@ describe('PdvPage: cobrar no celular (sheet)', () => {
     expect(topo.querySelector('.chip--pago')).not.toBeNull();
   });
 
-  it('o painel da sheet reage ao que se digita; ao ir para o desktop a sheet fecha e o painel fica na tela', async () => {
+  it('o pagamento reage ao que se digita; ao ir para o desktop o painel fica na tela e o passo a passo some', async () => {
     const t = await montar();
     await t.escolherCliente(cliente('c-1', 'Ana'));
     await t.tocar(AGUA, 2);
@@ -654,9 +647,13 @@ describe('PdvPage: cobrar no celular (sheet)', () => {
 
     t.largura.next(true);
     await assentar(t.fixture);
-    expect(document.querySelector('.ce-sheet-panel')).toBeNull();
+    expect(t.trilho()).toBeUndefined();
     expect(t.el.querySelector('.grade__venda ce-cobrar-painel')).not.toBeNull();
     expect(t.texto(t.painel())).toMatch(/Vai para fiado: R\$ 60,00/);
+
+    t.largura.next(false);
+    await assentar(t.fixture);
+    expect(t.trilho()).toBe('1 de 3 · Cliente e produtos');
   });
 
   it('passeio 7: 5 águas, 3 devolvidos, 1 sucata, PIX 200 → fiado 50 antes; PARCIAL, fiado 50 e casco 2 depois', async () => {
@@ -664,11 +661,12 @@ describe('PdvPage: cobrar no celular (sheet)', () => {
     await t.escolherCliente(cliente('c-1', 'Ana'), SALDOS);
     await t.tocar(AGUA, 5);
     expect(t.barra()).toMatch(/5 itens R\$ 250,00/);
-    await t.cobrar();
+    await t.continuar();
 
     await t.digitar(t.campoDoPainel('ce-quantity-stepper input', 0), '3');
     await t.digitar(t.campoDoPainel('ce-quantity-stepper input', 1), '1');
     expect(t.texto(t.painel())).toContain('Casco 20L: Ficam 5 cascos na rua com Ana');
+    await t.continuar();
 
     t.exato(t.painel(), 'PIX')[0].click();
     await assentar(t.fixture);
@@ -709,7 +707,7 @@ describe('PdvPage: cobrar no celular (sheet)', () => {
       sucataPorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', quantidade: 1 }],
     });
 
-    expect(t.aberta()).toBe(false);
+    expect(t.el.querySelector('ce-passo-a-passo')).toBeNull();
     expect(t.texto()).toContain('Venda registrada');
     expect(t.texto()).toContain('Parcial');
     expect(t.texto()).toMatch(/Fiado gerado ?R\$ 50,00/);
@@ -729,7 +727,7 @@ describe('PdvPage: cobrar no celular (sheet)', () => {
 
     expect(t.texto()).not.toContain('Venda registrada');
     expect(t.texto()).not.toContain('Ana');
-    expect(t.botao('Escolha o cliente').disabled).toBe(true);
+    expect(t.botaoContinuar().disabled).toBe(true);
   });
 
   it('"Cancelar venda" confirmada limpa o rascunho sem chamar a API; recusada mantém', async () => {
@@ -746,6 +744,259 @@ describe('PdvPage: cobrar no celular (sheet)', () => {
     expect(t.confirmar).toHaveBeenCalledTimes(2);
     expect(t.texto()).not.toContain('Ana');
     // afterEach: http.verify() garante que nenhuma chamada HTTP foi feita.
+  });
+});
+
+describe('PdvPage: passo a passo no celular', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  const comAgua = async (quantidade = 2) => {
+    const t = await montar();
+    await t.escolherCliente(cliente('c-1', 'Ana'), SALDOS);
+    await t.tocar(AGUA, quantidade);
+    return t;
+  };
+
+  it('roteiro: 2 galões, 1 casco devolvido, voltar sem perder nada, Tudo e Confirmar enviam cascos e pagamento', async () => {
+    const t = await comAgua(2);
+    expect(t.trilho()).toBe('1 de 3 · Cliente e produtos');
+    expect(t.el.querySelector('.cliente-fixo')).not.toBeNull();
+
+    await t.continuar();
+    expect(t.trilho()).toBe('2 de 3 · Cascos');
+    await t.digitar(t.campoDoPainel('.casco ce-quantity-stepper input'), '1');
+
+    await t.voltar();
+    expect(t.trilho()).toBe('1 de 3 · Cliente e produtos');
+    expect(t.linha(AGUA).querySelector<HTMLInputElement>('ce-quantity-stepper input')!.value).toBe(
+      '2',
+    );
+
+    await t.continuar();
+    expect(t.trilho()).toBe('2 de 3 · Cascos');
+    expect(t.campoDoPainel('.casco ce-quantity-stepper input').value).toBe('1');
+
+    await t.continuar();
+    expect(t.trilho()).toBe('3 de 3 · Pagamento');
+    t.exato(t.painel(), 'Tudo')[0].click();
+    await assentar(t.fixture);
+    expect(t.valores()).toEqual(['100,00']);
+
+    await t.clicarNoPainel('Confirmar venda');
+    const req = t.http.expectOne(URL_VENDAS);
+    expect(req.request.body.cascosDevolvidos).toEqual([{ tipoCascoId: 't-1', quantidade: 1 }]);
+    expect(req.request.body.pagamentos).toEqual([{ forma: 'DINHEIRO', valor: 100 }]);
+    req.flush(RESPOSTA);
+    await assentar(t.fixture);
+    await t.depoisDoPost();
+
+    expect(TestBed.inject(SheetService).abrir).not.toHaveBeenCalled();
+    expect(t.texto()).toContain('Venda registrada');
+  });
+
+  it('retornável no carrinho: o quadro de vasilhames aparece no passo 2 com a linha do tipo em 0; subir a quantidade equivale a adicionar o vasilhame', async () => {
+    const t = await comAgua(2);
+    await t.continuar();
+
+    expect(t.texto(t.painel())).toContain('Vasilhames comprados agora');
+    expect(t.campoDoPainel('.vasilhame ce-quantity-stepper input').value).toBe('0');
+    expect(t.campoDoPainel('.vasilhame ce-money-input input').value).toBe('30,00');
+    expect(t.campoDoPainel('.vasilhame ce-money-input input').disabled).toBe(true);
+    expect(t.painel().querySelector('.modos')).toBeNull();
+
+    await t.digitar(t.campoDoPainel('.vasilhame ce-quantity-stepper input'), '1');
+    expect(t.trilho()).toBe('2 de 3 · Cascos');
+    expect(t.campoDoPainel('.vasilhame ce-money-input input').disabled).toBe(false);
+
+    await t.continuar();
+    t.exato(t.painel(), 'Tudo')[0].click();
+    await assentar(t.fixture);
+    await t.clicarNoPainel('Confirmar venda');
+    const req = t.http.expectOne(URL_VENDAS);
+    expect(req.request.body.vasilhames).toEqual([
+      { tipoCascoId: 't-1', quantidade: 1, precoUnitario: 30, modoCredito: 'ABATER_CREDITO' },
+    ]);
+    req.flush(RESPOSTA);
+    await assentar(t.fixture);
+    await t.depoisDoPost();
+  });
+
+  it('retornável no carrinho, quantidade do vasilhame de volta a 0: a linha continua e nada vai no pedido', async () => {
+    const t = await comAgua(2);
+    await t.continuar();
+    await t.digitar(t.campoDoPainel('.vasilhame ce-quantity-stepper input'), '1');
+    await t.digitar(t.campoDoPainel('.vasilhame ce-quantity-stepper input'), '0');
+
+    expect(t.campoDoPainel('.vasilhame ce-quantity-stepper input').value).toBe('0');
+    expect(t.trilho()).toBe('2 de 3 · Cascos');
+
+    await t.continuar();
+    t.exato(t.painel(), 'Tudo')[0].click();
+    await assentar(t.fixture);
+    await t.clicarNoPainel('Confirmar venda');
+    const req = t.http.expectOne(URL_VENDAS);
+    expect(req.request.body.vasilhames ?? []).toEqual([]);
+    req.flush(RESPOSTA);
+    await assentar(t.fixture);
+    await t.depoisDoPost();
+  });
+
+  it('com crédito de galão do tipo, a linha em 0 mostra Abater/Comprar desabilitado até a quantidade subir', async () => {
+    const t = await montar();
+    await t.escolherCliente(cliente('c-1', 'Ana'), SALDOS_CREDITO_CASCO);
+    await t.tocar(AGUA, 2);
+    await t.continuar();
+
+    const botoes = () =>
+      Array.from(t.painel().querySelectorAll<HTMLButtonElement>('.vasilhame .modos button'));
+    expect(botoes()).toHaveLength(2);
+    expect(botoes().every((b) => b.disabled)).toBe(true);
+
+    await t.digitar(t.campoDoPainel('.vasilhame ce-quantity-stepper input'), '1');
+    expect(botoes().every((b) => !b.disabled)).toBe(true);
+  });
+
+  it('só descartáveis: Continuar cai direto no pagamento (2 de 2)', async () => {
+    const t = await montar();
+    await t.escolherCliente(cliente('c-1', 'Ana'));
+    await t.tocar(COPO);
+    expect(t.trilho()).toBe('1 de 2 · Cliente e produtos');
+
+    await t.continuar();
+
+    expect(t.trilho()).toBe('2 de 2 · Pagamento');
+    expect(t.el.querySelector('ce-passo-pagamento')).not.toBeNull();
+    expect(t.el.querySelector('ce-passo-cascos')).toBeNull();
+    expect(t.el.querySelector('[data-testid="passo-continuar"]')).toBeNull();
+  });
+
+  it('só com vasilhame comprado do tipo B: 3 passos e o passo 2 mostra o vasilhame', async () => {
+    const t = await montar();
+    await t.escolherCliente(cliente('c-1', 'Ana'));
+    t.el.querySelector<HTMLElement>('button[aria-label="Adicionar Vasilhame Casco 10L"]')!.click();
+    await assentar(t.fixture);
+    expect(t.trilho()).toBe('1 de 3 · Cliente e produtos');
+
+    await t.continuar();
+
+    expect(t.trilho()).toBe('2 de 3 · Cascos');
+    expect(t.texto(t.painel())).toContain('Vasilhame Casco 10L');
+    expect(t.campoDoPainel('.vasilhame ce-quantity-stepper input').value).toBe('1');
+  });
+
+  it('Continuar fica desabilitado sem cliente e sem itens; Voltar não existe no 1º passo', async () => {
+    const t = await montar();
+    expect(t.botaoContinuar().disabled).toBe(true);
+    expect(t.botaoVoltar()).toBeNull();
+
+    await t.escolherCliente(cliente('c-1', 'Ana'));
+    expect(t.botaoContinuar().disabled).toBe(true);
+
+    await t.tocar(AGUA);
+    expect(t.botaoContinuar().disabled).toBe(false);
+  });
+
+  it('voltar do passo 3 ao 1 e avançar de novo mantém carrinho, cascos, sucata e pagamentos', async () => {
+    const t = await comAgua(2);
+    await t.continuar();
+    await t.digitar(t.campoDoPainel('.casco ce-quantity-stepper input'), '1');
+    await t.digitar(t.campoDoPainel('.sucata ce-quantity-stepper input'), '1');
+    await t.digitar(t.campoDoPainel('.sucata ce-money-input input'), '500');
+    await t.continuar();
+    t.exato(t.painel(), 'PIX')[0].click();
+    await assentar(t.fixture);
+    await t.digitar(t.campoDoPainel('.forma-linha ce-money-input input'), '3000');
+
+    await t.voltar();
+    await t.voltar();
+    expect(t.trilho()).toBe('1 de 3 · Cliente e produtos');
+    expect(t.linha(AGUA).querySelector<HTMLInputElement>('ce-quantity-stepper input')!.value).toBe(
+      '2',
+    );
+
+    await t.continuar();
+    expect(t.campoDoPainel('.casco ce-quantity-stepper input').value).toBe('1');
+    expect(t.campoDoPainel('.sucata ce-quantity-stepper input').value).toBe('1');
+    expect(t.campoDoPainel('.sucata ce-money-input input').value).toBe('5,00');
+
+    await t.continuar();
+    expect(t.valores()).toEqual(['30,00']);
+    expect(t.exato(t.painel(), 'PIX')[0].getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('sucata acima do total depois de diminuir o carrinho: dá para voltar ao passo 2 e corrigir', async () => {
+    const t = await comAgua(2);
+    await t.continuar();
+    await t.digitar(t.campoDoPainel('.sucata ce-quantity-stepper input'), '2');
+    await t.digitar(t.campoDoPainel('.sucata ce-money-input input'), '4000');
+    await t.voltar();
+    await t.diminuir(AGUA); // total cai para R$ 50, abaixo dos R$ 80 de sucata
+
+    expect(t.botaoContinuar().disabled).toBe(false);
+    await t.continuar();
+    expect(t.trilho()).toBe('2 de 3 · Cascos');
+    expect(t.texto(t.painel())).toContain('O desconto da sucata passa do total da venda');
+    expect(t.botaoContinuar().disabled).toBe(true);
+
+    await t.digitar(t.campoDoPainel('.sucata ce-money-input input'), '1000');
+    expect(t.botaoContinuar().disabled).toBe(false);
+  });
+
+  it('erro 4xx do servidor deixa a tela no passo 3 com a mensagem', async () => {
+    const t = await comAgua(1);
+    await t.cobrar();
+    expect(t.trilho()).toBe('3 de 3 · Pagamento');
+
+    await t.clicarNoPainel('Confirmar venda');
+    t.http
+      .expectOne(URL_VENDAS)
+      .flush(
+        { code: 'CAIXA_FECHADO', message: 'caixa fechado', traceId: 't' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await assentar(t.fixture);
+
+    expect(t.trilho()).toBe('3 de 3 · Pagamento');
+    expect(t.alertas()).toContain('O caixa do dia já está fechado.');
+  });
+
+  it('depois de registrar, "Nova venda" recomeça no passo 1', async () => {
+    const t = await comAgua(1);
+    await t.cobrar();
+    await t.clicarNoPainel('Confirmar venda');
+    await t.aposRegistro();
+
+    await t.clicar('Nova venda');
+    await t.escolherCliente(cliente('c-1', 'Ana'));
+
+    expect(t.trilho()).toBe('1 de 2 · Cliente e produtos');
+  });
+
+  it('ao virar desktop o rascunho fica; ao voltar ao celular o passo volta ao 1º', async () => {
+    const t = await comAgua(2);
+    await t.cobrar();
+    t.exato(t.painel(), 'PIX')[0].click();
+    await assentar(t.fixture);
+
+    t.largura.next(true);
+    await assentar(t.fixture);
+    expect(t.trilho()).toBeUndefined();
+    expect(t.el.querySelector('.grade__venda ce-cobrar-painel')).not.toBeNull();
+    expect(t.exato(t.painel(), 'PIX')[0].getAttribute('aria-pressed')).toBe('true');
+
+    t.largura.next(false);
+    await assentar(t.fixture);
+    expect(t.trilho()).toBe('1 de 3 · Cliente e produtos');
+    expect(t.el.querySelector('ce-cobrar-painel')).toBeNull();
+  });
+
+  it('no desktop não há trilho; o aside com o painel continua', async () => {
+    const t = await montar(undefined, { desktop: true });
+    await t.escolherCliente(cliente('c-1', 'Ana'));
+    await t.tocar(AGUA);
+
+    expect(t.trilho()).toBeUndefined();
+    expect(t.el.querySelector('aside ce-cobrar-painel')).not.toBeNull();
   });
 });
 
@@ -773,7 +1024,7 @@ describe('PdvPage: cobrar no desktop (painel à direita)', () => {
     expect(t.el.querySelectorAll('.grade__catalogo .prod')).toHaveLength(7); // 5 produtos + 2 vasilhames
     expect(t.el.querySelector('.barra')).toBeNull();
     expect(document.querySelector('.ce-sheet-panel')).toBeNull();
-    expect(t.abrir).not.toHaveBeenCalledWith(CobrarSheet, expect.anything());
+    expect(t.el.querySelector('ce-passo-a-passo')).toBeNull();
     expect(t.el.querySelector('ce-page-placeholder')).toBeNull();
   });
 
@@ -889,7 +1140,9 @@ describe('PdvPage: cobrar no desktop (painel à direita)', () => {
   it('casco e sucata são campos separados e a sucata não abate o débito de casco', async () => {
     const t = await comAguas(2);
     const painel = t.painel();
-    expect(painel.querySelectorAll('ce-quantity-stepper')).toHaveLength(2);
+    // casco, sucata e a linha do vasilhame (sempre presente com retornável no carrinho)
+    expect(painel.querySelectorAll('ce-quantity-stepper')).toHaveLength(3);
+    expect(painel.querySelector('.vasilhame ce-quantity-stepper')).not.toBeNull();
     expect(t.texto(painel.querySelector('.casco')!)).toContain('Cascos devolvidos agora');
     expect(t.texto(painel.querySelector('.sucata')!)).toContain('Sucata entregue agora');
     expect(t.texto(painel.querySelector('.sucata')!)).toContain(
@@ -1421,7 +1674,7 @@ describe('PdvPage: Repetir última venda', () => {
 
     expect(t.texto()).toContain('Este cliente ainda não tem venda anterior.');
     expect(t.texto()).not.toContain('Repetir última venda');
-    expect(t.botao('Adicione itens').disabled).toBe(true);
+    expect(t.botaoContinuar().disabled).toBe(true);
   });
 
   it('venda cujos produtos saíram todos do catálogo avisa do item de fora, sem dizer que não há venda', async () => {
@@ -1465,7 +1718,7 @@ describe('PdvPage: Repetir última venda', () => {
     });
 
     expect(t.barra()).toMatch(/4 itens R\$ 100,00/);
-    await t.cobrar();
+    await t.continuar();
     expect(t.campoDoPainel('.vasilhame ce-quantity-stepper input').value).toBe('2');
     expect(t.campoDoPainel('.vasilhame ce-money-input input').value).toBe('25,00');
     expect(t.botaoEm(t.painel(), 'Abater do crédito').getAttribute('aria-pressed')).toBe('true');
@@ -1494,7 +1747,7 @@ describe('PdvPage: Repetir última venda', () => {
 
     expect(t.texto()).not.toContain('ainda não tem venda anterior');
     expect(t.barra()).toMatch(/1 item R\$ 30,00/);
-    expect(t.botao('Cobrar').disabled).toBe(false);
+    expect(t.botaoContinuar().disabled).toBe(false);
   });
 
   it('catálogo que falhou ao carregar mostra o erro, não "sem venda anterior"', async () => {
@@ -1613,7 +1866,7 @@ describe('PdvPage com ?cliente=', () => {
       .expectOne('/api/clientes/v1/clientes/c-1')
       .flush({ code: 'X', message: 'x', traceId: 't' }, { status: 404, statusText: 'Not Found' });
     await assentar(t.fixture);
-    expect(t.botao('Escolha o cliente').disabled).toBe(true);
+    expect(t.botaoContinuar().disabled).toBe(true);
   });
 });
 
@@ -1665,16 +1918,17 @@ describe('PdvPage em modo edição', () => {
     expect(t.barra()).toMatch(/2 itens · desc. R\$ 5,00 R\$ 95,00/);
     expect(t.texto()).not.toContain('Repetir última venda');
 
-    await t.cobrar();
+    await t.continuar();
     expect(t.campoDoPainel('ce-quantity-stepper input', 0).value).toBe('2');
     expect(t.campoDoPainel('ce-quantity-stepper input', 1).value).toBe('1');
-    expect(t.botaoEm(t.painel(), 'Salvar alterações')).toBeTruthy();
     // Na edição o saldo já inclui a venda original: o texto de casco não cita o cliente.
     expect(t.texto(t.painel())).toContain('Devolveu 1 a mais');
+    await t.continuar();
+    expect(t.botaoEm(t.painel(), 'Salvar alterações')).toBeTruthy();
     expect(t.texto(t.painel())).not.toContain('Confirmar venda');
   });
 
-  it('(b) altera um item e salva: PUT com o corpo esperado, fecha a sheet e navega ao detalhe', async () => {
+  it('(b) altera um item e salva: PUT com o corpo esperado, volta ao 1º passo e navega ao detalhe', async () => {
     const t = await montarEdicao();
     t.abrir.mockReturnValueOnce({
       closed: of({
@@ -1699,7 +1953,7 @@ describe('PdvPage em modo edição', () => {
     await responderLista(t);
 
     expect(t.navegar).toHaveBeenCalledWith('/vendas/detalhe/v-1');
-    expect(t.aberta()).toBe(false);
+    expect(t.trilho()).toMatch(/^1 de 3/);
   });
 
   it('(c) salvar sem mexer reenvia cascos, sucata, pagamentos e vendedor originais', async () => {
@@ -1728,7 +1982,7 @@ describe('PdvPage em modo edição', () => {
 
     await falhar(409, 'CAIXA_FECHADO', 'caixa fechado');
     expect(t.alertas()).toContain('O caixa do dia já está fechado.');
-    expect(t.texto(t.painel())).toMatch(/Total ?R\$ 95,00/);
+    expect(t.barra()).toMatch(/R\$ 95,00/);
     expect(t.botaoEm(t.painel(), 'Salvar alterações').disabled).toBe(false);
 
     await falhar(400, 'ITEM_INVALIDO', 'Quantidade do item deve ser positiva.');
@@ -1941,7 +2195,7 @@ describe('PdvPage: chip de casco por tipo e edição com vasilhame', () => {
     await assentar(t.fixture);
     await t.responderSaldos('c-1');
 
-    await t.cobrar();
+    await t.continuar();
     expect(t.texto(t.painel())).toContain('Vasilhames comprados agora');
     expect(t.campoDoPainel('.vasilhame ce-quantity-stepper input').value).toBe('3');
     expect(t.campoDoPainel('.vasilhame ce-money-input input').value).toBe('28,00');
@@ -1949,6 +2203,7 @@ describe('PdvPage: chip de casco por tipo e edição com vasilhame', () => {
     expect(t.botaoEm(t.painel(), 'Abater do crédito').getAttribute('aria-pressed')).toBe('true');
     expect(t.campoDoPainel('.sucata ce-money-input input').value).toBe('7,00');
 
+    await t.continuar();
     await t.clicarNoPainel('Salvar alterações');
     const req = t.http.expectOne(`${URL_VENDAS}/v-1`);
     expect(req.request.method).toBe('PUT');

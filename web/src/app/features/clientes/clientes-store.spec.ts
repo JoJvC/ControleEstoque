@@ -84,21 +84,38 @@ describe('ClientesStore — saldos e operações', () => {
     expect(store.statusSaldos()).toBe('ok');
   });
 
-  it('devolverCascos: POST /cascos/devolucoes com { quantidade }', async () => {
-    const p = store.devolverCascos('c-1', 2);
+  it('devolverCascos: POST /cascos/devolucoes com { linhas }', async () => {
+    const linhas = [
+      { tipoCascoId: 't-1', quantidade: 2 },
+      { tipoCascoId: 't-2', quantidade: 1 },
+    ];
+    const p = store.devolverCascos('c-1', linhas);
     const req = http.expectOne(`${CLIENTES}/c-1/cascos/devolucoes`);
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ quantidade: 2 });
-    req.flush({ novoSaldoCascos: 1 });
-    expect(await p).toEqual({ novoSaldoCascos: 1 });
+    expect(req.request.body).toEqual({ linhas });
+    req.flush({ novoSaldoCascos: 1, saldoPorTipo: [] });
+    expect(await p).toEqual({ novoSaldoCascos: 1, saldoPorTipo: [] });
   });
 
-  it('converterCascos: POST /cascos/conversoes com { quantidade, valorUnitario }', async () => {
-    const p = store.converterCascos('c-1', 2, 30);
-    const req = http.expectOne(`${CLIENTES}/c-1/cascos/conversoes`);
-    expect(req.request.body).toEqual({ quantidade: 2, valorUnitario: 30 });
-    req.flush({ novoSaldoCascos: 0, novoSaldoFiado: 60 });
-    expect(await p).toEqual({ novoSaldoCascos: 0, novoSaldoFiado: 60 });
+  it('converterGalao: POST /vendas só com vasilhame CONVERTER_CASCO e sem pagamentos', async () => {
+    const p = store.converterGalao('c-1', 'f-1', 't-1', 2, 12);
+    const req = http.expectOne('/api/vendas/v1/vendas');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      clienteId: 'c-1',
+      funcionarioId: 'f-1',
+      enderecoEntregaId: null,
+      itens: [],
+      vasilhames: [
+        { tipoCascoId: 't-1', quantidade: 2, precoUnitario: 12, modoCredito: 'CONVERTER_CASCO' },
+      ],
+      pagamentos: [],
+      cascosDevolvidos: [],
+      sucataEntregue: [],
+      observacao: null,
+    });
+    req.flush({ id: 'v-1', totalLiquido: 24 });
+    expect(await p).toEqual({ id: 'v-1', totalLiquido: 24 });
   });
 
   it('entregarSucata: POST /sucatas com e sem valorConversao', async () => {
@@ -124,11 +141,15 @@ describe('ClientesStore — saldos e operações', () => {
   });
 
   it.each([
-    ['devolverCascos', () => store.devolverCascos('c-1', 1), `${CLIENTES}/c-1/cascos/devolucoes`],
     [
-      'converterCascos',
-      () => store.converterCascos('c-1', 1, 1),
-      `${CLIENTES}/c-1/cascos/conversoes`,
+      'devolverCascos',
+      () => store.devolverCascos('c-1', [{ tipoCascoId: 't-1', quantidade: 1 }]),
+      `${CLIENTES}/c-1/cascos/devolucoes`,
+    ],
+    [
+      'converterGalao',
+      () => store.converterGalao('c-1', 'f-1', 't-1', 1, 1),
+      '/api/vendas/v1/vendas',
     ],
     ['entregarSucata', () => store.entregarSucata('c-1', 1, null), `${CLIENTES}/c-1/sucatas`],
     ['pagarFiado', () => store.pagarFiado('c-1', 1, null), FIADO],

@@ -1593,7 +1593,7 @@ describe('PdvPage: vasilhame na lista e sucata com valor (desktop)', () => {
       saldoCascos: -2,
     });
     const topo = t.el.querySelector<HTMLElement>('.cliente-fixo')!;
-    expect(t.texto(topo)).toContain('Casco: 2 a favor');
+    expect(t.texto(topo)).toContain('Casco 0 · 2 a favor');
     expect(t.texto(topo)).not.toContain('-2');
   });
 
@@ -2162,14 +2162,14 @@ describe('PdvPage: chip de casco por tipo e edição com vasilhame', () => {
     });
     expect(t.el.querySelector('.casco-lista')).toBeNull();
 
-    await t.clicar('Casco 1');
+    await t.clicar('Casco 3');
 
     const lista = t.texto(t.el.querySelector('.casco-lista')!);
     expect(lista).toContain('Casco 20L = 3');
     expect(lista).toContain('Casco 10L = 2 a favor do cliente');
     expect(lista).not.toContain('Casco 5L');
 
-    await t.clicar('Casco 1');
+    await t.clicar('Casco 3');
     expect(t.el.querySelector('.casco-lista')).toBeNull();
   });
 

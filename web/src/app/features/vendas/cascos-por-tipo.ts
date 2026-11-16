@@ -124,6 +124,16 @@ export function rotuloSaldoCasco(saldo: number): string {
   return saldo < 0 ? `${-saldo} a favor` : `${saldo}`;
 }
 
+/** Cascos com o cliente: soma só dos saldos positivos por tipo; o crédito de um tipo não abate outro. */
+export function cascosComEle(cascos: readonly CascoClientePorTipo[]): number {
+  return cascos.reduce((t, c) => t + Math.max(0, c.saldo), 0);
+}
+
+/** Soma dos créditos de casco por tipo (saldos negativos), sem sinal. */
+export function cascosAFavor(cascos: readonly CascoClientePorTipo[]): number {
+  return cascos.reduce((t, c) => t + Math.max(0, -c.saldo), 0);
+}
+
 /**
  * Prévia do casco do tipo ao fechar, espelho do servidor: saldo atual + empréstimo (max(0, G−V))
  * − devolvidos + vasilhames abatidos do crédito. Positivo fica na rua; negativo é devolução a mais.

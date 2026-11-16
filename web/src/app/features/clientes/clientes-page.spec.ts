@@ -83,6 +83,7 @@ async function montar(opcoes: Opcoes = {}) {
         },
       ],
       [(u) => u === '/api/vendas/v1/vendas', []],
+      [(u) => u === '/api/estoque/v1/tipos-casco', []],
       [
         (u) => u.startsWith(`${CLIENTES}/`),
         { id: 'x', nome: 'Detalhe', telefone: null, observacoes: null, enderecos: [] },

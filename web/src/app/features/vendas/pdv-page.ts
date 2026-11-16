@@ -82,7 +82,8 @@ import {
   descontoSucataDe,
   linhasCascoPorTipo,
   previaCascoDoTipo,
-  rotuloSaldoCasco,
+  cascosComEle,
+  cascosAFavor,
   quantidadeDevolvida,
   sucataExcede,
   tiposCascoDoCarrinho,
@@ -279,8 +280,12 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
                 (click)="cascosAbertos.set(!cascosAbertos())"
               >
                 <ce-chip tom="casco" icone="casco"
-                  >{{ s.saldoCascos < 0 ? 'Casco: ' : 'Casco '
-                  }}{{ rotuloSaldoCasco(s.saldoCascos) }}</ce-chip
+                  >Casco {{ cascosComEle(s.cascosPorTipo)
+                  }}{{
+                    cascosAFavor(s.cascosPorTipo)
+                      ? ' · ' + cascosAFavor(s.cascosPorTipo) + ' a favor'
+                      : ''
+                  }}</ce-chip
                 >
               </button>
               @let saldo = classificarSaldo(s.saldo);
@@ -962,9 +967,10 @@ export class PdvPage implements OnInit {
   );
   protected readonly classificarSaldo = classificarSaldo;
   protected readonly rotuloSaldo = rotuloSaldo;
-  protected readonly rotuloSaldoCasco = rotuloSaldoCasco;
+  protected readonly cascosComEle = cascosComEle;
+  protected readonly cascosAFavor = cascosAFavor;
 
-  // Saldos do cliente vêm do servidor e são exibidos como chegaram (Regra 8.6): sem soma local.
+  // Saldos do cliente vêm do servidor e são exibidos como chegaram (Regra 8.6); só o chip de casco soma localmente os saldos positivos por tipo.
   protected readonly saldos = signal<SaldosResponse | null>(null);
 
   private readonly enderecoOk = computed(() => {

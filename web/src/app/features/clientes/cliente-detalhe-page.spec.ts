@@ -16,11 +16,21 @@ import { ToastService } from '../../core/toast/toast-service';
 import { ClienteDetalhePage } from './cliente-detalhe-page';
 import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { EntregarSucataSheet } from './entregar-sucata-sheet';
-import { PagarCascoSheet } from './pagar-casco-sheet';
+import { ConverterGalaoSheet } from './converter-galao-sheet';
+import { RecolherCascosSheet } from './recolher-cascos-sheet';
 import { ReceberFiadoSheet } from './receber-fiado-sheet';
 
 const CLIENTE_URL = '/api/clientes/v1/clientes/c-1';
 const SALDOS_URL = `${CLIENTE_URL}/saldos`;
+const TIPOS_URL = '/api/estoque/v1/tipos-casco';
+const TIPOS = ['t-1', 't-2', 't-3'].map((id, i) => ({
+  id,
+  nome: ['Casco 20L', 'Casco 10L', 'Casco 5L'][i],
+  marcaId: null,
+  marca: null,
+  precoVasilhame: 15,
+  aceitaSucata: false,
+}));
 const CLIENTE = { id: 'c-1', nome: 'Maria', telefone: null, observacoes: null, enderecos: [] };
 const SALDOS = {
   saldoCascos: 3,
@@ -81,6 +91,7 @@ async function montar(
   }
   fixture.detectChanges();
   await assentar(fixture);
+  http.expectOne(TIPOS_URL).flush(TIPOS);
   http.expectOne(CLIENTE_URL).flush(opcoes.cliente ?? CLIENTE);
   http.expectOne(SALDOS_URL).flush(opcoes.saldos ?? SALDOS);
   http.expectOne(HISTORICO).flush(historico);
@@ -175,17 +186,21 @@ describe('ClienteDetalhePage — saldos', () => {
     expect(itens).toEqual(['Casco 20L = 3', 'Casco 5L = 1 a favor do cliente']);
   });
 
-  it('Cascos com ele com saldo total negativo mostra "2 a favor", sem sinal de menos', async () => {
+  it('Cascos com ele soma só os saldos positivos: 20L=1 e cerveja=-1 mostra "1" e "1 a favor"', async () => {
     const t = await montar(['*'], [VENDA], {
       saldos: {
         ...SALDOS,
-        saldoCascos: -2,
-        cascosPorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', saldo: -2 }],
+        saldoCascos: 0,
+        cascosPorTipo: [
+          { tipoCascoId: 't-1', nome: 'Galão 20L', saldo: 1 },
+          { tipoCascoId: 't-2', nome: 'Garrafa cerveja', saldo: -1 },
+        ],
       },
     });
     const [casco] = t.chips();
-    expect(casco.texto).toContain('Cascos com ele 2 a favor');
-    expect(casco.texto).not.toContain('-2');
+    expect(casco.texto).toContain('Cascos com ele 1');
+    expect(t.el.querySelector('.bloco--casco')?.textContent).toContain('1 a favor');
+    expect(casco.texto).not.toContain('Nenhum casco com ele');
   });
 
   it('saldo positivo é crédito no tom pago; zerado é "Em dia" no tom pago', async () => {
@@ -219,9 +234,10 @@ describe('ClienteDetalhePage — saldos', () => {
     expect(t.botao('Receber fiado').disabled).toBe(false);
   });
 
-  it('Recolher cascos e Receber fiado ficam desabilitados com saldo 0; Entregar sucata não', async () => {
+  it('Receber fiado e Converter galão ficam desabilitados sem fiado e sem saldo de casco; Recolher e Entregar sucata não', async () => {
     const t = await montar();
-    t.abrir.mockReturnValue({ closed: of({ novoSaldoCascos: 0, novoSaldoFiado: 0 }) });
+    expect(t.botao('Converter galão em débito').disabled).toBe(false);
+    t.abrir.mockReturnValue({ closed: of({ novoSaldoFiado: 0 }) });
     t.botao('Receber fiado').click();
     await assentar(t.fixture);
     t.http
@@ -229,13 +245,30 @@ describe('ClienteDetalhePage — saldos', () => {
       .flush({ ...SALDOS, saldoCascos: 0, saldoFiado: 0, saldo: 0, cascosPorTipo: [] });
     t.historicoPendente().forEach((r) => r.flush([]));
     await assentar(t.fixture);
-    expect(t.botao('Recolher cascos').disabled).toBe(true);
+    expect(t.botao('Recolher cascos').disabled).toBe(false);
+    expect(t.botao('Converter galão em débito').disabled).toBe(true);
     expect(t.botao('Receber fiado').disabled).toBe(true);
     expect(t.botao('Entregar sucata').disabled).toBe(false);
   });
 
+  it('Recolher cascos e Converter galão abrem a sheet certa com cliente, tipos e saldos', async () => {
+    const t = await montar();
+    t.abrir.mockReturnValue({ closed: of(undefined) });
+    for (const [texto, sheet] of [
+      ['Recolher cascos', RecolherCascosSheet],
+      ['Converter galão em débito', ConverterGalaoSheet],
+    ] as const) {
+      t.botao(texto).click();
+      await assentar(t.fixture);
+      expect(t.abrir).toHaveBeenLastCalledWith(sheet, {
+        clienteId: 'c-1',
+        tipos: TIPOS,
+        cascosPorTipo: SALDOS.cascosPorTipo,
+      });
+    }
+  });
+
   it.each([
-    ['Recolher cascos', PagarCascoSheet],
     ['Entregar sucata', EntregarSucataSheet],
     ['Receber fiado', ReceberFiadoSheet],
   ])('o botão %s abre a sheet certa com { clienteId }', async (texto, sheet) => {
@@ -288,7 +321,7 @@ describe('ClienteDetalhePage — saldos', () => {
     expect(t.chips()).toHaveLength(3);
   });
 
-  it('sequência devolução → conversão → sucata com crédito → fiado termina com os chips do último GET /saldos', async () => {
+  it('sequência recolher → converter → sucata com crédito → fiado termina com os chips do último GET /saldos', async () => {
     const t = await montar();
     const passos = [
       {
@@ -297,19 +330,40 @@ describe('ClienteDetalhePage — saldos', () => {
         saldos: { ...SALDOS, saldoCascos: 2, sucataEntregue: 2, saldoFiado: 50, saldo: -50 },
       },
       {
-        botao: 'Recolher cascos',
-        resposta: { novoSaldoCascos: 0, novoSaldoFiado: 110 },
-        saldos: { ...SALDOS, saldoCascos: 0, sucataEntregue: 2, saldoFiado: 110, saldo: -110 },
+        botao: 'Converter galão em débito',
+        resposta: { id: 'v-9', totalLiquido: 60 },
+        saldos: {
+          ...SALDOS,
+          saldoCascos: 0,
+          cascosPorTipo: [],
+          sucataEntregue: 2,
+          saldoFiado: 110,
+          saldo: -110,
+        },
       },
       {
         botao: 'Entregar sucata',
         resposta: { totalSucataEntregue: 5, novoSaldoFiado: 95 },
-        saldos: { ...SALDOS, saldoCascos: 0, sucataEntregue: 5, saldoFiado: 95, saldo: -95 },
+        saldos: {
+          ...SALDOS,
+          saldoCascos: 0,
+          cascosPorTipo: [],
+          sucataEntregue: 5,
+          saldoFiado: 95,
+          saldo: -95,
+        },
       },
       {
         botao: 'Receber fiado',
         resposta: { novoSaldoFiado: 45 },
-        saldos: { ...SALDOS, saldoCascos: 0, sucataEntregue: 5, saldoFiado: 45, saldo: -45 },
+        saldos: {
+          ...SALDOS,
+          saldoCascos: 0,
+          cascosPorTipo: [],
+          sucataEntregue: 5,
+          saldoFiado: 45,
+          saldo: -45,
+        },
       },
     ];
     for (const passo of passos) {
@@ -325,6 +379,8 @@ describe('ClienteDetalhePage — saldos', () => {
     expect(chips[1].texto).toMatch(/^Saldo Fiado R\$\s45,00$/);
     expect(chips[2].texto).toContain('Sucata entregue 5');
     expect(t.toasts()).toHaveLength(4);
+    expect(t.toasts()[0]).toBe('Cascos recolhidos. Com ele: 2.');
+    expect(t.toasts()[1]).toBe('Galão convertido: R$ 60,00 no fiado.');
   });
 });
 
@@ -342,7 +398,11 @@ describe('ClienteDetalhePage — design Depósito', () => {
     t.abrir.mockReturnValue({ closed: of({ novoSaldoCascos: 13 }) });
     t.botao('Recolher cascos').click();
     await assentar(t.fixture);
-    t.http.expectOne(SALDOS_URL).flush({ ...SALDOS, saldoCascos: 13 });
+    t.http.expectOne(SALDOS_URL).flush({
+      ...SALDOS,
+      saldoCascos: 13,
+      cascosPorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', saldo: 13 }],
+    });
     t.historicoPendente().forEach((r) => r.flush([]));
     await assentar(t.fixture);
     expect(t.el.querySelectorAll('.bloco--casco ce-icon.galao')).toHaveLength(10);
@@ -354,23 +414,30 @@ describe('ClienteDetalhePage — design Depósito', () => {
     t.abrir.mockReturnValue({ closed: of({ novoSaldoCascos: 0 }) });
     t.botao('Recolher cascos').click();
     await assentar(t.fixture);
-    t.http.expectOne(SALDOS_URL).flush({ ...SALDOS, saldoCascos: 0 });
+    t.http.expectOne(SALDOS_URL).flush({ ...SALDOS, saldoCascos: 0, cascosPorTipo: [] });
     t.historicoPendente().forEach((r) => r.flush([]));
     await assentar(t.fixture);
     expect(t.el.querySelectorAll('ce-icon.galao')).toHaveLength(0);
     expect(t.el.querySelector('.bloco--casco')?.textContent).toContain('Nenhum casco com ele');
   });
 
-  it('fechar Recolher cascos e Receber fiado recarrega saldos e histórico', async () => {
+  it('fechar com sucesso Recolher, Converter e Receber fiado recarrega saldos e histórico', async () => {
     const t = await montar();
-    for (const texto of ['Recolher cascos', 'Receber fiado']) {
-      t.abrir.mockReturnValue({ closed: of({ novoSaldoCascos: 1, novoSaldoFiado: 1 }) });
+    for (const texto of ['Recolher cascos', 'Converter galão em débito', 'Receber fiado']) {
+      t.abrir.mockReturnValue({
+        closed: of({ novoSaldoCascos: 1, novoSaldoFiado: 1, totalLiquido: 1 }),
+      });
       t.botao(texto).click();
       await assentar(t.fixture);
       t.http.expectOne(SALDOS_URL).flush(SALDOS);
       t.http.expectOne(HISTORICO).flush([]);
       await assentar(t.fixture);
     }
+    expect(t.toasts()).toEqual([
+      'Cascos recolhidos. Com ele: 1.',
+      'Galão convertido: R$ 1,00 no fiado.',
+      'Pagamento registrado. Fiado: R$ 1,00.',
+    ]);
   });
 
   it('Vender navega para /vendas/nova com ?cliente; sem vendas.registrar não aparece', async () => {

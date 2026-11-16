@@ -3,6 +3,8 @@ import { marcaResp, produtoResp } from '../../core/api/testing';
 import { ItemCarrinho } from './carrinho';
 import {
   TipoCascoDoCarrinho,
+  cascosAFavor,
+  cascosComEle,
   cascosParaRequest,
   descontoSucataDe,
   linhasCascoPorTipo,
@@ -195,5 +197,31 @@ describe('rotuloSaldoCasco', () => {
     expect(rotuloSaldoCasco(-2)).toBe('2 a favor');
     expect(rotuloSaldoCasco(3)).toBe('3');
     expect(rotuloSaldoCasco(0)).toBe('0');
+  });
+});
+
+describe('cascosComEle / cascosAFavor', () => {
+  const t = (saldo: number) => ({ tipoCascoId: `t${saldo}`, nome: 'T', saldo });
+
+  it('lista vazia e saldo 0 dão 0 e 0', () => {
+    expect(cascosComEle([])).toBe(0);
+    expect(cascosAFavor([])).toBe(0);
+    expect(cascosComEle([t(0)])).toBe(0);
+    expect(cascosAFavor([t(0)])).toBe(0);
+  });
+
+  it('só positivos: soma com ele, nada a favor', () => {
+    expect(cascosComEle([t(2), t(3)])).toBe(5);
+    expect(cascosAFavor([t(2), t(3)])).toBe(0);
+  });
+
+  it('só negativos: nada com ele, soma a favor sem sinal', () => {
+    expect(cascosComEle([t(-1), t(-2)])).toBe(0);
+    expect(cascosAFavor([t(-1), t(-2)])).toBe(3);
+  });
+
+  it('tipos mistos: crédito de um tipo não abate o outro (20L=1, cerveja=-1)', () => {
+    expect(cascosComEle([t(1), t(-1)])).toBe(1);
+    expect(cascosAFavor([t(1), t(-1)])).toBe(1);
   });
 });

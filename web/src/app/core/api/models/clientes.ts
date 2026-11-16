@@ -59,21 +59,12 @@ export interface SaldosResponse {
 }
 
 export interface DevolucaoCascosRequest {
-  quantidade: number;
+  linhas: { tipoCascoId: string; quantidade: number }[];
 }
 
 export interface DevolucaoCascosResponse {
   novoSaldoCascos: number;
-}
-
-export interface ConversaoCascosRequest {
-  quantidade: number;
-  valorUnitario: number;
-}
-
-export interface ConversaoCascosResponse {
-  novoSaldoCascos: number;
-  novoSaldoFiado: number;
+  saldoPorTipo: CascoClientePorTipo[];
 }
 
 export interface EntregaSucataRequest {

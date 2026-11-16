@@ -60,7 +60,7 @@ public sealed class VendaServiceLacunasTests
         var nova = NovaVendaDe(agua, 1, 50m) with
         {
             CascosDevolvidos = [new CascoQuantidade(cascoG.Id, 2)],
-            SucataEntregue = [new CascoQuantidade(cascoG.Id, 1)]
+            SucataEntregue = [new SucataVenda(cascoG.Id, 1, 2m)]
         };
         var criada = await sut.CriarAsync(nova, CancellationToken.None);
 
@@ -68,15 +68,18 @@ public sealed class VendaServiceLacunasTests
         var resposta = VendaDetalheResponse.From(venda);
 
         Assert.Equal([new CascoQuantidade(cascoG.Id, 2)], venda.CascosDevolvidos);
-        Assert.Equal([new CascoQuantidade(cascoG.Id, 1)], venda.SucataEntregue);
+        Assert.Equal([new SucataVenda(cascoG.Id, 1, 2m)], venda.SucataEntregue);
         Assert.Equal([new CascoQuantidadeResponse(cascoG.Id, 2)], resposta.CascosDevolvidos);
-        Assert.Equal([new CascoQuantidadeResponse(cascoG.Id, 1)], resposta.SucataEntregue);
+        Assert.Equal([new SucataEntregueResponse(cascoG.Id, 1, 2m)], resposta.SucataEntregue);
     }
 
     [Fact]
-    public async Task ObterAsync_QuandoItemPagouVasilhame_DevolveMarcaCascoEPrecoDoVasilhame()
+    public async Task ObterAsync_QuandoVendaTemVasilhame_DevolveItemComCascoELista()
     {
-        var nova = NovaVendaDe(agua, 2, 12m, pagouVasilhame: true);
+        var nova = NovaVendaDe(agua, 2, 12m) with
+        {
+            Vasilhames = [new VasilhameVenda(cascoG.Id, 1, 15m, ModoCreditoVasilhame.COMPRAR)]
+        };
         var criada = await sut.CriarAsync(nova, CancellationToken.None);
 
         var resposta = VendaDetalheResponse.From(await sut.ObterAsync(criada.Id, CancellationToken.None));
@@ -85,8 +88,8 @@ public sealed class VendaServiceLacunasTests
         Assert.Equal(agua.ProdutoId, item.ProdutoId);
         Assert.Equal(agua.MarcaId, item.MarcaId);
         Assert.Equal(cascoG.Id, item.TipoCascoId);
-        Assert.True(item.PagouVasilhame);
-        Assert.Equal(30m, item.PrecoVasilhame);
+        Assert.Equal(
+            [new VasilhameResponse(cascoG.Id, 1, 0, 15m, ModoCreditoVasilhame.COMPRAR, 15m)], resposta.Vasilhames);
     }
 
     [Fact]
@@ -99,8 +102,6 @@ public sealed class VendaServiceLacunasTests
 
         Assert.Equal(descartavel.MarcaId, item.MarcaId);
         Assert.Null(item.TipoCascoId);
-        Assert.False(item.PagouVasilhame);
-        Assert.Null(item.PrecoVasilhame);
     }
 
     [Fact]
@@ -108,7 +109,7 @@ public sealed class VendaServiceLacunasTests
     {
         var outroTipo = lookup.AddTipoCasco(40m, aceitaSucata: false);
         var resultado = new ResultadoVenda(
-            Guid.NewGuid(), 0m, 0m, 0m, 0m, 0m, StatusPagamento.PENDENTE,
+            Guid.NewGuid(), 0m, 0m, 0m, 0m, 0m, 0m, 0m, StatusPagamento.PENDENTE,
             [new SaldoCascoTipo(cascoG.Id, "Genérico", 5), new SaldoCascoTipo(outroTipo.Id, "Específico", -2)]);
 
         var resposta = VendaResponse.From(resultado);
@@ -136,12 +137,12 @@ public sealed class VendaServiceLacunasTests
     {
         var venda = new Venda(Guid.NewGuid(), clienteId, funcionarioId, null, DateTimeOffset.UtcNow,
             0m, 0m, 0m, StatusPagamento.PENDENTE, null, false, [], [],
-            [new CascoQuantidade(cascoG.Id, 3)], [new CascoQuantidade(cascoG.Id, 4)]);
+            [new CascoQuantidade(cascoG.Id, 3)], [new SucataVenda(cascoG.Id, 4, 1.5m)], []);
 
         var resposta = VendaDetalheResponse.From(venda);
 
         Assert.Equal([new CascoQuantidadeResponse(cascoG.Id, 3)], resposta.CascosDevolvidos);
-        Assert.Equal([new CascoQuantidadeResponse(cascoG.Id, 4)], resposta.SucataEntregue);
+        Assert.Equal([new SucataEntregueResponse(cascoG.Id, 4, 1.5m)], resposta.SucataEntregue);
     }
 
     [Fact]
@@ -149,7 +150,7 @@ public sealed class VendaServiceLacunasTests
     {
         var emitidoEm = DateTimeOffset.UtcNow;
         var venda = new Venda(Guid.NewGuid(), clienteId, funcionarioId, null, DateTimeOffset.UtcNow,
-            0m, 0m, 0m, StatusPagamento.PENDENTE, null, true, [], [], [], [], "CF-00000007", emitidoEm);
+            0m, 0m, 0m, StatusPagamento.PENDENTE, null, true, [], [], [], [], [], "CF-00000007", emitidoEm);
 
         var resposta = VendaDetalheResponse.From(venda);
 
@@ -162,7 +163,7 @@ public sealed class VendaServiceLacunasTests
     public void VendaDetalheResponseFrom_SemCupom_NumeroEDataNulos()
     {
         var venda = new Venda(Guid.NewGuid(), clienteId, funcionarioId, null, DateTimeOffset.UtcNow,
-            0m, 0m, 0m, StatusPagamento.PENDENTE, null, false, [], [], [], []);
+            0m, 0m, 0m, StatusPagamento.PENDENTE, null, false, [], [], [], [], []);
 
         var resposta = VendaDetalheResponse.From(venda);
 
@@ -205,16 +206,17 @@ public sealed class VendaServiceLacunasTests
     public async Task CriarAsync_VendaComVariosItens_GravaTotaisCascosEFiado()
     {
         // água 3 x 10 (desconto VALOR 5) = 25 | descartável 2 x 15 (desconto 10%) = 27
-        // água, pagou o vasilhame: 1 x 20 + 1 x 30 (vasilhame) = 50
+        // água 1 x 20 = 20 | vasilhame comprado: 1 x 30
         var itens = new List<ItemVenda>
         {
             new(agua.ProdutoId, agua.MarcaId, 3, 10m, new Desconto(TipoDesconto.VALOR, 5m, "cliente antigo")),
             new(descartavel.ProdutoId, descartavel.MarcaId, 2, 15m,
                 new Desconto(TipoDesconto.PERCENTUAL, 10m, "promoção")),
-            new(agua.ProdutoId, agua.MarcaId, 1, 20m, null, true),
+            new(agua.ProdutoId, agua.MarcaId, 1, 20m, null),
         };
         var venda = new NovaVenda(
             clienteId, funcionarioId, null, itens,
+            [new VasilhameVenda(cascoG.Id, 1, 30m, ModoCreditoVasilhame.COMPRAR)],
             [new PagamentoVenda(FormaPagamento.DINHEIRO, 30m)],
             [new CascoQuantidade(cascoG.Id, 3)], [], null);
 
@@ -225,7 +227,7 @@ public sealed class VendaServiceLacunasTests
         Assert.Equal(8m, g.TotalDesconto);
         Assert.Equal(102m, g.TotalLiquido);
         Assert.Equal(StatusPagamento.PARCIAL, g.Status);
-        Assert.Equal([new CascoQuantidade(cascoG.Id, 3)], g.CascosEmprestados); // só a troca empresta casco
+        Assert.Equal([new CascoQuantidade(cascoG.Id, 3)], g.CascosEmprestados); // 4 galões - 1 vasilhame comprado
         Assert.Equal([new CascoQuantidade(cascoG.Id, 3)], g.CascosDevolvidos);  // devolvidos informados (3)
         Assert.Equal(72m, g.DebitoFiado);     // 102 - 30 pago
 
@@ -236,8 +238,8 @@ public sealed class VendaServiceLacunasTests
     }
 
     private NovaVenda NovaVendaDe(
-        ProdutoVenda produto, int quantidade, decimal preco, bool pagouVasilhame = false) => new(
+        ProdutoVenda produto, int quantidade, decimal preco) => new(
         clienteId, funcionarioId, null,
-        [new ItemVenda(produto.ProdutoId, produto.MarcaId, quantidade, preco, null, pagouVasilhame)],
-        [], [], [], null);
+        [new ItemVenda(produto.ProdutoId, produto.MarcaId, quantidade, preco, null)],
+        [], [], [], [], null);
 }

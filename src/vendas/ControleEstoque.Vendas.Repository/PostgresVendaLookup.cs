@@ -25,6 +25,28 @@ public sealed class PostgresVendaLookup : IVendaLookup
         return (decimal?)await command.ExecuteScalarAsync(cancellationToken) ?? 0m;
     }
 
+    public async Task<IReadOnlyDictionary<Guid, long>> GetCreditoCascoPorTipoAsync(
+        Guid clienteId, IReadOnlyCollection<Guid> tipoCascoIds, Guid? vendaIgnorada,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.CreditoCascoPorTipo, connection);
+        command.Parameters.AddWithValue("clienteId", clienteId);
+        command.Parameters.AddWithValue("tipoCascoIds", tipoCascoIds.ToArray());
+        command.Parameters.Add(new NpgsqlParameter("vendaIgnorada", NpgsqlTypes.NpgsqlDbType.Uuid)
+        {
+            Value = (object?)vendaIgnorada ?? DBNull.Value
+        });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var creditos = new Dictionary<Guid, long>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            creditos[reader.GetGuid(0)] = reader.GetInt64(1);
+        }
+
+        return creditos;
+    }
+
     public Task<bool> FuncionarioExisteAsync(Guid funcionarioId, CancellationToken cancellationToken) =>
         ExistsAsync(Sql.FuncionarioExiste, funcionarioId, cancellationToken);
 
@@ -93,9 +115,28 @@ public sealed class PostgresVendaLookup : IVendaLookup
         // Saldo da view sem os lançamentos da venda ignorada (débitos somam de volta, créditos e pagamentos saem).
         public const string CreditoDisponivel = """
             SELECT GREATEST(0, COALESCE((SELECT saldo FROM vw_saldo_fiado_cliente WHERE cliente_id = @clienteId), 0)
-                + COALESCE((SELECT SUM(CASE WHEN tipo IN ('CREDITO_CONVERSAO_SUCATA', 'PAGAMENTO') THEN -valor ELSE valor END)
+                + COALESCE((SELECT SUM(CASE WHEN tipo IN ('CREDITO_CONVERSAO_SUCATA', 'PAGAMENTO', 'CREDITO_SOBRA_VENDA') THEN -valor ELSE valor END)
                             FROM lancamentos_fiado
                             WHERE venda_id = @vendaIgnorada AND cliente_id = @clienteId AND deleted_at IS NULL), 0))
+            """;
+
+        // Mesma conta de vw_saldo_casco_cliente por tipo (positivo = cliente deve): crédito = max(0, -saldo).
+        public const string CreditoCascoPorTipo = """
+            SELECT tipo_casco_id,
+                   (-SUM(CASE tipo
+                       WHEN 'EMPRESTIMO'      THEN  quantidade
+                       WHEN 'DEVOLUCAO'       THEN -quantidade
+                       WHEN 'CONVERSAO_VALOR' THEN -quantidade
+                   END))::bigint
+            FROM movimentos_casco_cliente
+            WHERE cliente_id = @clienteId AND tipo_casco_id = ANY(@tipoCascoIds) AND deleted_at IS NULL
+              AND (@vendaIgnorada IS NULL OR venda_id IS NULL OR venda_id <> @vendaIgnorada)
+            GROUP BY tipo_casco_id
+            HAVING SUM(CASE tipo
+                       WHEN 'EMPRESTIMO'      THEN  quantidade
+                       WHEN 'DEVOLUCAO'       THEN -quantidade
+                       WHEN 'CONVERSAO_VALOR' THEN -quantidade
+                   END) < 0
             """;
 
         public const string FuncionarioExiste =

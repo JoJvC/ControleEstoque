@@ -28,8 +28,7 @@ public sealed class PostgresRelatorioLucroRepository : IRelatorioLucroRepository
                 reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.GetGuid(3), reader.GetString(4),
                 DateOnly.FromDateTime(reader.GetDateTime(5)), quantidade, totalItem,
                 LucroPorProduto.RatearVasilhame(
-                    totalItem, quantidade, reader.GetDecimal(8), reader.GetBoolean(9),
-                    reader.IsDBNull(10) ? null : reader.GetDecimal(10))));
+                    totalItem, quantidade, reader.GetDecimal(8), false, null)));
         }
 
         return lista;
@@ -93,10 +92,10 @@ public sealed class PostgresRelatorioLucroRepository : IRelatorioLucroRepository
     private static class Sql
     {
         // Mesmo filtro de PostgresRelatorioVendasRepository.FiltroBase (sem filtro de produto).
-        // Uma linha por item; o rateio do vasilhame é LucroPorProduto.RatearVasilhame.
+        // Uma linha por item. Vasilhame vendido (venda_vasilhames) fica fora do lucro por produto+marca.
         public const string Vendas = """
             SELECT pm.id, p.id, p.nome, m.id, m.nome, v.data::date, i.quantidade, i.total_item,
-                   i.preco_unitario, i.pagou_vasilhame, i.preco_vasilhame
+                   i.preco_unitario
             FROM venda_itens i
             JOIN vendas v ON v.id = i.venda_id
             JOIN produto_marcas pm ON pm.id = i.produto_marca_id

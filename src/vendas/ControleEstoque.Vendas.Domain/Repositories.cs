@@ -11,6 +11,13 @@ public interface IVendaLookup
     /// (na edição, o uso de crédito da própria venda não reduz o disponível).
     /// </summary>
     Task<decimal> GetCreditoDisponivelAsync(Guid clienteId, Guid? vendaIgnorada, CancellationToken cancellationToken);
+    /// <summary>
+    /// Crédito de galão do cliente por tipo (max(0, -saldo de casco)), só dos tipos pedidos com crédito, sem contar
+    /// os movimentos da venda <paramref name="vendaIgnorada"/> (na edição, os efeitos da própria venda não contam).
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, long>> GetCreditoCascoPorTipoAsync(
+        Guid clienteId, IReadOnlyCollection<Guid> tipoCascoIds, Guid? vendaIgnorada,
+        CancellationToken cancellationToken);
     Task<bool> FuncionarioExisteAsync(Guid funcionarioId, CancellationToken cancellationToken);
     Task<bool> EnderecoPertenceAoClienteAsync(
         Guid enderecoId, Guid clienteId, CancellationToken cancellationToken);
@@ -28,13 +35,14 @@ public interface IVendaRepository
     /// Com pagamento, trava o caixa de hoje (FOR SHARE) e lança ConflictException CAIXA_FECHADO se fechado.
     /// Trava as associações produto+marca vendidas e checa o saldo dentro da transação; sem saldo, faz rollback e devolve a falta.
     /// Com UsoCredito &gt; 0, trava o cliente (FOR UPDATE) e lança BusinessRuleException CREDITO_INSUFICIENTE (rollback)
-    /// se o uso passa do crédito relido sob a trava.
+    /// se o uso passa do crédito relido sob a trava. Com vasilhame abatido do crédito de galão, trava o cliente do mesmo
+    /// jeito e lança CREDITO_CASCO_INSUFICIENTE se o abate passa do crédito do tipo relido sob a trava.
     /// </summary>
     Task<ResultadoGravacao> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken);
 
     /// <summary>
     /// Edição por replay: soft-deleta itens, pagamentos, movimentos de estoque,
-    /// movimentos de casco (do cliente e do estoque), entregas de sucata e lançamentos de fiado vinculados
+    /// movimentos de casco (do cliente e do estoque), vasilhames, sucatas da venda e lançamentos de fiado vinculados
     /// à venda, e reinsere conforme a gravação — tudo em uma transação. A checagem de saldo roda
     /// depois do soft-delete, então as saídas antigas da própria venda não contam. Lança CAIXA_FECHADO se
     /// um pagamento atual da venda cair em caixa FECHADO, ou se reinserir pagamento com o caixa de hoje FECHADO.
@@ -58,6 +66,13 @@ public interface IVendaRepository
         Guid vendaId, FormaPagamento forma, decimal valor, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SaldoCascoTipo>> GetSaldoCascoClienteAsync(Guid clienteId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Preço unitário (antes do desconto do item) da venda mais recente do cliente com o produto+marca;
+    /// vendas e itens apagados ficam de fora. Null quando o cliente nunca comprou.
+    /// </summary>
+    Task<UltimoPrecoVenda?> GetUltimoPrecoAsync(
+        Guid clienteId, Guid produtoId, Guid marcaId, CancellationToken cancellationToken);
 }
 
 public interface ICupomFiscalRepository

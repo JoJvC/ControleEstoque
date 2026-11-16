@@ -5,8 +5,14 @@ namespace ControleEstoque.Vendas.Contracts;
 public sealed record DescontoRequest(TipoDesconto Tipo, decimal Valor, string? Motivo);
 
 public sealed record ItemVendaRequest(
-    Guid ProdutoId, Guid MarcaId, int Quantidade, decimal PrecoUnitario, DescontoRequest? Desconto,
-    bool PagouVasilhame = false);
+    Guid ProdutoId, Guid MarcaId, int Quantidade, decimal PrecoUnitario, DescontoRequest? Desconto);
+
+/// <summary>ModoCredito omitido = ABATER_CREDITO.</summary>
+public sealed record VasilhameVendaRequest(
+    Guid TipoCascoId, int Quantidade, decimal PrecoUnitario, ModoCreditoVasilhame? ModoCredito = null);
+
+/// <summary>ValorUnitario é obrigatório: omitido (null) é recusado com SUCATA_INVALIDA em vez de virar 0.</summary>
+public sealed record SucataEntregueRequest(Guid TipoCascoId, int Quantidade, decimal? ValorUnitario);
 
 public sealed record PagamentoRequest(FormaPagamento Forma, decimal Valor);
 
@@ -22,25 +28,28 @@ public sealed record CreateVendaRequest(
     Guid FuncionarioId,
     Guid? EnderecoEntregaId,
     List<ItemVendaRequest>? Itens,
+    List<VasilhameVendaRequest>? Vasilhames,
     List<PagamentoRequest>? Pagamentos,
     List<CascoQuantidadeRequest>? CascosDevolvidos,
-    List<CascoQuantidadeRequest>? SucataEntregue,
+    List<SucataEntregueRequest>? SucataEntregue,
     string? Observacao);
 
 public sealed record VendaResponse(
     Guid Id,
     decimal TotalBruto,
     decimal TotalDesconto,
+    decimal DescontoSucata,
     decimal TotalLiquido,
     decimal TotalPago,
     decimal SaldoFiadoGerado,
+    decimal CreditoGerado,
     StatusPagamento StatusPagamento,
     long SaldoCascoCliente,
     IReadOnlyList<CascoPorTipoResponse> SaldoCascoClientePorTipo)
 {
     public static VendaResponse From(ResultadoVenda r) => new(
-        r.Id, r.TotalBruto, r.TotalDesconto, r.TotalLiquido, r.TotalPago,
-        r.SaldoFiadoGerado, r.StatusPagamento, r.SaldoCascoCliente,
+        r.Id, r.TotalBruto, r.TotalDesconto, r.DescontoSucata, r.TotalLiquido, r.TotalPago,
+        r.SaldoFiadoGerado, r.CreditoGerado, r.StatusPagamento, r.SaldoCascoCliente,
         r.SaldoCascoClientePorTipo.Select(s => new CascoPorTipoResponse(s.TipoCascoId, s.Nome, s.Saldo)).ToList());
 }
 
@@ -50,12 +59,22 @@ public sealed record ItemVendaResponse(
     Guid? TipoCascoId,
     int Quantidade,
     decimal PrecoUnitario,
-    bool PagouVasilhame,
-    decimal? PrecoVasilhame,
     TipoDesconto? DescontoTipo,
     decimal? DescontoValor,
     string? MotivoDesconto,
     decimal TotalItem);
+
+public sealed record VasilhameResponse(
+    Guid TipoCascoId,
+    int Quantidade,
+    int QuantidadeAbatida,
+    decimal PrecoUnitario,
+    ModoCreditoVasilhame Modo,
+    decimal Total);
+
+public sealed record SucataEntregueResponse(Guid TipoCascoId, int Quantidade, decimal ValorUnitario);
+
+public sealed record UltimoPrecoResponse(Guid VendaId, DateTimeOffset Data, decimal PrecoUnitario);
 
 public sealed record PagamentoResponse(FormaPagamento Forma, decimal Valor);
 
@@ -72,9 +91,10 @@ public sealed record VendaDetalheResponse(
     string? Observacao,
     bool CupomEmitido,
     IReadOnlyList<ItemVendaResponse> Itens,
+    IReadOnlyList<VasilhameResponse> Vasilhames,
     IReadOnlyList<PagamentoResponse> Pagamentos,
     IReadOnlyList<CascoQuantidadeResponse> CascosDevolvidos,
-    IReadOnlyList<CascoQuantidadeResponse> SucataEntregue,
+    IReadOnlyList<SucataEntregueResponse> SucataEntregue,
     string? CupomNumero,
     DateTimeOffset? CupomEmitidoEm)
 {
@@ -83,11 +103,13 @@ public sealed record VendaDetalheResponse(
         v.TotalBruto, v.TotalDesconto, v.TotalLiquido, v.StatusPagamento,
         v.Observacao, v.CupomEmitido,
         v.Itens.Select(i => new ItemVendaResponse(
-            i.ProdutoId, i.MarcaId, i.TipoCascoId, i.Quantidade, i.PrecoUnitario, i.PagouVasilhame,
-            i.PrecoVasilhame, i.Desconto?.Tipo, i.Desconto?.Valor, i.Desconto?.Motivo, i.TotalItem)).ToList(),
+            i.ProdutoId, i.MarcaId, i.TipoCascoId, i.Quantidade, i.PrecoUnitario,
+            i.Desconto?.Tipo, i.Desconto?.Valor, i.Desconto?.Motivo, i.TotalItem)).ToList(),
+        v.Vasilhames.Select(x => new VasilhameResponse(
+            x.TipoCascoId, x.Quantidade, x.QuantidadeAbatida, x.PrecoUnitario, x.Modo, x.Total)).ToList(),
         v.Pagamentos.Select(p => new PagamentoResponse(p.Forma, p.Valor)).ToList(),
         v.CascosDevolvidos.Select(c => new CascoQuantidadeResponse(c.TipoCascoId, c.Quantidade)).ToList(),
-        v.SucataEntregue.Select(c => new CascoQuantidadeResponse(c.TipoCascoId, c.Quantidade)).ToList(),
+        v.SucataEntregue.Select(c => new SucataEntregueResponse(c.TipoCascoId, c.Quantidade, c.ValorUnitario)).ToList(),
         v.CupomNumero, v.CupomEmitidoEm);
 }
 

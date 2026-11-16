@@ -41,60 +41,225 @@ public sealed class VendaServiceTests
         var item = Assert.Single(g.Itens);
         Assert.Equal(agua.ProdutoMarcaId, item.ProdutoMarcaId);
         Assert.Equal(cascoG.Id, item.TipoCascoId);
-        Assert.False(item.PagouVasilhame);
-        Assert.Null(item.PrecoVasilhame);
+        Assert.Empty(g.Vasilhames);
     }
 
+    // Preço do vasilhame do tipo G nos exemplos da spec: R$ 15 (informado na venda).
+    private static VasilhameVenda Vasilhame(TipoCascoVenda tipo, int quantidade, ModoCreditoVasilhame modo = ModoCreditoVasilhame.ABATER_CREDITO) =>
+        new(tipo.Id, quantidade, 15m, modo);
+
     [Fact]
-    public async Task CriarAsync_QuandoPagouVasilhame_SomaVasilhameAoBrutoESemEmprestimo()
+    public async Task CriarAsync_Exemplo1_CreditoCobreOsVasilhamesNoAbater_NaoCobraEAbateOCredito()
     {
-        await sut.CriarAsync(NovaVendaDe(agua, 2, 12m, pagouVasilhame: true), CancellationToken.None);
+        lookup.CreditosCasco[(clienteId, cascoG.Id)] = 2;
+
+        await sut.CriarAsync(NovaVendaSoVasilhame([Vasilhame(cascoG, 2)]), CancellationToken.None);
 
         var g = vendas.UltimaGravacao!;
-        Assert.Equal(84m, g.TotalBruto); // 2 × 12 + 2 × 30
-        Assert.Equal(84m, g.TotalLiquido);
+        var v = Assert.Single(g.Vasilhames);
+        Assert.Equal(2, v.QuantidadeAbatida);
+        Assert.Equal(0m, v.Total);
+        Assert.Equal(0m, g.TotalLiquido);
         Assert.Empty(g.CascosEmprestados);
-        var item = Assert.Single(g.Itens);
-        Assert.True(item.PagouVasilhame);
-        Assert.Equal(cascoG.Id, item.TipoCascoId);
-        Assert.Equal(30m, item.PrecoVasilhame);
+        Assert.Equal([new CascoQuantidade(cascoG.Id, 2)], g.VaziosSaidos);
     }
 
     [Fact]
-    public async Task CriarAsync_QuandoPagouVasilhameComDesconto_AplicaSobreOBrutoComVasilhame()
+    public async Task CriarAsync_Exemplo2_Comprar_CobraTudoESeguraOCredito()
     {
-        var desconto = new Desconto(TipoDesconto.PERCENTUAL, 10m, "promoção");
-        var venda = NovaVendaDe(agua, 2, 12m) with
+        lookup.CreditosCasco[(clienteId, cascoG.Id)] = 2;
+
+        await sut.CriarAsync(
+            NovaVendaSoVasilhame([Vasilhame(cascoG, 2, ModoCreditoVasilhame.COMPRAR)]), CancellationToken.None);
+
+        var g = vendas.UltimaGravacao!;
+        var v = Assert.Single(g.Vasilhames);
+        Assert.Equal(0, v.QuantidadeAbatida);
+        Assert.Equal(30m, v.Total);
+        Assert.Equal(30m, g.TotalLiquido);
+        Assert.Equal([new CascoQuantidade(cascoG.Id, 2)], g.VaziosSaidos);
+    }
+
+    [Fact]
+    public async Task CriarAsync_Exemplo3_VasilhameMenorQueOsGaloes_EmprestaOResto()
+    {
+        var venda = NovaVendaDe(agua, 3, 12m) with { Vasilhames = [Vasilhame(cascoG, 2)] };
+
+        await sut.CriarAsync(venda, CancellationToken.None);
+
+        var g = vendas.UltimaGravacao!;
+        Assert.Equal(66m, g.TotalBruto); // 3 × 12 + 2 × 15
+        Assert.Equal([new CascoQuantidade(cascoG.Id, 1)], g.CascosEmprestados);
+        Assert.Empty(g.VaziosSaidos);
+        Assert.Equal(0, g.Vasilhames[0].QuantidadeAbatida);
+    }
+
+    [Fact]
+    public async Task CriarAsync_Exemplo4_CreditoMenorQueOsVasilhames_AbateSoOCredito()
+    {
+        lookup.CreditosCasco[(clienteId, cascoG.Id)] = 1;
+
+        await sut.CriarAsync(NovaVendaSoVasilhame([Vasilhame(cascoG, 3)]), CancellationToken.None);
+
+        var g = vendas.UltimaGravacao!;
+        var v = Assert.Single(g.Vasilhames);
+        Assert.Equal(1, v.QuantidadeAbatida);
+        Assert.Equal(30m, v.Total);
+        Assert.Equal([new CascoQuantidade(cascoG.Id, 3)], g.VaziosSaidos);
+    }
+
+    [Fact]
+    public async Task CriarAsync_Exemplo5_SucataComValor_ViraDescontoSemSucataDoCliente()
+    {
+        var venda = NovaVendaDe(agua, 1, 50m) with { SucataEntregue = [new SucataVenda(cascoG.Id, 2, 3m)] };
+
+        var resultado = await sut.CriarAsync(venda, CancellationToken.None);
+
+        var g = vendas.UltimaGravacao!;
+        Assert.Equal([new SucataVenda(cascoG.Id, 2, 3m)], g.SucataEntregue); // vai para venda_sucatas + estoque de sucata
+        Assert.Equal(6m, g.DescontoSucata);
+        Assert.Equal(6m, g.TotalDesconto);
+        Assert.Equal(44m, g.TotalLiquido);
+        Assert.Equal(6m, resultado.DescontoSucata);
+        Assert.Empty(g.CascosDevolvidos); // nada no ledger de casco do cliente
+    }
+
+    [Fact]
+    public async Task CriarAsync_Exemplo6_PagamentoAcimaDoLiquido_SobraViraCredito()
+    {
+        var resultado = await sut.CriarAsync(
+            NovaVendaDe(agua, 1, 50m, pagamentos: [new PagamentoVenda(FormaPagamento.DINHEIRO, 60m)]),
+            CancellationToken.None);
+
+        var g = vendas.UltimaGravacao!;
+        Assert.Equal(StatusPagamento.PAGA, g.Status);
+        Assert.Equal(10m, g.CreditoGerado);
+        Assert.Equal(0m, g.DebitoFiado);
+        Assert.Equal(10m, resultado.CreditoGerado);
+        Assert.Equal(60m, resultado.TotalPago); // soma real dos pagamentos
+        Assert.Equal(0m, resultado.SaldoFiadoGerado);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoModoOmitidoNoComando_AbateComoPadrao()
+    {
+        // O padrão do request omitido é testado na API (VendasApiTests); aqui, o do enum (default = ABATER_CREDITO).
+        lookup.CreditosCasco[(clienteId, cascoG.Id)] = 1;
+
+        await sut.CriarAsync(
+            NovaVendaSoVasilhame([new VasilhameVenda(cascoG.Id, 1, 15m, default)]), CancellationToken.None);
+
+        Assert.Equal(1, vendas.UltimaGravacao!.Vasilhames[0].QuantidadeAbatida);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoSoVasilhame_Aceita()
+    {
+        await sut.CriarAsync(NovaVendaSoVasilhame([Vasilhame(cascoG, 1)]), CancellationToken.None);
+
+        Assert.Empty(vendas.UltimaGravacao!.Itens);
+        Assert.Equal(15m, vendas.UltimaGravacao.TotalLiquido);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoSemItensESemVasilhames_LancaItensObrigatorios()
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.CriarAsync(NovaVendaSoVasilhame([]), CancellationToken.None));
+
+        Assert.Equal("ITENS_OBRIGATORIOS", e.Code);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoTipoRepetidoNosVasilhames_LancaTipoCascoDuplicado()
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(() => sut.CriarAsync(
+            NovaVendaSoVasilhame([Vasilhame(cascoG, 1), Vasilhame(cascoG, 2, ModoCreditoVasilhame.COMPRAR)]),
+            CancellationToken.None));
+
+        Assert.Equal("TIPO_CASCO_DUPLICADO", e.Code);
+        Assert.Null(vendas.UltimaGravacao);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoVasilhameInvalido_LancaVasilhameInvalido()
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(() => sut.CriarAsync(
+            NovaVendaSoVasilhame([new VasilhameVenda(cascoG.Id, 0, 15m, ModoCreditoVasilhame.COMPRAR)]),
+            CancellationToken.None));
+
+        Assert.Equal("VASILHAME_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoSucataInvalida_LancaSucataInvalida()
+    {
+        var e = await Assert.ThrowsAsync<RequestValidationException>(() => sut.CriarAsync(
+            NovaVendaDe(agua, 1, 50m) with { SucataEntregue = [new SucataVenda(cascoG.Id, 1, -1m)] },
+            CancellationToken.None));
+
+        Assert.Equal("SUCATA_INVALIDA", e.Code);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoDescontoSucataPassaDoTotal_LancaDescontoSucataExcedeTotal()
+    {
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(() => sut.CriarAsync(
+            NovaVendaDe(agua, 1, 50m) with { SucataEntregue = [new SucataVenda(cascoG.Id, 1, 50.01m)] },
+            CancellationToken.None));
+
+        Assert.Equal("DESCONTO_SUCATA_EXCEDE_TOTAL", e.Code);
+        Assert.Null(vendas.UltimaGravacao);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoCreditoClientePassaDoLiquido_LancaCreditoExcedeTotal()
+    {
+        lookup.Creditos[clienteId] = 500m;
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(() => sut.CriarAsync(
+            NovaVendaDe(agua, 1, 50m, pagamentos: [new PagamentoVenda(FormaPagamento.CREDITO_CLIENTE, 60m)]),
+            CancellationToken.None));
+
+        Assert.Equal("CREDITO_EXCEDE_TOTAL", e.Code);
+    }
+
+    [Fact]
+    public async Task CriarAsync_QuandoSucataNoTipoDoVasilhame_AceitaComoTipoDaVenda()
+    {
+        var venda = NovaVendaSoVasilhame([Vasilhame(cascoG, 1)]) with
         {
-            Itens = [new ItemVenda(agua.ProdutoId, agua.MarcaId, 2, 12m, desconto, true)]
+            SucataEntregue = [new SucataVenda(cascoG.Id, 1, 2m)]
         };
 
         await sut.CriarAsync(venda, CancellationToken.None);
 
-        var item = vendas.UltimaGravacao!.Itens[0];
-        Assert.Equal(84m, item.TotalBruto);
-        Assert.Equal(8.40m, item.ValorDesconto);
-        Assert.Equal(75.60m, item.TotalItem);
+        Assert.Equal(13m, vendas.UltimaGravacao!.TotalLiquido);
     }
 
     [Fact]
-    public async Task CriarAsync_QuandoTrocaEPagouVasilhameNaMesmaVenda_EmprestaSoATroca()
+    public async Task CriarAsync_QuandoTipoDoVasilhameNaoExiste_LancaTipoCascoNaoEncontrado()
     {
-        var venda = NovaVendaDe(agua, 5, 50m) with
-        {
-            Itens =
-            [
-                new ItemVenda(agua.ProdutoId, agua.MarcaId, 5, 50m, null),
-                new ItemVenda(agua.ProdutoId, agua.MarcaId, 2, 50m, null, true),
-                new ItemVenda(aguaY.ProdutoId, aguaY.MarcaId, 1, 50m, null),
-            ]
-        };
+        var e = await Assert.ThrowsAsync<EntityNotFoundException>(() => sut.CriarAsync(
+            NovaVendaSoVasilhame([new VasilhameVenda(Guid.NewGuid(), 1, 15m, ModoCreditoVasilhame.COMPRAR)]),
+            CancellationToken.None));
 
-        await sut.CriarAsync(venda, CancellationToken.None);
+        Assert.Equal("TIPO_CASCO_NAO_ENCONTRADO", e.Code);
+    }
 
-        Assert.Equal(
-            [new CascoQuantidade(cascoG.Id, 5), new CascoQuantidade(cascoE.Id, 1)],
-            vendas.UltimaGravacao!.CascosEmprestados);
+    [Fact]
+    public async Task EditarAsync_CreditoDeGalaoIgnoraOsEfeitosDaPropriaVenda()
+    {
+        // Crédito 2 antes da venda; a venda abateu 2 (crédito atual 0). Na edição o abate da própria venda volta.
+        lookup.CreditosCasco[(clienteId, cascoG.Id)] = 0;
+        var criada = await sut.CriarAsync(NovaVendaSoVasilhame([Vasilhame(cascoG, 2)]), CancellationToken.None);
+        lookup.AbatePorVenda[(criada.Id, cascoG.Id)] = 2;
+
+        await sut.EditarAsync(criada.Id, NovaVendaSoVasilhame([Vasilhame(cascoG, 2)]), CancellationToken.None);
+
+        Assert.Equal(criada.Id, lookup.UltimaVendaIgnoradaCasco);
+        Assert.Equal(2, vendas.UltimaEdicao!.Vasilhames[0].QuantidadeAbatida);
+        Assert.Equal(0m, vendas.UltimaEdicao.TotalLiquido);
     }
 
     [Fact]
@@ -160,10 +325,10 @@ public sealed class VendaServiceTests
     public async Task CriarAsync_QuandoSucataEmTipoQueAceita_GravaSucataDoTipoSemMexerNosCascos()
     {
         await sut.CriarAsync(
-            NovaVendaDe(agua, 2, 50m, sucata: [new CascoQuantidade(cascoG.Id, 1)]), CancellationToken.None);
+            NovaVendaDe(agua, 2, 50m, sucata: [new SucataVenda(cascoG.Id, 1, 2m)]), CancellationToken.None);
 
         var g = vendas.UltimaGravacao!;
-        Assert.Equal([new CascoQuantidade(cascoG.Id, 1)], g.SucataEntregue);
+        Assert.Equal([new SucataVenda(cascoG.Id, 1, 2m)], g.SucataEntregue);
         Assert.Equal([new CascoQuantidade(cascoG.Id, 2)], g.CascosEmprestados);
         Assert.Empty(g.CascosDevolvidos); // sucata não conta como devolução
     }
@@ -172,7 +337,7 @@ public sealed class VendaServiceTests
     public async Task CriarAsync_QuandoSucataEmTipoQueNaoAceita_LancaSucataNaoAceitaENaoGrava()
     {
         var e = await Assert.ThrowsAsync<BusinessRuleException>(() => sut.CriarAsync(
-            NovaVendaDe(aguaY, 1, 50m, sucata: [new CascoQuantidade(cascoE.Id, 1)]), CancellationToken.None));
+            NovaVendaDe(aguaY, 1, 50m, sucata: [new SucataVenda(cascoE.Id, 1, 2m)]), CancellationToken.None));
 
         Assert.Equal("SUCATA_NAO_ACEITA", e.Code);
         Assert.Null(vendas.UltimaGravacao);
@@ -193,7 +358,7 @@ public sealed class VendaServiceTests
     public async Task CriarAsync_QuandoSucataEmTipoForaDaVenda_LancaTipoCascoForaDaVenda()
     {
         var e = await Assert.ThrowsAsync<BusinessRuleException>(() => sut.CriarAsync(
-            NovaVendaDe(agua, 1, 50m, sucata: [new CascoQuantidade(cascoE.Id, 1)]), CancellationToken.None));
+            NovaVendaDe(agua, 1, 50m, sucata: [new SucataVenda(cascoE.Id, 1, 2m)]), CancellationToken.None));
 
         Assert.Equal("TIPO_CASCO_FORA_DA_VENDA", e.Code);
         Assert.Null(vendas.UltimaGravacao);
@@ -212,17 +377,17 @@ public sealed class VendaServiceTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public async Task CriarAsync_QuandoQuantidadeNasListasNaoPositiva_LancaQuantidadeInvalida(int quantidade)
+    public async Task CriarAsync_QuandoQuantidadeNaoPositiva_LancaQuantidadeInvalidaNaDevolucaoESucataInvalidaNaSucata(int quantidade)
     {
         var devolucao = await Assert.ThrowsAsync<RequestValidationException>(() => sut.CriarAsync(
             NovaVendaDe(agua, 1, 50m, devolvidos: [new CascoQuantidade(cascoG.Id, quantidade)]),
             CancellationToken.None));
         var sucata = await Assert.ThrowsAsync<RequestValidationException>(() => sut.CriarAsync(
-            NovaVendaDe(agua, 1, 50m, sucata: [new CascoQuantidade(cascoG.Id, quantidade)]),
+            NovaVendaDe(agua, 1, 50m, sucata: [new SucataVenda(cascoG.Id, quantidade, 2m)]),
             CancellationToken.None));
 
         Assert.Equal("QUANTIDADE_INVALIDA", devolucao.Code);
-        Assert.Equal("QUANTIDADE_INVALIDA", sucata.Code);
+        Assert.Equal("SUCATA_INVALIDA", sucata.Code);
         Assert.Null(vendas.UltimaGravacao);
     }
 
@@ -316,16 +481,6 @@ public sealed class VendaServiceTests
     }
 
     [Fact]
-    public async Task CriarAsync_QuandoPagouVasilhameEmDescartavel_LancaVasilhameEmDescartavelENaoGrava()
-    {
-        var e = await Assert.ThrowsAsync<BusinessRuleException>(() => sut.CriarAsync(
-            NovaVendaDe(descartavel, 1, 8m, pagouVasilhame: true), CancellationToken.None));
-
-        Assert.Equal("VASILHAME_EM_DESCARTAVEL", e.Code);
-        Assert.Null(vendas.UltimaGravacao);
-    }
-
-    [Fact]
     public async Task EditarAsync_QuandoCupomJaEmitido_LancaVendaJaFaturada()
     {
         var criada = await sut.CriarAsync(NovaVendaDe(agua, 1, 50m), CancellationToken.None);
@@ -335,20 +490,6 @@ public sealed class VendaServiceTests
             () => sut.EditarAsync(criada.Id, NovaVendaDe(agua, 2, 50m), CancellationToken.None));
 
         Assert.Equal("VENDA_JA_FATURADA", e.Code);
-    }
-
-    [Fact]
-    public async Task EditarAsync_QuandoPagouVasilhame_ReleOPrecoDoTipo()
-    {
-        var criada = await sut.CriarAsync(NovaVendaDe(agua, 2, 12m, pagouVasilhame: true), CancellationToken.None);
-        Assert.Equal(30m, vendas.UltimaGravacao!.Itens[0].PrecoVasilhame);
-        lookup.TiposCasco[cascoG.Id] = cascoG with { PrecoVasilhame = 35m };
-
-        await sut.EditarAsync(criada.Id, NovaVendaDe(agua, 2, 12m, pagouVasilhame: true), CancellationToken.None);
-
-        var item = vendas.UltimaEdicao!.Itens[0];
-        Assert.Equal(35m, item.PrecoVasilhame);
-        Assert.Equal(94m, item.TotalBruto); // 2 × 12 + 2 × 35
     }
 
     [Fact]
@@ -510,6 +651,19 @@ public sealed class VendaServiceTests
 
         Assert.Equal(StatusPagamento.PAGA, resultado.StatusPagamento);
         Assert.Equal((FormaPagamento.DINHEIRO, 50m), vendas.UltimoPagamento);
+    }
+
+    [Fact]
+    public async Task AdicionarPagamentoAsync_QuandoVendaTemSucata_DevolveODescontoSucataDaVenda()
+    {
+        var criada = await sut.CriarAsync(
+            NovaVendaDe(agua, 1, 50m, sucata: [new SucataVenda(cascoG.Id, 2, 3m)]), CancellationToken.None);
+        vendas.InfoPagamento = new InfoPagamentoVenda(44m, 0m, 44m, StatusPagamento.PENDENTE);
+
+        var resultado = await sut.AdicionarPagamentoAsync(
+            criada.Id, FormaPagamento.PIX, 10m, CancellationToken.None);
+
+        Assert.Equal(6m, resultado.DescontoSucata);
     }
 
     [Fact]
@@ -742,16 +896,44 @@ public sealed class VendaServiceTests
         Assert.Empty(lista);
     }
 
+    [Fact]
+    public async Task ObterUltimoPrecoAsync_QuandoVariasCompras_DevolveAMaisRecenteSemAsDeletadas()
+    {
+        var antiga = new UltimoPrecoVenda(Guid.NewGuid(), new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), 10m);
+        var recente = new UltimoPrecoVenda(Guid.NewGuid(), new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero), 12m);
+        var deletada = new UltimoPrecoVenda(Guid.NewGuid(), new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), 99m);
+        vendas.Compras.Add((clienteId, agua.ProdutoId, agua.MarcaId, antiga, false));
+        vendas.Compras.Add((clienteId, agua.ProdutoId, agua.MarcaId, recente, false));
+        vendas.Compras.Add((clienteId, agua.ProdutoId, agua.MarcaId, deletada, true));
+
+        var ultimo = await sut.ObterUltimoPrecoAsync(clienteId, agua.ProdutoId, agua.MarcaId, CancellationToken.None);
+
+        Assert.Equal(recente, ultimo);
+    }
+
+    [Fact]
+    public async Task ObterUltimoPrecoAsync_QuandoNuncaComprou_DevolveNulo()
+    {
+        vendas.Compras.Add((clienteId, agua.ProdutoId, agua.MarcaId,
+            new UltimoPrecoVenda(Guid.NewGuid(), DateTimeOffset.UtcNow, 10m), false));
+
+        Assert.Null(await sut.ObterUltimoPrecoAsync(clienteId, aguaY.ProdutoId, aguaY.MarcaId, CancellationToken.None));
+        Assert.Null(await sut.ObterUltimoPrecoAsync(Guid.NewGuid(), agua.ProdutoId, agua.MarcaId, CancellationToken.None));
+    }
+
     private NovaVenda NovaVendaDe(
         ProdutoVenda produto,
         int quantidade,
         decimal preco,
-        bool pagouVasilhame = false,
         IReadOnlyList<CascoQuantidade>? devolvidos = null,
-        IReadOnlyList<CascoQuantidade>? sucata = null,
+        IReadOnlyList<SucataVenda>? sucata = null,
         IReadOnlyList<PagamentoVenda>? pagamentos = null) => new(
         clienteId, funcionarioId, null,
-        [new ItemVenda(produto.ProdutoId, produto.MarcaId, quantidade, preco, null, pagouVasilhame)],
+        [new ItemVenda(produto.ProdutoId, produto.MarcaId, quantidade, preco, null)],
+        [],
         pagamentos ?? [],
         devolvidos ?? [], sucata ?? [], null);
+
+    private NovaVenda NovaVendaSoVasilhame(IReadOnlyList<VasilhameVenda> vasilhames) => new(
+        clienteId, funcionarioId, null, [], vasilhames, [], [], [], null);
 }

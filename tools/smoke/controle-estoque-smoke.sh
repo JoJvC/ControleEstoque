@@ -58,19 +58,20 @@ CAIXA_ID=$(curl -fsS -X POST "$FINANCEIRO/v1/caixas" -H "Content-Type: applicati
   -d '{"saldoInicial":100}' | jq -r .id)
 echo "OK  caixa=$CAIXA_ID"
 
-echo "=== Smoke: Venda 4.1 — 5 un. (troca), devolve 3 cascos, entrega 1 sucata, pix 200 ==="
-VENDA_BODY='{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":5,"precoUnitario":50,"pagouVasilhame":false}],"pagamentos":[{"forma":"PIX","valor":200}],"cascosDevolvidos":[{"tipoCascoId":"'"$CASCO_ID"'","quantidade":3}],"sucataEntregue":[{"tipoCascoId":"'"$CASCO_ID"'","quantidade":1}]}'
+echo "=== Smoke: Venda 4.1 — 5 un. (troca), devolve 3 cascos, 1 sucata a R\$ 10 (desconto), pix 190 ==="
+VENDA_BODY='{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":5,"precoUnitario":50}],"pagamentos":[{"forma":"PIX","valor":190}],"cascosDevolvidos":[{"tipoCascoId":"'"$CASCO_ID"'","quantidade":3}],"sucataEntregue":[{"tipoCascoId":"'"$CASCO_ID"'","quantidade":1,"valorUnitario":10}]}'
 VENDA=$(curl -fsS -X POST "$VENDAS/v1/vendas" -H "Content-Type: application/json" -d "$VENDA_BODY")
 VENDA_ID=$(echo "$VENDA" | jq -r .id)
-echo "$VENDA" | jq -e '.statusPagamento == "PARCIAL" and .saldoFiadoGerado == 50 and .saldoCascoCliente == 2' > /dev/null
+echo "$VENDA" | jq -e '.statusPagamento == "PARCIAL" and .totalLiquido == 240 and .descontoSucata == 10 and .saldoFiadoGerado == 50 and .saldoCascoCliente == 2' > /dev/null
 echo "$VENDA" | jq -e --arg tipo "$CASCO_ID" '.saldoCascoClientePorTipo | length == 1 and .[0].tipoCascoId == $tipo and .[0].saldo == 2' > /dev/null
 echo "OK  venda=$VENDA_ID (PARCIAL, fiado 50, saldo casco 2 no tipo $CASCO_ID)"
 
-echo "=== Smoke: detalhe da venda (marca, casco do item, devolução e sucata por tipo) ==="
+echo "=== Smoke: detalhe da venda (marca, casco do item, devolução e sucata com valor por tipo) ==="
 curl -fsS "$VENDAS/v1/vendas/$VENDA_ID" | jq -e --arg marca "$MARCA_ID" --arg tipo "$CASCO_ID" '
-  .itens[0].marcaId == $marca and .itens[0].tipoCascoId == $tipo and .itens[0].pagouVasilhame == false
+  .itens[0].marcaId == $marca and .itens[0].tipoCascoId == $tipo
+  and .vasilhames == []
   and .cascosDevolvidos == [{"tipoCascoId": $tipo, "quantidade": 3}]
-  and .sucataEntregue == [{"tipoCascoId": $tipo, "quantidade": 1}]' > /dev/null
+  and .sucataEntregue == [{"tipoCascoId": $tipo, "quantidade": 1, "valorUnitario": 10}]' > /dev/null
 echo "OK  detalhe confere"
 
 echo "=== Smoke: estoque de cascos do tipo (10 da carga + 3 devolvidos = 13 vazios, 1 sucata) ==="
@@ -85,16 +86,16 @@ curl -fsS "$ESTOQUE/v1/estoque/cascos" \
   | jq -e --arg tipo "$CASCO_ID" '.[] | select(.tipoCascoId == $tipo) | .vazios == 13 and .sucata == 1' > /dev/null
 echo "OK  replay manteve saldo de casco 2, vazios 13 e sucata 1"
 
-echo "=== Smoke: saldos do cliente (casco 2 / sucata 1 / fiado 50) ==="
+echo "=== Smoke: saldos do cliente (casco 2 / sucata 0 / fiado 50) ==="
 curl -fsS "$CLIENTES/v1/clientes/$CLI_ID/saldos" \
-  | jq -e '.saldoCascos == 2 and .sucataEntregue == 1 and .saldoFiado == 50' > /dev/null
-echo "OK  saldos conferem — sucata NÃO abateu o débito de casco"
+  | jq -e '.saldoCascos == 2 and .sucataEntregue == 0 and .saldoFiado == 50' > /dev/null
+echo "OK  saldos conferem — sucata da venda é desconto: não abateu o débito de casco nem entrou no saldo de sucata do cliente"
 
 echo "=== Smoke: cupom fiscal + bloqueio de edição ==="
 curl -fsS -X POST "$VENDAS/v1/vendas/$VENDA_ID/cupom-fiscal" | jq -e '.numero' > /dev/null
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$VENDAS/v1/vendas/$VENDA_ID" \
   -H "Content-Type: application/json" \
-  -d '{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":1,"precoUnitario":50,"pagouVasilhame":false}],"pagamentos":[],"cascosDevolvidos":[],"sucataEntregue":[]}')
+  -d '{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":1,"precoUnitario":50}],"pagamentos":[],"cascosDevolvidos":[],"sucataEntregue":[]}')
 [ "$CODE" = "422" ] || { echo "FALHOU: edição pós-cupom devia dar 422, veio $CODE"; exit 1; }
 echo "OK  edição pós-cupom bloqueada (422)"
 
@@ -104,16 +105,21 @@ curl -fsS -X POST "$FINANCEIRO/v1/clientes/$CLI_ID/fiado/pagamentos" -H "Content
 curl -fsS "$CLIENTES/v1/clientes/$CLI_ID/saldos" | jq -e '.saldo == 100 and .creditoDisponivel == 100' > /dev/null
 echo "OK  crédito disponível 100"
 
-echo "=== Smoke: Venda 2 — pagou o vasilhame (2 x (50 + 30) = 160), crédito 100 + pix 60 ==="
+echo "=== Smoke: Venda 2 — 2 x 50 + 2 vasilhames a 30 (modo omitido) = 160, crédito 100 + pix 60 ==="
 VENDA2=$(curl -fsS -X POST "$VENDAS/v1/vendas" -H "Content-Type: application/json" \
-  -d '{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":2,"precoUnitario":50,"pagouVasilhame":true}],"pagamentos":[{"forma":"CREDITO_CLIENTE","valor":100},{"forma":"PIX","valor":60}],"cascosDevolvidos":[],"sucataEntregue":[]}')
+  -d '{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":2,"precoUnitario":50}],"vasilhames":[{"tipoCascoId":"'"$CASCO_ID"'","quantidade":2,"precoUnitario":30}],"pagamentos":[{"forma":"CREDITO_CLIENTE","valor":100},{"forma":"PIX","valor":60}],"cascosDevolvidos":[],"sucataEntregue":[]}')
 echo "$VENDA2" | jq -e '.totalLiquido == 160 and .statusPagamento == "PAGA" and .saldoFiadoGerado == 0 and .saldoCascoCliente == 2' > /dev/null
 curl -fsS "$CLIENTES/v1/clientes/$CLI_ID/saldos" | jq -e '.saldo == 0 and .creditoDisponivel == 0 and .saldoCascos == 2' > /dev/null
-echo "OK  venda paga com crédito; linha com vasilhame pago não empresta casco (saldo de casco segue 2)"
+echo "OK  venda paga com crédito; os 2 galões foram pagos como vasilhame e não emprestam casco (saldo de casco segue 2)"
+
+echo "=== Smoke: último preço do cliente para o produto+marca (venda 2, R\$ 50) ==="
+curl -fsS "$VENDAS/v1/vendas/ultimo-preco?clienteId=$CLI_ID&produtoId=$PRODUTO_ID&marcaId=$MARCA_ID" \
+  | jq -e --arg id "$(echo "$VENDA2" | jq -r .id)" '.vendaId == $id and .precoUnitario == 50' > /dev/null
+echo "OK  último preço 50 da venda $(echo "$VENDA2" | jq -r .id)"
 
 echo "=== Smoke: crédito acima do disponível é recusado (CREDITO_INSUFICIENTE) ==="
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$VENDAS/v1/vendas" -H "Content-Type: application/json" \
-  -d '{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":1,"precoUnitario":50,"pagouVasilhame":false}],"pagamentos":[{"forma":"CREDITO_CLIENTE","valor":50}],"cascosDevolvidos":[],"sucataEntregue":[]}')
+  -d '{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":1,"precoUnitario":50}],"pagamentos":[{"forma":"CREDITO_CLIENTE","valor":50}],"cascosDevolvidos":[],"sucataEntregue":[]}')
 [ "$CODE" = "422" ] || { echo "FALHOU: crédito sem saldo devia dar 422, veio $CODE"; exit 1; }
 echo "OK  crédito sem saldo recusado (422)"
 

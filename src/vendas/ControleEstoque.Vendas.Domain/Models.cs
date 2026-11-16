@@ -4,10 +4,24 @@ namespace ControleEstoque.Vendas.Domain;
 
 public sealed record Desconto(TipoDesconto Tipo, decimal Valor, string Motivo);
 
-/// <summary>Item = produto+marca. PagouVasilhame soma o vasilhame ao bruto e não gera empréstimo de casco.</summary>
+/// <summary>Item = produto+marca.</summary>
 public sealed record ItemVenda(
-    Guid ProdutoId, Guid MarcaId, int Quantidade, decimal PrecoUnitario, Desconto? Desconto,
-    bool PagouVasilhame = false);
+    Guid ProdutoId, Guid MarcaId, int Quantidade, decimal PrecoUnitario, Desconto? Desconto);
+
+/// <summary>Vasilhame vendido como item próprio do tipo de casco; o preço vem do request (pré-preenchido na tela).</summary>
+public sealed record VasilhameVenda(
+    Guid TipoCascoId, int Quantidade, decimal PrecoUnitario, ModoCreditoVasilhame Modo);
+
+/// <summary>Vasilhame com o abate do crédito de galão já resolvido; Total é o cobrado (sem o abatido).</summary>
+public sealed record VasilhameCalculado(
+    Guid TipoCascoId, int Quantidade, int QuantidadeAbatida, decimal PrecoUnitario,
+    ModoCreditoVasilhame Modo, decimal Total);
+
+/// <summary>Sucata entregue na venda: o valor por unidade vira desconto e a sucata não entra no saldo do cliente.</summary>
+public sealed record SucataVenda(Guid TipoCascoId, int Quantidade, decimal ValorUnitario)
+{
+    public decimal Total => Quantidade * ValorUnitario;
+}
 
 public sealed record PagamentoVenda(FormaPagamento Forma, decimal Valor);
 
@@ -22,18 +36,16 @@ public sealed record NovaVenda(
     Guid FuncionarioId,
     Guid? EnderecoEntregaId,
     IReadOnlyList<ItemVenda> Itens,
+    IReadOnlyList<VasilhameVenda> Vasilhames,
     IReadOnlyList<PagamentoVenda> Pagamentos,
     IReadOnlyList<CascoQuantidade> CascosDevolvidos,
-    IReadOnlyList<CascoQuantidade> SucataEntregue,
+    IReadOnlyList<SucataVenda> SucataEntregue,
     string? Observacao);
 
-/// <summary>Resolução do item no banco: associação, casco resolvido e preço do vasilhame desse casco.</summary>
-public sealed record ItemResolvido(Guid ProdutoMarcaId, Guid? TipoCascoId, decimal PrecoVasilhame);
+/// <summary>Resolução do item no banco: associação e casco resolvido.</summary>
+public sealed record ItemResolvido(Guid ProdutoMarcaId, Guid? TipoCascoId);
 
-/// <summary>
-/// Item com totais já calculados pelo sistema (nunca aceitos do cliente HTTP). O bruto inclui o vasilhame
-/// quando PagouVasilhame; PrecoVasilhame é o preço aplicado (null quando não pagou).
-/// </summary>
+/// <summary>Item com totais já calculados pelo sistema (nunca aceitos do cliente HTTP).</summary>
 public sealed record ItemCalculado(
     Guid ProdutoId,
     Guid MarcaId,
@@ -42,19 +54,20 @@ public sealed record ItemCalculado(
     int Quantidade,
     decimal PrecoUnitario,
     Desconto? Desconto,
-    bool PagouVasilhame,
-    decimal? PrecoVasilhame,
     decimal TotalBruto,
     decimal ValorDesconto,
     decimal TotalItem);
 
+/// <summary>TotalDesconto = descontos dos itens + DescontoSucata; CreditoGerado = sobra do pagamento acima do líquido.</summary>
 public sealed record TotaisVenda(
     IReadOnlyList<ItemCalculado> Itens,
     decimal TotalBruto,
     decimal TotalDesconto,
+    decimal DescontoSucata,
     decimal TotalLiquido,
     decimal TotalPago,
     decimal Faltante,
+    decimal CreditoGerado,
     StatusPagamento Status);
 
 /// <summary>Produto+marca da venda (lookup no banco), com os dois tipos de casco que a regra resolve.</summary>
@@ -81,14 +94,18 @@ public sealed record VendaGravacao(
     string? Observacao,
     decimal TotalBruto,
     decimal TotalDesconto,
+    decimal DescontoSucata,
     decimal TotalLiquido,
     StatusPagamento Status,
     IReadOnlyList<ItemCalculado> Itens,
+    IReadOnlyList<VasilhameCalculado> Vasilhames,
     IReadOnlyList<PagamentoVenda> Pagamentos,
     IReadOnlyList<CascoQuantidade> CascosEmprestados,
     IReadOnlyList<CascoQuantidade> CascosDevolvidos,
-    IReadOnlyList<CascoQuantidade> SucataEntregue,
+    IReadOnlyList<CascoQuantidade> VaziosSaidos,
+    IReadOnlyList<SucataVenda> SucataEntregue,
     decimal DebitoFiado,
+    decimal CreditoGerado,
     decimal UsoCredito);
 
 /// <summary>
@@ -104,9 +121,11 @@ public sealed record ResultadoVenda(
     Guid Id,
     decimal TotalBruto,
     decimal TotalDesconto,
+    decimal DescontoSucata,
     decimal TotalLiquido,
     decimal TotalPago,
     decimal SaldoFiadoGerado,
+    decimal CreditoGerado,
     StatusPagamento StatusPagamento,
     IReadOnlyList<SaldoCascoTipo> SaldoCascoClientePorTipo)
 {
@@ -128,9 +147,14 @@ public sealed record Venda(
     IReadOnlyList<ItemCalculado> Itens,
     IReadOnlyList<PagamentoVenda> Pagamentos,
     IReadOnlyList<CascoQuantidade> CascosDevolvidos,
-    IReadOnlyList<CascoQuantidade> SucataEntregue,
+    IReadOnlyList<SucataVenda> SucataEntregue,
+    IReadOnlyList<VasilhameCalculado> Vasilhames,
     string? CupomNumero = null,
-    DateTimeOffset? CupomEmitidoEm = null);
+    DateTimeOffset? CupomEmitidoEm = null,
+    decimal DescontoSucata = 0m);
+
+/// <summary>Preço unitário (antes do desconto do item) da compra mais recente do cliente.</summary>
+public sealed record UltimoPrecoVenda(Guid VendaId, DateTimeOffset Data, decimal PrecoUnitario);
 
 public sealed record CupomFiscal(Guid Id, string Numero, DateTimeOffset EmitidoEm);
 

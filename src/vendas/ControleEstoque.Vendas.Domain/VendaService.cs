@@ -13,6 +13,8 @@ public interface IVendaService
     Task<ResultadoVenda> AdicionarPagamentoAsync(
         Guid vendaId, FormaPagamento forma, decimal valor, CancellationToken cancellationToken);
     Task<CupomFiscal> EmitirCupomAsync(Guid vendaId, CancellationToken cancellationToken);
+    Task<UltimoPrecoVenda?> ObterUltimoPrecoAsync(
+        Guid clienteId, Guid produtoId, Guid marcaId, CancellationToken cancellationToken);
 }
 
 public sealed class VendaService : IVendaService
@@ -101,8 +103,8 @@ public sealed class VendaService : IVendaService
         var venda = await ObterAsync(vendaId, cancellationToken);
         var saldoCasco = await vendas.GetSaldoCascoClienteAsync(venda.ClienteId, cancellationToken);
         return new ResultadoVenda(
-            venda.Id, venda.TotalBruto, venda.TotalDesconto, venda.TotalLiquido,
-            travado.TotalPago + valor, travado.TotalLiquido - travado.TotalPago - valor, novoStatus, saldoCasco);
+            venda.Id, venda.TotalBruto, venda.TotalDesconto, venda.DescontoSucata, venda.TotalLiquido,
+            travado.TotalPago + valor, travado.TotalLiquido - travado.TotalPago - valor, 0m, novoStatus, saldoCasco);
     }
 
     public async Task<CupomFiscal> EmitirCupomAsync(Guid vendaId, CancellationToken cancellationToken)
@@ -120,6 +122,15 @@ public sealed class VendaService : IVendaService
         return await cupons.EmitirAsync(vendaId, cancellationToken);
     }
 
+    public Task<UltimoPrecoVenda?> ObterUltimoPrecoAsync(
+        Guid clienteId, Guid produtoId, Guid marcaId, CancellationToken cancellationToken)
+    {
+        Validacao.IdPreenchido(clienteId, "ClienteId");
+        Validacao.IdPreenchido(produtoId, "ProdutoId");
+        Validacao.IdPreenchido(marcaId, "MarcaId");
+        return vendas.GetUltimoPrecoAsync(clienteId, produtoId, marcaId, cancellationToken);
+    }
+
     /// <summary>Valida o comando, resolve lookups e monta o modelo de gravação com os efeitos da venda.</summary>
     private async Task<VendaGravacao> MontarGravacaoAsync(
         Guid vendaId, NovaVenda venda, CancellationToken cancellationToken)
@@ -132,14 +143,32 @@ public sealed class VendaService : IVendaService
             Validacao.IdPreenchido(item.MarcaId, "MarcaId");
         }
 
-        foreach (var casco in venda.CascosDevolvidos.Concat(venda.SucataEntregue))
+        foreach (var casco in venda.CascosDevolvidos)
         {
             Validacao.IdPreenchido(casco.TipoCascoId, "TipoCascoId");
             if (casco.Quantidade <= 0)
             {
                 throw new RequestValidationException(
-                    "QUANTIDADE_INVALIDA", "Devoluções e entregas de casco devem ter quantidade positiva.");
+                    "QUANTIDADE_INVALIDA", "Devoluções de casco devem ter quantidade positiva.");
             }
+        }
+
+        foreach (var sucata in venda.SucataEntregue)
+        {
+            Validacao.IdPreenchido(sucata.TipoCascoId, "TipoCascoId");
+        }
+
+        VendaCalculos.DescontoSucata(venda.SucataEntregue); // SUCATA_INVALIDA antes de qualquer consulta
+
+        foreach (var vasilhame in venda.Vasilhames)
+        {
+            Validacao.IdPreenchido(vasilhame.TipoCascoId, "TipoCascoId");
+        }
+
+        if (venda.Vasilhames.GroupBy(v => v.TipoCascoId).Any(g => g.Count() > 1))
+        {
+            throw new RequestValidationException(
+                "TIPO_CASCO_DUPLICADO", "Cada tipo de casco aparece no máximo uma vez nos vasilhames.");
         }
 
         if (!await lookup.ClienteExisteAsync(venda.ClienteId, cancellationToken))
@@ -181,27 +210,39 @@ public sealed class VendaService : IVendaService
         foreach (var item in venda.Itens)
         {
             var produto = produtos[(item.ProdutoId, item.MarcaId)];
-            if (item.PagouVasilhame && produto.Tipo == TipoProduto.DESCARTAVEL)
-            {
-                throw new BusinessRuleException(
-                    "VASILHAME_EM_DESCARTAVEL", $"'{produto.Nome}' é descartável e não tem vasilhame.");
-            }
-
             if (produto.Tipo == TipoProduto.RETORNAVEL && cascoDoPar[(item.ProdutoId, item.MarcaId)] is null)
             {
                 throw new InvalidOperationException($"Produto retornável {produto.Nome} sem tipo de casco.");
             }
         }
 
-        var tipos = await lookup.GetTiposCascoAsync(
-            cascoDoPar.Values.OfType<Guid>().Distinct().ToList(), cancellationToken);
-        var totais = VendaCalculos.Calcular(venda.Itens, venda.Pagamentos, item =>
+        // Tipos aceitos em devolução e sucata: o das linhas retornáveis e o dos vasilhames vendidos.
+        var tiposDaVenda = cascoDoPar.Values.OfType<Guid>().Concat(venda.Vasilhames.Select(v => v.TipoCascoId))
+            .ToHashSet();
+        var tipos = await lookup.GetTiposCascoAsync(tiposDaVenda.ToList(), cancellationToken);
+        if (venda.Vasilhames.FirstOrDefault(v => !tipos.ContainsKey(v.TipoCascoId)) is { } semTipo)
         {
-            var par = (item.ProdutoId, item.MarcaId);
-            var tipoCascoId = cascoDoPar[par];
-            return new ItemResolvido(
-                produtos[par].ProdutoMarcaId, tipoCascoId, tipoCascoId is { } id ? tipos[id].PrecoVasilhame : 0m);
-        });
+            throw new EntityNotFoundException(
+                "TIPO_CASCO_NAO_ENCONTRADO", $"Tipo de casco {semTipo.TipoCascoId} não encontrado.");
+        }
+
+        // Crédito de galão por tipo (na edição, sem os efeitos da própria venda) só para quem abate.
+        var tiposAbate = venda.Vasilhames
+            .Where(v => v.Modo == ModoCreditoVasilhame.ABATER_CREDITO).Select(v => v.TipoCascoId).ToList();
+        var creditosCasco = tiposAbate.Count == 0
+            ? new Dictionary<Guid, long>()
+            : await lookup.GetCreditoCascoPorTipoAsync(venda.ClienteId, tiposAbate, vendaId, cancellationToken);
+        var vasilhames = venda.Vasilhames
+            .Select(v => VendaCalculos.CalcularVasilhame(v, creditosCasco.GetValueOrDefault(v.TipoCascoId)))
+            .ToList();
+
+        var totais = VendaCalculos.Calcular(
+            venda.Itens, vasilhames, venda.SucataEntregue, venda.Pagamentos,
+            item =>
+            {
+                var par = (item.ProdutoId, item.MarcaId);
+                return new ItemResolvido(produtos[par].ProdutoMarcaId, cascoDoPar[par]);
+            });
 
         var usoCredito = VendaCalculos.UsoCredito(venda.Pagamentos);
         if (usoCredito > 0)
@@ -210,40 +251,56 @@ public sealed class VendaService : IVendaService
                 usoCredito, await lookup.GetCreditoDisponivelAsync(venda.ClienteId, vendaId, cancellationToken));
         }
 
-        // Troca (padrão) empresta a quantidade no tipo da linha; pagou o vasilhame não gera empréstimo.
-        var emprestimos = SomarPorTipo(totais.Itens
-            .Where(i => i.TipoCascoId is not null && !i.PagouVasilhame)
+        // G = galões cheios retornáveis do tipo, V = vasilhames vendidos: empresta max(0, G - V) e o excedente
+        // max(0, V - G) sai dos vazios da loja.
+        var cheios = SomarPorTipo(totais.Itens
+            .Where(i => i.TipoCascoId is not null)
             .Select(i => new CascoQuantidade(i.TipoCascoId!.Value, i.Quantidade)));
-
-        // Devolução e sucata só valem para o tipo resolvido de alguma linha retornável da venda.
-        var tiposDaVenda = cascoDoPar.Values.OfType<Guid>().ToHashSet();
-        var devolvidos = SomarPorTipo(venda.CascosDevolvidos);
-        var sucata = SomarPorTipo(venda.SucataEntregue);
-        foreach (var casco in devolvidos.Concat(sucata))
+        var emprestimos = new List<CascoQuantidade>();
+        var vaziosSaidos = new List<CascoQuantidade>();
+        foreach (var tipo in cheios.Select(c => c.TipoCascoId).Concat(vasilhames.Select(v => v.TipoCascoId)).Distinct())
         {
-            if (!tiposDaVenda.Contains(casco.TipoCascoId))
+            var g = cheios.FirstOrDefault(c => c.TipoCascoId == tipo)?.Quantidade ?? 0;
+            var v = vasilhames.FirstOrDefault(x => x.TipoCascoId == tipo)?.Quantidade ?? 0;
+            if (g > v)
             {
-                throw new BusinessRuleException(
-                    "TIPO_CASCO_FORA_DA_VENDA",
-                    $"O tipo de casco {casco.TipoCascoId} não é de nenhum item retornável da venda.");
+                emprestimos.Add(new CascoQuantidade(tipo, g - v));
+            }
+
+            if (v > g)
+            {
+                vaziosSaidos.Add(new CascoQuantidade(tipo, v - g));
             }
         }
 
-        foreach (var casco in sucata)
+        // Devolução e sucata só valem para o tipo de alguma linha retornável ou vasilhame da venda.
+        var devolvidos = SomarPorTipo(venda.CascosDevolvidos);
+        foreach (var tipoCascoId in devolvidos.Select(c => c.TipoCascoId)
+                     .Concat(venda.SucataEntregue.Select(s => s.TipoCascoId)))
         {
-            if (!tipos[casco.TipoCascoId].AceitaSucata)
+            if (!tiposDaVenda.Contains(tipoCascoId))
             {
                 throw new BusinessRuleException(
-                    "SUCATA_NAO_ACEITA", $"O tipo de casco {casco.TipoCascoId} não aceita sucata.");
+                    "TIPO_CASCO_FORA_DA_VENDA",
+                    $"O tipo de casco {tipoCascoId} não é de nenhum item retornável ou vasilhame da venda.");
+            }
+        }
+
+        foreach (var sucata in venda.SucataEntregue)
+        {
+            if (!tipos[sucata.TipoCascoId].AceitaSucata)
+            {
+                throw new BusinessRuleException(
+                    "SUCATA_NAO_ACEITA", $"O tipo de casco {sucata.TipoCascoId} não aceita sucata.");
             }
         }
 
         return new VendaGravacao(
             vendaId, venda.ClienteId, venda.FuncionarioId, venda.EnderecoEntregaId, venda.Observacao,
-            totais.TotalBruto, totais.TotalDesconto, totais.TotalLiquido, totais.Status,
-            totais.Itens, venda.Pagamentos,
-            emprestimos, devolvidos, sucata,
-            totais.Faltante, usoCredito);
+            totais.TotalBruto, totais.TotalDesconto, totais.DescontoSucata, totais.TotalLiquido, totais.Status,
+            totais.Itens, vasilhames, venda.Pagamentos,
+            emprestimos, devolvidos, vaziosSaidos, venda.SucataEntregue,
+            totais.Faltante, totais.CreditoGerado, usoCredito);
     }
 
     private static IReadOnlyList<CascoQuantidade> SomarPorTipo(IEnumerable<CascoQuantidade> cascos) =>
@@ -268,8 +325,8 @@ public sealed class VendaService : IVendaService
         }
 
         return new ResultadoVenda(
-            gravacao.VendaId, gravacao.TotalBruto, gravacao.TotalDesconto, gravacao.TotalLiquido,
-            gravacao.TotalLiquido - gravacao.DebitoFiado, gravacao.DebitoFiado, gravacao.Status,
-            gravado.SaldoCascoPorTipo);
+            gravacao.VendaId, gravacao.TotalBruto, gravacao.TotalDesconto, gravacao.DescontoSucata,
+            gravacao.TotalLiquido, gravacao.Pagamentos.Sum(p => p.Valor), gravacao.DebitoFiado,
+            gravacao.CreditoGerado, gravacao.Status, gravado.SaldoCascoPorTipo);
     }
 }

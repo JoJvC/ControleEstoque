@@ -4,26 +4,38 @@ namespace ControleEstoque.Vendas.Domain;
 
 /// <summary>
 /// Cálculo puro do agregado Venda: totais por item (com desconto VALOR ou
-/// PERCENTUAL), totais da venda e status de pagamento. O preço vem sempre do
-/// request (preço de referência é só sugestão de tela — regra crítica 4); o preço do vasilhame, quando o
-/// cliente pagou, vem do tipo de casco resolvido pelo serviço (<paramref name="resolver"/>), nunca do request.
+/// PERCENTUAL), vasilhames vendidos, desconto por sucata, totais da venda e status de pagamento.
+/// O preço vem sempre do request (preço de referência é só sugestão de tela — regra crítica 4).
 /// </summary>
 public static class VendaCalculos
 {
     public static TotaisVenda Calcular(
-        IReadOnlyList<ItemVenda> itens, IReadOnlyList<PagamentoVenda> pagamentos,
+        IReadOnlyList<ItemVenda> itens, IReadOnlyList<VasilhameCalculado> vasilhames,
+        IReadOnlyList<SucataVenda> sucata, IReadOnlyList<PagamentoVenda> pagamentos,
         Func<ItemVenda, ItemResolvido>? resolver = null)
     {
-        if (itens.Count == 0)
+        if (itens.Count == 0 && vasilhames.Count == 0)
         {
-            throw new RequestValidationException("ITENS_OBRIGATORIOS", "Venda deve ter ao menos um item.");
+            throw new RequestValidationException(
+                "ITENS_OBRIGATORIOS", "Venda deve ter ao menos um item ou vasilhame.");
         }
 
-        resolver ??= _ => new ItemResolvido(Guid.Empty, null, 0m); // só testes de cálculo puro chegam sem resolver
+        resolver ??= _ => new ItemResolvido(Guid.Empty, null); // só testes de cálculo puro chegam sem resolver
         var calculados = itens.Select(i => CalcularItem(i, resolver(i))).ToList();
-        var totalBruto = calculados.Sum(i => i.TotalBruto);
-        var totalDesconto = calculados.Sum(i => i.ValorDesconto);
-        var totalLiquido = calculados.Sum(i => i.TotalItem);
+        var totalBruto = calculados.Sum(i => i.TotalBruto) + vasilhames.Sum(v => v.Total);
+        var descontoItens = calculados.Sum(i => i.ValorDesconto);
+        var descontoSucata = DescontoSucata(sucata);
+
+        // O desconto por sucata vale até o líquido que sobra depois do desconto dos itens.
+        var liquidoAntesSucata = totalBruto - descontoItens;
+        if (descontoSucata > liquidoAntesSucata)
+        {
+            throw new BusinessRuleException(
+                "DESCONTO_SUCATA_EXCEDE_TOTAL",
+                $"Desconto por sucata ({descontoSucata:F2}) excede o total da venda ({liquidoAntesSucata:F2}).");
+        }
+
+        var totalLiquido = liquidoAntesSucata - descontoSucata;
 
         foreach (var pagamento in pagamentos)
         {
@@ -35,18 +47,58 @@ public static class VendaCalculos
             }
         }
 
-        var totalPago = pagamentos.Sum(p => p.Valor);
-        if (totalPago > totalLiquido)
+        var usoCredito = UsoCredito(pagamentos);
+        if (usoCredito > totalLiquido)
         {
-            throw new RequestValidationException(
-                "PAGAMENTO_EXCEDE_TOTAL",
-                $"Pagamentos ({totalPago:F2}) excedem o total líquido da venda ({totalLiquido:F2}).");
+            throw new BusinessRuleException(
+                "CREDITO_EXCEDE_TOTAL",
+                $"Uso de crédito ({usoCredito:F2}) excede o total líquido da venda ({totalLiquido:F2}).");
         }
 
-        var faltante = totalLiquido - totalPago;
+        // Pagar a mais é permitido: a sobra vira crédito do cliente.
+        var totalPago = pagamentos.Sum(p => p.Valor);
+        var faltante = Math.Max(0m, totalLiquido - totalPago);
+        var creditoGerado = Math.Max(0m, totalPago - totalLiquido);
         var status = CalcularStatus(totalLiquido, totalPago);
-        return new TotaisVenda(calculados, totalBruto, totalDesconto, totalLiquido, totalPago, faltante, status);
+        return new TotaisVenda(
+            calculados, totalBruto, descontoItens + descontoSucata, descontoSucata, totalLiquido,
+            totalPago, faltante, creditoGerado, status);
     }
+
+    /// <summary>
+    /// Vasilhame do tipo com o crédito de galão do cliente (<paramref name="credito"/>, max(0, -saldo)):
+    /// no modo ABATER_CREDITO os cobertos não são cobrados; no COMPRAR cobra tudo.
+    /// </summary>
+    public static VasilhameCalculado CalcularVasilhame(VasilhameVenda vasilhame, long credito)
+    {
+        if (vasilhame.Quantidade <= 0 || vasilhame.PrecoUnitario < 0)
+        {
+            throw new RequestValidationException(
+                "VASILHAME_INVALIDO",
+                $"Vasilhame do tipo {vasilhame.TipoCascoId} exige quantidade positiva e preço não negativo.");
+        }
+
+        Validacao.EnumDefinido(vasilhame.Modo, "ModoCredito");
+        var abatida = vasilhame.Modo == ModoCreditoVasilhame.ABATER_CREDITO
+            ? (int)Math.Min(vasilhame.Quantidade, Math.Max(0L, credito))
+            : 0;
+        return new VasilhameCalculado(
+            vasilhame.TipoCascoId, vasilhame.Quantidade, abatida, vasilhame.PrecoUnitario, vasilhame.Modo,
+            (vasilhame.Quantidade - abatida) * vasilhame.PrecoUnitario);
+    }
+
+    /// <summary>Soma de quantidade x valor unitário da sucata entregue na venda.</summary>
+    public static decimal DescontoSucata(IEnumerable<SucataVenda> sucata) => sucata.Sum(s =>
+    {
+        if (s.Quantidade <= 0 || s.ValorUnitario < 0)
+        {
+            throw new RequestValidationException(
+                "SUCATA_INVALIDA",
+                $"Sucata do tipo {s.TipoCascoId} exige quantidade positiva e valor unitário não negativo.");
+        }
+
+        return s.Total;
+    });
 
     /// <summary>Soma dos pagamentos na forma CREDITO_CLIENTE.</summary>
     public static decimal UsoCredito(IEnumerable<PagamentoVenda> pagamentos) =>
@@ -82,8 +134,7 @@ public static class VendaCalculos
                 "PRECO_INVALIDO", $"Preço unitário inválido para o produto {item.ProdutoId}.");
         }
 
-        decimal? precoVasilhame = item.PagouVasilhame ? resolvido.PrecoVasilhame : null;
-        var bruto = item.Quantidade * item.PrecoUnitario + item.Quantidade * (precoVasilhame ?? 0m);
+        var bruto = item.Quantidade * item.PrecoUnitario;
         var valorDesconto = 0m;
 
         if (item.Desconto is { } desconto)
@@ -119,7 +170,7 @@ public static class VendaCalculos
 
         return new ItemCalculado(
             item.ProdutoId, item.MarcaId, resolvido.ProdutoMarcaId, resolvido.TipoCascoId,
-            item.Quantidade, item.PrecoUnitario, item.Desconto, item.PagouVasilhame, precoVasilhame,
+            item.Quantidade, item.PrecoUnitario, item.Desconto,
             bruto, valorDesconto, bruto - valorDesconto);
     }
 }

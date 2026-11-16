@@ -49,6 +49,28 @@ internal sealed class FakeVendaLookup : IVendaLookup
         return Task.FromResult(Math.Max(0m, Creditos.GetValueOrDefault(clienteId) + uso));
     }
 
+    /// <summary>Crédito de galão por cliente e tipo (max(0, -saldo)).</summary>
+    public Dictionary<(Guid ClienteId, Guid TipoCascoId), long> CreditosCasco { get; } = new();
+
+    /// <summary>Crédito de galão já abatido por venda e tipo (a venda ignorada devolve o abate ao crédito).</summary>
+    public Dictionary<(Guid VendaId, Guid TipoCascoId), long> AbatePorVenda { get; } = new();
+
+    public Guid? UltimaVendaIgnoradaCasco { get; private set; }
+    public int ConsultasCreditoCasco { get; private set; }
+
+    public Task<IReadOnlyDictionary<Guid, long>> GetCreditoCascoPorTipoAsync(
+        Guid clienteId, IReadOnlyCollection<Guid> tipoCascoIds, Guid? vendaIgnorada,
+        CancellationToken cancellationToken)
+    {
+        ConsultasCreditoCasco++;
+        UltimaVendaIgnoradaCasco = vendaIgnorada;
+        return Task.FromResult<IReadOnlyDictionary<Guid, long>>(tipoCascoIds
+            .Select(t => (Tipo: t, Credito: CreditosCasco.GetValueOrDefault((clienteId, t))
+                + (vendaIgnorada is { } v ? AbatePorVenda.GetValueOrDefault((v, t)) : 0L)))
+            .Where(x => x.Credito > 0)
+            .ToDictionary(x => x.Tipo, x => x.Credito));
+    }
+
     public Task<bool> FuncionarioExisteAsync(Guid funcionarioId, CancellationToken cancellationToken) =>
         Task.FromResult(Funcionarios.Contains(funcionarioId));
 
@@ -167,6 +189,11 @@ public sealed class FakeVendaRepository : IVendaRepository
         {
             Ajustar(gravacao.ClienteId, c.TipoCascoId, -sinal * c.Quantidade);
         }
+
+        foreach (var v in gravacao.Vasilhames)
+        {
+            Ajustar(gravacao.ClienteId, v.TipoCascoId, sinal * v.QuantidadeAbatida);
+        }
     }
 
     private void Ajustar(Guid clienteId, Guid tipoCascoId, long delta) =>
@@ -228,7 +255,8 @@ public sealed class FakeVendaRepository : IVendaRepository
                 0m, 0m, InfoPagamento?.TotalLiquido ?? 0m, InfoPagamento?.Status ?? StatusPagamento.PENDENTE,
                 null, false, gravacao?.Itens ?? [], [],
                 gravacao?.CascosDevolvidos ?? [],
-                gravacao?.SucataEntregue ?? [])
+                gravacao?.SucataEntregue ?? [],
+                gravacao?.Vasilhames ?? [], null, null, gravacao?.DescontoSucata ?? 0m)
             : null);
     }
 
@@ -263,6 +291,17 @@ public sealed class FakeVendaRepository : IVendaRepository
     public Task<IReadOnlyList<SaldoCascoTipo>> GetSaldoCascoClienteAsync(
         Guid clienteId, CancellationToken cancellationToken) =>
         Task.FromResult(SaldoCascoDe(clienteId));
+
+    /// <summary>Compras já gravadas do cliente; Deletada simula venda ou item com deleted_at.</summary>
+    public List<(Guid ClienteId, Guid ProdutoId, Guid MarcaId, UltimoPrecoVenda Compra, bool Deletada)> Compras { get; } = new();
+
+    public Task<UltimoPrecoVenda?> GetUltimoPrecoAsync(
+        Guid clienteId, Guid produtoId, Guid marcaId, CancellationToken cancellationToken) =>
+        Task.FromResult(Compras
+            .Where(c => c.ClienteId == clienteId && c.ProdutoId == produtoId && c.MarcaId == marcaId && !c.Deletada)
+            .OrderByDescending(c => c.Compra.Data)
+            .Select(c => c.Compra)
+            .FirstOrDefault());
 }
 
 internal sealed class FakeCupomFiscalRepository : ICupomFiscalRepository

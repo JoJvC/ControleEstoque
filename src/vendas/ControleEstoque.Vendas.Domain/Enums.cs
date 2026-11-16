@@ -31,3 +31,10 @@ public enum TipoDesconto
     VALOR,
     PERCENTUAL
 }
+
+/// <summary>Como o vasilhame vendido trata o crédito de galão do cliente no tipo.</summary>
+public enum ModoCreditoVasilhame
+{
+    ABATER_CREDITO, // padrão: vasilhames cobertos pelo crédito não são cobrados e o crédito diminui
+    COMPRAR         // cobra tudo e o crédito segue
+}

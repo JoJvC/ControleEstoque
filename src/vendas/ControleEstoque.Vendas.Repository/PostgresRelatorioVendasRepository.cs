@@ -141,10 +141,10 @@ public sealed class PostgresRelatorioVendasRepository : IRelatorioVendasReposito
               AND (@produtoId IS NULL OR pm.produto_id = @produtoId)
             """;
 
-        // O bruto do item inclui o vasilhame quando o cliente pagou (preco_vasilhame é NULL quando não pagou).
+        // Só os itens: vasilhame vendido e desconto por sucata ficam fora deste relatório.
         public const string Totais = """
-            SELECT COALESCE(SUM(i.quantidade * (i.preco_unitario + COALESCE(i.preco_vasilhame, 0))), 0),
-                   COALESCE(SUM(i.quantidade * (i.preco_unitario + COALESCE(i.preco_vasilhame, 0)) - i.total_item), 0),
+            SELECT COALESCE(SUM(i.quantidade * i.preco_unitario), 0),
+                   COALESCE(SUM(i.quantidade * i.preco_unitario - i.total_item), 0),
                    COALESCE(SUM(i.total_item), 0)
             """ + FiltroBase;
 

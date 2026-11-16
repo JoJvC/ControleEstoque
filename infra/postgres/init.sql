@@ -59,8 +59,10 @@ CREATE TYPE tipo_lancamento_fiado AS ENUM
      'DEBITO_CONVERSAO_CASCO',  -- conversão de débito de casco em valor
      'CREDITO_CONVERSAO_SUCATA',-- sucata entregue convertida em crédito
      'PAGAMENTO',               -- baixa por pagamento do cliente
-     'DEBITO_USO_CREDITO');     -- crédito do cliente usado como forma de pagamento da venda
+     'DEBITO_USO_CREDITO',      -- crédito do cliente usado como forma de pagamento da venda
+     'CREDITO_SOBRA_VENDA');    -- pagamento acima do total da venda: a sobra vira crédito do cliente
 ALTER TYPE tipo_lancamento_fiado ADD VALUE IF NOT EXISTS 'DEBITO_USO_CREDITO';
+ALTER TYPE tipo_lancamento_fiado ADD VALUE IF NOT EXISTS 'CREDITO_SOBRA_VENDA';
 
 CREATE TYPE tipo_lancamento_funcionario AS ENUM ('DIARIA', 'VALE', 'PAGAMENTO');
 
@@ -311,7 +313,8 @@ CREATE TABLE vendas (
     -- Totais desnormalizados por conveniência; recalculados pelo serviço a
     -- cada edição a partir de venda_itens (fonte de verdade).
     total_bruto          NUMERIC(19,2) NOT NULL DEFAULT 0,
-    total_desconto       NUMERIC(19,2) NOT NULL DEFAULT 0,
+    total_desconto       NUMERIC(19,2) NOT NULL DEFAULT 0, -- descontos dos itens + desconto_sucata
+    desconto_sucata      NUMERIC(19,2) NOT NULL DEFAULT 0, -- parte do total_desconto vinda da sucata entregue
     total_liquido        NUMERIC(19,2) NOT NULL DEFAULT 0,
     status_pagamento     status_pagamento_venda NOT NULL DEFAULT 'PENDENTE',
     observacao           TEXT,
@@ -328,6 +331,8 @@ CREATE INDEX idx_vendas_cliente     ON vendas(cliente_id)     WHERE deleted_at I
 CREATE INDEX idx_vendas_funcionario ON vendas(funcionario_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_vendas_data        ON vendas(data)           WHERE deleted_at IS NULL;
 
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS desconto_sucata NUMERIC(19,2) NOT NULL DEFAULT 0;
+
 -- Desconto é por item, manual (valor ou percentual), com motivo obrigatório.
 CREATE TABLE venda_itens (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -336,8 +341,6 @@ CREATE TABLE venda_itens (
     tipo_casco_id    UUID REFERENCES tipos_casco(id), -- casco resolvido (o específico da marca vence); NULL em descartável
     quantidade       INT NOT NULL CHECK (quantidade > 0),
     preco_unitario   NUMERIC(19,2) NOT NULL CHECK (preco_unitario >= 0),
-    pagou_vasilhame  BOOLEAN NOT NULL DEFAULT FALSE, -- cliente pagou o vasilhame: não empresta casco
-    preco_vasilhame  NUMERIC(19,2) CHECK (preco_vasilhame >= 0), -- preço do vasilhame aplicado; NULL quando não pagou
     desconto_tipo    tipo_desconto,
     desconto_valor   NUMERIC(19,2) CHECK (desconto_valor IS NULL OR desconto_valor >= 0),
     motivo_desconto  TEXT,
@@ -349,15 +352,45 @@ CREATE TABLE venda_itens (
         (desconto_tipo IS NULL AND desconto_valor IS NULL AND motivo_desconto IS NULL)
         OR
         (desconto_tipo IS NOT NULL AND desconto_valor IS NOT NULL AND motivo_desconto IS NOT NULL)
-    ),
-    -- vasilhame pago tem tipo de casco e preço aplicado
-    CONSTRAINT chk_venda_itens_vasilhame_pago CHECK (
-        NOT pagou_vasilhame OR (tipo_casco_id IS NOT NULL AND preco_vasilhame IS NOT NULL)
     )
 );
 
 CREATE INDEX idx_venda_itens_venda         ON venda_itens(venda_id)         WHERE deleted_at IS NULL;
 CREATE INDEX idx_venda_itens_produto_marca ON venda_itens(produto_marca_id) WHERE deleted_at IS NULL;
+
+-- Vasilhame vendido como item próprio, por tipo de casco (no máximo um por tipo e venda, regra de domínio).
+-- quantidade_abatida = vasilhames cobertos pelo crédito de galão do cliente (modo ABATER_CREDITO): não são cobrados.
+-- total = (quantidade - quantidade_abatida) * preco_unitario.
+CREATE TABLE IF NOT EXISTS venda_vasilhames (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    venda_id           UUID NOT NULL REFERENCES vendas(id),
+    tipo_casco_id      UUID NOT NULL REFERENCES tipos_casco(id),
+    quantidade         INT NOT NULL CHECK (quantidade > 0),
+    quantidade_abatida INT NOT NULL DEFAULT 0 CHECK (quantidade_abatida >= 0 AND quantidade_abatida <= quantidade),
+    preco_unitario     NUMERIC(19,2) NOT NULL CHECK (preco_unitario >= 0),
+    modo               TEXT NOT NULL DEFAULT 'ABATER_CREDITO' CHECK (modo IN ('ABATER_CREDITO', 'COMPRAR')),
+    total              NUMERIC(19,2) NOT NULL DEFAULT 0 CHECK (total >= 0),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at         TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_venda_vasilhames_venda ON venda_vasilhames(venda_id) WHERE deleted_at IS NULL;
+
+-- Sucata entregue na venda: valor por unidade e por tipo, que vira desconto da venda (vendas.desconto_sucata).
+-- NÃO entra em entregas_sucata_cliente nem em vw_sucata_entregue_cliente; o estoque de sucata da loja
+-- recebe a entrada em movimentos_estoque_casco.
+CREATE TABLE IF NOT EXISTS venda_sucatas (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    venda_id       UUID NOT NULL REFERENCES vendas(id),
+    tipo_casco_id  UUID NOT NULL REFERENCES tipos_casco(id),
+    quantidade     INT NOT NULL CHECK (quantidade > 0),
+    valor_unitario NUMERIC(19,2) NOT NULL CHECK (valor_unitario >= 0),
+    total          NUMERIC(19,2) NOT NULL DEFAULT 0 CHECK (total >= 0),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at     TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_venda_sucatas_venda ON venda_sucatas(venda_id) WHERE deleted_at IS NULL;
 
 -- N formas de pagamento por venda, cada uma com valor próprio.
 CREATE TABLE venda_pagamentos (
@@ -638,7 +671,7 @@ LEFT JOIN entregas_sucata_cliente e
 WHERE c.deleted_at IS NULL
 GROUP BY c.id, e.tipo_casco_id;
 
--- Saldo de fiado por cliente. saldo_devedor = débitos − créditos de sucata − pagamentos
+-- Saldo de fiado por cliente. saldo_devedor = débitos − créditos de sucata − pagamentos − sobras de venda
 -- (positivo = cliente deve). saldo = −saldo_devedor (negativo = fiado, positivo = crédito).
 CREATE OR REPLACE VIEW vw_saldo_fiado_cliente AS
 SELECT c.id AS cliente_id,
@@ -649,6 +682,7 @@ SELECT c.id AS cliente_id,
            WHEN 'DEBITO_USO_CREDITO'       THEN  l.valor
            WHEN 'CREDITO_CONVERSAO_SUCATA' THEN -l.valor
            WHEN 'PAGAMENTO'                THEN -l.valor
+           WHEN 'CREDITO_SOBRA_VENDA'      THEN -l.valor
        END), 0) AS saldo_devedor,
        -COALESCE(SUM(CASE l.tipo
            WHEN 'DEBITO_VENDA'             THEN  l.valor
@@ -656,6 +690,7 @@ SELECT c.id AS cliente_id,
            WHEN 'DEBITO_USO_CREDITO'       THEN  l.valor
            WHEN 'CREDITO_CONVERSAO_SUCATA' THEN -l.valor
            WHEN 'PAGAMENTO'                THEN -l.valor
+           WHEN 'CREDITO_SOBRA_VENDA'      THEN -l.valor
        END), 0) AS saldo
 FROM clientes c
 LEFT JOIN lancamentos_fiado l

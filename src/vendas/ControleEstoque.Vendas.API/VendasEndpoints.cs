@@ -24,6 +24,23 @@ public static class VendasEndpoints
             return Results.Ok(VendaResponse.From(resultado));
         });
 
+        app.MapGet("/v1/vendas/ultimo-preco", async (
+            Guid? clienteId, Guid? produtoId, Guid? marcaId, IVendaService vendas,
+            CancellationToken cancellationToken) =>
+        {
+            if (clienteId is null || produtoId is null || marcaId is null)
+            {
+                throw new RequestValidationException(
+                    "PARAMETRO_OBRIGATORIO", "clienteId, produtoId e marcaId são obrigatórios.");
+            }
+
+            var ultimo = await vendas.ObterUltimoPrecoAsync(
+                clienteId.Value, produtoId.Value, marcaId.Value, cancellationToken);
+            return ultimo is null
+                ? Results.NoContent()
+                : Results.Ok(new UltimoPrecoResponse(ultimo.VendaId, ultimo.Data, ultimo.PrecoUnitario));
+        });
+
         app.MapGet("/v1/vendas/{id:guid}", async (
             Guid id, IVendaService vendas, CancellationToken cancellationToken) =>
             Results.Ok(VendaDetalheResponse.From(await vendas.ObterAsync(id, cancellationToken))));
@@ -81,11 +98,16 @@ public static class VendasEndpoints
         Validacao.SemNulos(request.Itens, "Itens").Select(i => new ItemVenda(
             i.ProdutoId, i.MarcaId, i.Quantidade, i.PrecoUnitario,
             i.Desconto is null ? null : new Desconto(
-                i.Desconto.Tipo, i.Desconto.Valor, i.Desconto.Motivo ?? string.Empty),
-            i.PagouVasilhame)).ToList(),
+                i.Desconto.Tipo, i.Desconto.Valor, i.Desconto.Motivo ?? string.Empty))).ToList(),
+        Validacao.SemNulos(request.Vasilhames, "Vasilhames").Select(v => new VasilhameVenda(
+            v.TipoCascoId, v.Quantidade, v.PrecoUnitario, v.ModoCredito ?? ModoCreditoVasilhame.ABATER_CREDITO)).ToList(),
         Validacao.SemNulos(request.Pagamentos, "Pagamentos").Select(p => new PagamentoVenda(p.Forma, p.Valor)).ToList(),
         ToCascos(request.CascosDevolvidos, "CascosDevolvidos"),
-        ToCascos(request.SucataEntregue, "SucataEntregue"),
+        Validacao.SemNulos(request.SucataEntregue, "SucataEntregue")
+            .Select(s => new SucataVenda(
+                s.TipoCascoId, s.Quantidade,
+                s.ValorUnitario ?? throw new RequestValidationException(
+                    "SUCATA_INVALIDA", $"Sucata do tipo {s.TipoCascoId} exige valor unitário."))).ToList(),
         request.Observacao);
 
     private static List<CascoQuantidade> ToCascos(List<CascoQuantidadeRequest>? cascos, string campo) =>

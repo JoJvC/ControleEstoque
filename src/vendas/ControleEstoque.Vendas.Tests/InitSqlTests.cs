@@ -25,25 +25,60 @@ public sealed class InitSqlTests
     }
 
     [Fact]
-    public void VendaItens_ReferenciaProdutoMarcaETemOsCamposDoVasilhame()
+    public void VendaItens_ReferenciaProdutoMarcaESemCamposDeVasilhame()
     {
-        var tabela = Tabela(Ler(), "venda_itens");
+        var sql = Ler();
+        var tabela = Tabela(sql, "venda_itens");
 
         Assert.Matches(@"produto_marca_id\s+UUID NOT NULL REFERENCES produto_marcas\(id\)", tabela);
         Assert.Matches(@"tipo_casco_id\s+UUID REFERENCES tipos_casco\(id\)", tabela);
-        Assert.Matches(@"pagou_vasilhame\s+BOOLEAN NOT NULL DEFAULT FALSE", tabela);
-        Assert.Matches(@"preco_vasilhame\s+NUMERIC\(19,2\) CHECK \(preco_vasilhame >= 0\)", tabela);
+        Assert.DoesNotContain("pagou_" + "vasilhame", tabela);
+        Assert.DoesNotContain("preco_" + "vasilhame", tabela);
+        Assert.DoesNotContain("chk_venda_itens_vasilhame_pago", sql);
         Assert.DoesNotMatch(@"\bproduto_id\b", tabela);
     }
 
     [Fact]
-    public void VendaItens_VasilhamePagoExigeTipoDeCascoEPrecoAplicado()
+    public void VendaVasilhamesEVendaSucatas_TemOsCamposEReferenciasDaSpec()
     {
-        var tabela = Tabela(Ler(), "venda_itens");
+        var sql = Ler();
+        var vasilhames = Tabela(sql, "venda_vasilhames");
+        var sucatas = Tabela(sql, "venda_sucatas");
 
-        Assert.Matches(
-            @"CONSTRAINT chk_venda_itens_vasilhame_pago CHECK \(\s*NOT pagou_vasilhame OR \(tipo_casco_id IS NOT NULL AND preco_vasilhame IS NOT NULL\)\s*\)",
-            tabela);
+        Assert.Matches(@"venda_id\s+UUID NOT NULL REFERENCES vendas\(id\)", vasilhames);
+        Assert.Matches(@"tipo_casco_id\s+UUID NOT NULL REFERENCES tipos_casco\(id\)", vasilhames);
+        Assert.Matches(@"quantidade\s+INT NOT NULL CHECK \(quantidade > 0\)", vasilhames);
+        Assert.Contains("quantidade_abatida", vasilhames);
+        Assert.Matches(@"preco_unitario\s+NUMERIC\(19,2\) NOT NULL CHECK \(preco_unitario >= 0\)", vasilhames);
+        Assert.Contains("modo IN ('ABATER_CREDITO', 'COMPRAR')", vasilhames);
+        Assert.Matches(@"total\s+NUMERIC\(19,2\) NOT NULL", vasilhames);
+        Assert.Matches(@"deleted_at\s+TIMESTAMPTZ", vasilhames);
+
+        Assert.Matches(@"venda_id\s+UUID NOT NULL REFERENCES vendas\(id\)", sucatas);
+        Assert.Matches(@"tipo_casco_id\s+UUID NOT NULL REFERENCES tipos_casco\(id\)", sucatas);
+        Assert.Matches(@"valor_unitario\s+NUMERIC\(19,2\) NOT NULL CHECK \(valor_unitario >= 0\)", sucatas);
+        Assert.Matches(@"total\s+NUMERIC\(19,2\) NOT NULL", sucatas);
+        Assert.Matches(@"deleted_at\s+TIMESTAMPTZ", sucatas);
+    }
+
+    [Fact]
+    public void Vendas_TemDescontoSucata()
+    {
+        Assert.Matches(@"desconto_sucata\s+NUMERIC\(19,2\) NOT NULL DEFAULT 0", Tabela(Ler(), "vendas"));
+    }
+
+    [Fact]
+    public void TipoLancamentoFiado_TemCreditoSobraVendaNoEnumENaView()
+    {
+        var sql = Ler();
+
+        var ini = sql.IndexOf("CREATE TYPE tipo_lancamento_fiado AS ENUM", StringComparison.Ordinal);
+        Assert.Contains("'CREDITO_SOBRA_VENDA'", sql[ini..sql.IndexOf(';', ini)]);
+        Assert.Contains("ALTER TYPE tipo_lancamento_fiado ADD VALUE IF NOT EXISTS 'CREDITO_SOBRA_VENDA';", sql);
+
+        var iniView = sql.IndexOf("VIEW vw_saldo_fiado_cliente AS", StringComparison.Ordinal);
+        var view = sql[iniView..sql.IndexOf(';', iniView)];
+        Assert.Equal(2, Regex.Matches(view, @"WHEN 'CREDITO_SOBRA_VENDA'\s+THEN -l\.valor").Count); // saldo_devedor e saldo
     }
 
     [Fact]

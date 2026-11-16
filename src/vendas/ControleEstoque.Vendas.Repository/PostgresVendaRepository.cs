@@ -127,13 +127,15 @@ public sealed class PostgresVendaRepository : IVendaRepository
 
         var devolvidos = await LerCascosPorVendaAsync(
             connection, Sql.GetDevolucoes, [vendaId], cancellationToken);
-        var sucata = await LerCascosPorVendaAsync(connection, Sql.GetSucata, [vendaId], cancellationToken);
+        var sucata = await LerSucatasPorVendaAsync(connection, [vendaId], cancellationToken);
+        var vasilhames = await LerVasilhamesPorVendaAsync(connection, [vendaId], cancellationToken);
         return venda with
         {
             Itens = itens,
             Pagamentos = pagamentos,
             CascosDevolvidos = devolvidos.GetValueOrDefault(vendaId) ?? [],
-            SucataEntregue = sucata.GetValueOrDefault(vendaId) ?? []
+            SucataEntregue = sucata.GetValueOrDefault(vendaId) ?? [],
+            Vasilhames = vasilhames.GetValueOrDefault(vendaId) ?? []
         };
     }
 
@@ -168,12 +170,14 @@ public sealed class PostgresVendaRepository : IVendaRepository
 
         var ids = results.Select(v => v.Id).ToArray();
         var devolvidos = await LerCascosPorVendaAsync(connection, Sql.GetDevolucoes, ids, cancellationToken);
-        var sucata = await LerCascosPorVendaAsync(connection, Sql.GetSucata, ids, cancellationToken);
+        var sucata = await LerSucatasPorVendaAsync(connection, ids, cancellationToken);
+        var vasilhames = await LerVasilhamesPorVendaAsync(connection, ids, cancellationToken);
         return results
             .Select(v => v with
             {
                 CascosDevolvidos = devolvidos.GetValueOrDefault(v.Id) ?? [],
-                SucataEntregue = sucata.GetValueOrDefault(v.Id) ?? []
+                SucataEntregue = sucata.GetValueOrDefault(v.Id) ?? [],
+                Vasilhames = vasilhames.GetValueOrDefault(v.Id) ?? []
             })
             .ToList();
     }
@@ -250,6 +254,20 @@ public sealed class PostgresVendaRepository : IVendaRepository
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         return await GetSaldoCascoAsync(connection, null, clienteId, cancellationToken);
+    }
+
+    public async Task<UltimoPrecoVenda?> GetUltimoPrecoAsync(
+        Guid clienteId, Guid produtoId, Guid marcaId, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.GetUltimoPreco, connection);
+        command.Parameters.AddWithValue("clienteId", clienteId);
+        command.Parameters.AddWithValue("produtoId", produtoId);
+        command.Parameters.AddWithValue("marcaId", marcaId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new UltimoPrecoVenda(reader.GetGuid(0), reader.GetFieldValue<DateTimeOffset>(1), reader.GetDecimal(2))
+            : null;
     }
 
     /// <summary>
@@ -357,15 +375,17 @@ public sealed class PostgresVendaRepository : IVendaRepository
     }
 
     /// <summary>
-    /// Só com uso de crédito: trava o cliente (ordem caixa, venda, cliente, produtos) e relê o saldo sob a trava;
-    /// recusa com CREDITO_INSUFICIENTE (sem commit) se o uso passa de max(0, saldo). Na edição roda depois do
-    /// soft-delete dos efeitos, então o uso anterior da própria venda não conta.
+    /// Só com uso de crédito ou vasilhame abatido do crédito de galão: trava o cliente (ordem caixa, venda, cliente,
+    /// produtos) e relê os saldos sob a trava; recusa com CREDITO_INSUFICIENTE se o uso passa de max(0, saldo) do fiado
+    /// e com CREDITO_CASCO_INSUFICIENTE se o abate passa do crédito de galão do tipo (sem commit). Na edição roda depois
+    /// do soft-delete dos efeitos, então o uso e o abate anteriores da própria venda não contam.
     /// </summary>
     private static async Task TravarClienteParaCreditoAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, VendaGravacao gravacao,
         CancellationToken cancellationToken)
     {
-        if (gravacao.UsoCredito <= 0)
+        var abatidos = gravacao.Vasilhames.Where(v => v.QuantidadeAbatida > 0).ToList();
+        if (gravacao.UsoCredito <= 0 && abatidos.Count == 0)
         {
             return;
         }
@@ -376,14 +396,36 @@ public sealed class PostgresVendaRepository : IVendaRepository
             await command.ExecuteScalarAsync(cancellationToken);
         }
 
-        decimal saldo;
-        await using (var command = new NpgsqlCommand(Sql.SaldoCliente, connection, transaction))
+        if (gravacao.UsoCredito > 0)
         {
-            command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
-            saldo = (decimal?)await command.ExecuteScalarAsync(cancellationToken) ?? 0m;
+            decimal saldo;
+            await using (var command = new NpgsqlCommand(Sql.SaldoCliente, connection, transaction))
+            {
+                command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
+                saldo = (decimal?)await command.ExecuteScalarAsync(cancellationToken) ?? 0m;
+            }
+
+            VendaCalculos.ValidarUsoCredito(gravacao.UsoCredito, Math.Max(0m, saldo));
         }
 
-        VendaCalculos.ValidarUsoCredito(gravacao.UsoCredito, Math.Max(0m, saldo));
+        foreach (var vasilhame in abatidos)
+        {
+            long saldoCasco;
+            await using (var command = new NpgsqlCommand(Sql.SaldoCascoTipo, connection, transaction))
+            {
+                command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
+                command.Parameters.AddWithValue("tipoCascoId", vasilhame.TipoCascoId);
+                saldoCasco = (long?)await command.ExecuteScalarAsync(cancellationToken) ?? 0L;
+            }
+
+            if (vasilhame.QuantidadeAbatida > Math.Max(0L, -saldoCasco))
+            {
+                throw new BusinessRuleException(
+                    "CREDITO_CASCO_INSUFICIENTE",
+                    $"Abate de {vasilhame.QuantidadeAbatida} vasilhame(s) do tipo {vasilhame.TipoCascoId} " +
+                    $"excede o crédito de galão do cliente ({Math.Max(0L, -saldoCasco)}).");
+            }
+        }
     }
 
     private static async Task InserirEfeitosAsync(
@@ -402,11 +444,6 @@ public sealed class PostgresVendaRepository : IVendaRepository
                 });
                 command.Parameters.AddWithValue("quantidade", item.Quantidade);
                 command.Parameters.AddWithValue("precoUnitario", item.PrecoUnitario);
-                command.Parameters.AddWithValue("pagouVasilhame", item.PagouVasilhame);
-                command.Parameters.Add(new NpgsqlParameter("precoVasilhame", NpgsqlDbType.Numeric)
-                {
-                    Value = (object?)item.PrecoVasilhame ?? DBNull.Value
-                });
                 command.Parameters.Add(new NpgsqlParameter("descontoTipo", NpgsqlDbType.Text)
                 {
                     Value = (object?)item.Desconto?.Tipo.ToString() ?? DBNull.Value
@@ -433,11 +470,40 @@ public sealed class PostgresVendaRepository : IVendaRepository
             }
         }
 
-        // Troca (linha retornável sem pagar o vasilhame) = casco emprestado no tipo resolvido da linha.
+        // Galões cheios do tipo que não foram pagos como vasilhame = casco emprestado.
         foreach (var casco in gravacao.CascosEmprestados)
         {
             await InserirMovimentoCascoAsync(
                 connection, transaction, gravacao, "EMPRESTIMO", casco, cancellationToken);
+        }
+
+        // Vasilhame vendido: registro por tipo; o abatido do crédito de galão volta como EMPRESTIMO (o crédito diminui).
+        foreach (var vasilhame in gravacao.Vasilhames)
+        {
+            await using var command = new NpgsqlCommand(Sql.InsertVasilhame, connection, transaction);
+            command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
+            command.Parameters.AddWithValue("tipoCascoId", vasilhame.TipoCascoId);
+            command.Parameters.AddWithValue("quantidade", vasilhame.Quantidade);
+            command.Parameters.AddWithValue("quantidadeAbatida", vasilhame.QuantidadeAbatida);
+            command.Parameters.AddWithValue("precoUnitario", vasilhame.PrecoUnitario);
+            command.Parameters.AddWithValue("modo", vasilhame.Modo.ToString());
+            command.Parameters.AddWithValue("total", vasilhame.Total);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+
+            if (vasilhame.QuantidadeAbatida > 0)
+            {
+                await InserirMovimentoCascoAsync(
+                    connection, transaction, gravacao, "EMPRESTIMO",
+                    new CascoQuantidade(vasilhame.TipoCascoId, vasilhame.QuantidadeAbatida), cancellationToken);
+            }
+        }
+
+        // Vasilhames além dos galões cheios da venda saem dos vazios da loja (sem bloqueio por saldo).
+        foreach (var casco in gravacao.VaziosSaidos)
+        {
+            await InserirMovimentoEstoqueCascoAsync(
+                connection, transaction, gravacao, "VAZIO", "SAIDA_VENDA", casco with { Quantidade = -casco.Quantidade },
+                cancellationToken);
         }
 
         // Devolução: abate o saldo do cliente no tipo e dá entrada no vazio do tipo.
@@ -449,20 +515,23 @@ public sealed class PostgresVendaRepository : IVendaRepository
                 connection, transaction, gravacao, "VAZIO", "DEVOLUCAO_CLIENTE", casco, cancellationToken);
         }
 
-        // Sucata entregue: registro do cliente + estoque de sucata do tipo. Não toca o ledger de casco do cliente.
-        foreach (var casco in gravacao.SucataEntregue)
+        // Sucata entregue: vira desconto da venda (venda_sucatas), não entra no saldo de sucata do cliente
+        // e dá entrada no estoque de sucata da loja. Não toca o ledger de casco do cliente.
+        foreach (var sucata in gravacao.SucataEntregue)
         {
-            await using (var command = new NpgsqlCommand(Sql.InsertEntregaSucata, connection, transaction))
+            await using (var command = new NpgsqlCommand(Sql.InsertVendaSucata, connection, transaction))
             {
-                command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
                 command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
-                command.Parameters.AddWithValue("tipoCascoId", casco.TipoCascoId);
-                command.Parameters.AddWithValue("quantidade", casco.Quantidade);
+                command.Parameters.AddWithValue("tipoCascoId", sucata.TipoCascoId);
+                command.Parameters.AddWithValue("quantidade", sucata.Quantidade);
+                command.Parameters.AddWithValue("valorUnitario", sucata.ValorUnitario);
+                command.Parameters.AddWithValue("total", sucata.Total);
                 await command.ExecuteNonQueryAsync(cancellationToken);
             }
 
             await InserirMovimentoEstoqueCascoAsync(
-                connection, transaction, gravacao, "SUCATA", "ENTRADA_SUCATA", casco, cancellationToken);
+                connection, transaction, gravacao, "SUCATA", "ENTRADA_SUCATA",
+                new CascoQuantidade(sucata.TipoCascoId, sucata.Quantidade), cancellationToken);
         }
 
         foreach (var pagamento in gravacao.Pagamentos)
@@ -490,6 +559,16 @@ public sealed class PostgresVendaRepository : IVendaRepository
             command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
             command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
             command.Parameters.AddWithValue("valor", gravacao.UsoCredito);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        // Pagamento acima do líquido: a sobra vira crédito do cliente.
+        if (gravacao.CreditoGerado > 0)
+        {
+            await using var command = new NpgsqlCommand(Sql.InsertCreditoSobra, connection, transaction);
+            command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
+            command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
+            command.Parameters.AddWithValue("valor", gravacao.CreditoGerado);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
@@ -558,6 +637,51 @@ public sealed class PostgresVendaRepository : IVendaRepository
         return porVenda;
     }
 
+    /// <summary>Sucata da venda por tipo e valor unitário; lê várias vendas de uma vez.</summary>
+    private static async Task<Dictionary<Guid, List<SucataVenda>>> LerSucatasPorVendaAsync(
+        NpgsqlConnection connection, Guid[] vendaIds, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(Sql.GetSucata, connection);
+        command.Parameters.AddWithValue("vendaIds", vendaIds);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var porVenda = new Dictionary<Guid, List<SucataVenda>>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var vendaId = reader.GetGuid(0);
+            if (!porVenda.TryGetValue(vendaId, out var lista))
+            {
+                porVenda[vendaId] = lista = [];
+            }
+
+            lista.Add(new SucataVenda(reader.GetGuid(1), reader.GetInt32(2), reader.GetDecimal(3)));
+        }
+
+        return porVenda;
+    }
+
+    private static async Task<Dictionary<Guid, List<VasilhameCalculado>>> LerVasilhamesPorVendaAsync(
+        NpgsqlConnection connection, Guid[] vendaIds, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(Sql.GetVasilhames, connection);
+        command.Parameters.AddWithValue("vendaIds", vendaIds);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var porVenda = new Dictionary<Guid, List<VasilhameCalculado>>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var vendaId = reader.GetGuid(0);
+            if (!porVenda.TryGetValue(vendaId, out var lista))
+            {
+                porVenda[vendaId] = lista = [];
+            }
+
+            lista.Add(new VasilhameCalculado(
+                reader.GetGuid(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetDecimal(4),
+                Enum.Parse<ModoCreditoVasilhame>(reader.GetString(5)), reader.GetDecimal(6)));
+        }
+
+        return porVenda;
+    }
+
     private static void AddVendaParameters(NpgsqlCommand command, VendaGravacao gravacao)
     {
         command.Parameters.AddWithValue("id", gravacao.VendaId);
@@ -569,6 +693,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
         });
         command.Parameters.AddWithValue("totalBruto", gravacao.TotalBruto);
         command.Parameters.AddWithValue("totalDesconto", gravacao.TotalDesconto);
+        command.Parameters.AddWithValue("descontoSucata", gravacao.DescontoSucata);
         command.Parameters.AddWithValue("totalLiquido", gravacao.TotalLiquido);
         command.Parameters.AddWithValue("status", gravacao.Status.ToString());
         command.Parameters.Add(new NpgsqlParameter("observacao", NpgsqlDbType.Text)
@@ -593,27 +718,28 @@ public sealed class PostgresVendaRepository : IVendaRepository
         [],
         [],
         [],
+        [],
         reader.IsDBNull(11) ? null : reader.GetString(11),
-        reader.IsDBNull(12) ? null : reader.GetFieldValue<DateTimeOffset>(12));
+        reader.IsDBNull(12) ? null : reader.GetFieldValue<DateTimeOffset>(12),
+        reader.GetDecimal(13));
 
     private static ItemCalculado MapItem(NpgsqlDataReader reader)
     {
         var quantidade = reader.GetInt32(4);
         var precoUnitario = reader.GetDecimal(5);
-        decimal? precoVasilhame = reader.IsDBNull(7) ? null : reader.GetDecimal(7);
-        var descontoTipo = reader.IsDBNull(8) ? null : reader.GetString(8);
-        var totalItem = reader.GetDecimal(11);
-        var bruto = quantidade * (precoUnitario + (precoVasilhame ?? 0m));
+        var descontoTipo = reader.IsDBNull(6) ? null : reader.GetString(6);
+        var totalItem = reader.GetDecimal(9);
+        var bruto = quantidade * precoUnitario;
 
         Desconto? desconto = descontoTipo is null
             ? null
             : new Desconto(
-                Enum.Parse<TipoDesconto>(descontoTipo), reader.GetDecimal(9), reader.GetString(10));
+                Enum.Parse<TipoDesconto>(descontoTipo), reader.GetDecimal(7), reader.GetString(8));
 
         return new ItemCalculado(
             reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2),
             reader.IsDBNull(3) ? null : reader.GetGuid(3),
-            quantidade, precoUnitario, desconto, reader.GetBoolean(6), precoVasilhame,
+            quantidade, precoUnitario, desconto,
             bruto, bruto - totalItem, totalItem);
     }
 
@@ -625,7 +751,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
                    v.observacao,
                    EXISTS (SELECT 1 FROM cupons_fiscais cf
                            WHERE cf.venda_id = v.id AND cf.deleted_at IS NULL),
-                   cf.numero, cf.emitido_em
+                   cf.numero, cf.emitido_em, v.desconto_sucata
             FROM vendas v
             LEFT JOIN LATERAL (SELECT numero, emitido_em FROM cupons_fiscais
                                WHERE venda_id = v.id AND deleted_at IS NULL
@@ -634,10 +760,10 @@ public sealed class PostgresVendaRepository : IVendaRepository
 
         public const string InsertVenda = """
             INSERT INTO vendas (id, cliente_id, funcionario_id, endereco_entrega_id,
-                                total_bruto, total_desconto, total_liquido, status_pagamento,
+                                total_bruto, total_desconto, desconto_sucata, total_liquido, status_pagamento,
                                 observacao, created_by)
             VALUES (@id, @clienteId, @funcionarioId, @enderecoEntregaId,
-                    @totalBruto, @totalDesconto, @totalLiquido, @status::status_pagamento_venda,
+                    @totalBruto, @totalDesconto, @descontoSucata, @totalLiquido, @status::status_pagamento_venda,
                     @observacao, @funcionarioId)
             """;
 
@@ -645,7 +771,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
             UPDATE vendas
             SET cliente_id = @clienteId, funcionario_id = @funcionarioId,
                 endereco_entrega_id = @enderecoEntregaId, total_bruto = @totalBruto,
-                total_desconto = @totalDesconto, total_liquido = @totalLiquido,
+                total_desconto = @totalDesconto, desconto_sucata = @descontoSucata, total_liquido = @totalLiquido,
                 status_pagamento = @status::status_pagamento_venda, observacao = @observacao,
                 updated_by = @funcionarioId, updated_at = now()
             WHERE id = @id AND deleted_at IS NULL
@@ -664,16 +790,18 @@ public sealed class PostgresVendaRepository : IVendaRepository
                 WHERE venda_id = @vendaId AND deleted_at IS NULL;
             UPDATE entregas_sucata_cliente SET deleted_at = now()
                 WHERE venda_id = @vendaId AND deleted_at IS NULL;
+            UPDATE venda_vasilhames SET deleted_at = now()
+                WHERE venda_id = @vendaId AND deleted_at IS NULL;
+            UPDATE venda_sucatas SET deleted_at = now()
+                WHERE venda_id = @vendaId AND deleted_at IS NULL;
             UPDATE lancamentos_fiado SET deleted_at = now()
                 WHERE venda_id = @vendaId AND deleted_at IS NULL;
             """;
 
         public const string InsertItem = """
             INSERT INTO venda_itens (venda_id, produto_marca_id, tipo_casco_id, quantidade, preco_unitario,
-                                     pagou_vasilhame, preco_vasilhame,
                                      desconto_tipo, desconto_valor, motivo_desconto, total_item)
             VALUES (@vendaId, @produtoMarcaId, @tipoCascoId, @quantidade, @precoUnitario,
-                    @pagouVasilhame, @precoVasilhame,
                     @descontoTipo::tipo_desconto, @descontoValor, @motivoDesconto, @totalItem)
             """;
 
@@ -703,9 +831,15 @@ public sealed class PostgresVendaRepository : IVendaRepository
             VALUES (@clienteId, @vendaId, @tipoCascoId, @tipo::tipo_movimento_casco, @quantidade)
             """;
 
-        public const string InsertEntregaSucata = """
-            INSERT INTO entregas_sucata_cliente (cliente_id, venda_id, tipo_casco_id, quantidade)
-            VALUES (@clienteId, @vendaId, @tipoCascoId, @quantidade)
+        public const string InsertVasilhame = """
+            INSERT INTO venda_vasilhames (venda_id, tipo_casco_id, quantidade, quantidade_abatida,
+                                          preco_unitario, modo, total)
+            VALUES (@vendaId, @tipoCascoId, @quantidade, @quantidadeAbatida, @precoUnitario, @modo, @total)
+            """;
+
+        public const string InsertVendaSucata = """
+            INSERT INTO venda_sucatas (venda_id, tipo_casco_id, quantidade, valor_unitario, total)
+            VALUES (@vendaId, @tipoCascoId, @quantidade, @valorUnitario, @total)
             """;
 
         public const string InsertPagamento = """
@@ -721,6 +855,33 @@ public sealed class PostgresVendaRepository : IVendaRepository
         public const string InsertUsoCredito = """
             INSERT INTO lancamentos_fiado (cliente_id, venda_id, tipo, valor, observacao)
             VALUES (@clienteId, @vendaId, 'DEBITO_USO_CREDITO', @valor, 'Uso de crédito na venda')
+            """;
+
+        public const string InsertCreditoSobra = """
+            INSERT INTO lancamentos_fiado (cliente_id, venda_id, tipo, valor, observacao)
+            VALUES (@clienteId, @vendaId, 'CREDITO_SOBRA_VENDA', @valor, 'Pagamento acima do total da venda')
+            """;
+
+        // Mesma conta de vw_saldo_casco_cliente, para um tipo (positivo = cliente deve; negativo = crédito de galão).
+        public const string SaldoCascoTipo = """
+            SELECT COALESCE(SUM(CASE tipo
+                       WHEN 'EMPRESTIMO'      THEN  quantidade
+                       WHEN 'DEVOLUCAO'       THEN -quantidade
+                       WHEN 'CONVERSAO_VALOR' THEN -quantidade
+                   END), 0)::bigint
+            FROM movimentos_casco_cliente
+            WHERE cliente_id = @clienteId AND tipo_casco_id = @tipoCascoId AND deleted_at IS NULL
+            """;
+
+        public const string GetUltimoPreco = """
+            SELECT v.id, v.data, i.preco_unitario
+            FROM venda_itens i
+            JOIN vendas v ON v.id = i.venda_id
+            JOIN produto_marcas pm ON pm.id = i.produto_marca_id
+            WHERE v.cliente_id = @clienteId AND pm.produto_id = @produtoId AND pm.marca_id = @marcaId
+              AND v.deleted_at IS NULL AND i.deleted_at IS NULL
+            ORDER BY v.data DESC, i.created_at DESC
+            LIMIT 1
             """;
 
         public const string TravaCliente =
@@ -756,7 +917,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
 
         public const string GetItens = """
             SELECT pm.produto_id, pm.marca_id, i.produto_marca_id, i.tipo_casco_id, i.quantidade,
-                   i.preco_unitario, i.pagou_vasilhame, i.preco_vasilhame, i.desconto_tipo::text,
+                   i.preco_unitario, i.desconto_tipo::text,
                    i.desconto_valor, i.motivo_desconto, i.total_item
             FROM venda_itens i
             JOIN produto_marcas pm ON pm.id = i.produto_marca_id
@@ -773,11 +934,18 @@ public sealed class PostgresVendaRepository : IVendaRepository
             """;
 
         public const string GetSucata = """
-            SELECT venda_id, tipo_casco_id, SUM(quantidade)::int
-            FROM entregas_sucata_cliente
+            SELECT venda_id, tipo_casco_id, SUM(quantidade)::int, valor_unitario
+            FROM venda_sucatas
             WHERE venda_id = ANY(@vendaIds) AND deleted_at IS NULL
-            GROUP BY venda_id, tipo_casco_id
-            ORDER BY venda_id, tipo_casco_id
+            GROUP BY venda_id, tipo_casco_id, valor_unitario
+            ORDER BY venda_id, tipo_casco_id, valor_unitario
+            """;
+
+        public const string GetVasilhames = """
+            SELECT venda_id, tipo_casco_id, quantidade, quantidade_abatida, preco_unitario, modo, total
+            FROM venda_vasilhames
+            WHERE venda_id = ANY(@vendaIds) AND deleted_at IS NULL
+            ORDER BY venda_id, created_at
             """;
 
         public const string GetPagamentos = """

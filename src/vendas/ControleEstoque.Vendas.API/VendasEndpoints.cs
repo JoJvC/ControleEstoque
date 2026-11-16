@@ -126,6 +126,15 @@ public static class VendasEndpoints
             Guid id, CancelarPedidoRequest request, IPedidoService pedidos, CancellationToken cancellationToken) =>
             Results.Ok(PedidoResponse.From(await pedidos.CancelarAsync(id, request.FuncionarioId, cancellationToken))));
 
+        // Só em CONCLUIDO: galão cheio ou vazio perdido ou quebrado na entrega; os responsáveis são os do pedido.
+        app.MapPost("/v1/pedidos/{id:guid}/perdas", async (
+            Guid id, RegistrarPerdasRequest request, IPedidoService pedidos, CancellationToken cancellationToken) =>
+            Results.Ok(PedidoResponse.From(await pedidos.RegistrarPerdasAsync(
+                id, request.FuncionarioId,
+                (request.Ocorrencias ?? []).Select(o => new OcorrenciaPerda(
+                    o.Galao, o.ProdutoId, o.MarcaId, o.TipoCascoId, o.Quantidade, o.Motivo)).ToList(),
+                cancellationToken))));
+
         // ---- Relatórios -----------------------------------------------------
         app.MapGet("/v1/relatorios/faturamento", async (
             DateOnly? inicio, DateOnly? fim, Guid? produtoId,

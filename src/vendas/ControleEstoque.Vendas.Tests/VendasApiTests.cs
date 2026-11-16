@@ -403,6 +403,60 @@ public sealed class VendasApiTests : IClassFixture<VendasApiTests.Fabrica>
         Assert.Equal("ITENS_OBRIGATORIOS", await CodigoAsync(resposta));
     }
 
+    private async Task<HttpResponseMessage> PerdasAsync(Guid pedidoId, CenarioPedido c, string ocorrencias) =>
+        await fabrica.CreateClient().PostAsync(
+            $"/v1/pedidos/{pedidoId}/perdas",
+            Json($$"""{"funcionarioId":"{{c.FuncionarioId}}","ocorrencias":{{ocorrencias}}}"""));
+
+    [Fact]
+    public async Task PerdasDevolve200ComAsPerdasNoCorpo()
+    {
+        var c = NovoCenario(10);
+        var id = await CriarPedidoAsync(c, 2);
+        await IniciarPedidoAsync(id, c, $"[\"{c.EntregadorId}\"]");
+        fabrica.Pedidos.ForcarStatus(id, StatusPedido.CONCLUIDO);
+        var tipo = fabrica.Lookup.AddTipoCasco(10m, aceitaSucata: true);
+        var retornavel = fabrica.Lookup.AddProduto(TipoProduto.RETORNAVEL, "Água 20L", 5, tipoCascoProduto: tipo.Id);
+
+        var resposta = await PerdasAsync(id, c, $$"""
+            [{"galao":"CHEIO","produtoId":"{{retornavel.ProdutoId}}","marcaId":"{{retornavel.MarcaId}}",
+              "quantidade":1,"motivo":"QUEBRADO"}]
+            """);
+
+        Assert.Equal(HttpStatusCode.OK, resposta.StatusCode);
+        using var json = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync());
+        var perda = json.RootElement.GetProperty("perdas")[0];
+        Assert.Equal("CHEIO", perda.GetProperty("galao").GetString());
+        Assert.Equal("QUEBRADO", perda.GetProperty("motivo").GetString());
+        Assert.Equal(1, perda.GetProperty("quantidade").GetInt32());
+        Assert.Equal(tipo.Id, perda.GetProperty("tipoCascoId").GetGuid());
+        Assert.Equal(4, fabrica.Lookup.SaldosEstoque[retornavel.ProdutoMarcaId]);
+    }
+
+    [Fact]
+    public async Task PerdasPedidoInexistenteDevolve404()
+    {
+        var resposta = await PerdasAsync(
+            Guid.NewGuid(), NovoCenario(1),
+            $$"""[{"galao":"VAZIO","tipoCascoId":"{{Guid.NewGuid()}}","quantidade":1,"motivo":"PERDIDO"}]""");
+
+        Assert.Equal(HttpStatusCode.NotFound, resposta.StatusCode);
+        Assert.Equal("PEDIDO_NAO_ENCONTRADO", await CodigoAsync(resposta));
+    }
+
+    [Fact]
+    public async Task PerdasPedidoNaoConcluidoDevolve409()
+    {
+        var c = NovoCenario(10);
+        var id = await CriarPedidoAsync(c, 1);
+
+        var resposta = await PerdasAsync(
+            id, c, $$"""[{"galao":"VAZIO","tipoCascoId":"{{Guid.NewGuid()}}","quantidade":1,"motivo":"PERDIDO"}]""");
+
+        Assert.Equal(HttpStatusCode.Conflict, resposta.StatusCode);
+        Assert.Equal("PEDIDO_STATUS_INVALIDO", await CodigoAsync(resposta));
+    }
+
     public sealed class Fabrica : WebApplicationFactory<Program>
     {
         internal FakeVendaLookup Lookup { get; } = new();

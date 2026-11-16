@@ -549,6 +549,83 @@ internal sealed class FakePedidoRepository : IPedidoRepository
         }
     }
 
+    public List<PerdaGravacao> Perdas { get; } = new();
+    public List<(Guid BaixaId, Guid FuncionarioId)> Responsaveis { get; } = new();
+    public Dictionary<(Guid TipoCascoId, SituacaoCasco Situacao), long> SaldosCasco { get; } = new();
+
+    /// <summary>Perda sob a trava do pedido: saldo físico (sem reserva) e, sem falta, aplica os movimentos.</summary>
+    public async Task<SaldoInsuficiente?> RegistrarPerdasAsync(
+        Guid pedidoId, Guid funcionarioId, IReadOnlyList<PerdaGravacao> perdas, CancellationToken cancellationToken)
+    {
+        await trava.WaitAsync(cancellationToken);
+        try
+        {
+            var pedido = Travar(pedidoId);
+            if (pedido.Status != StatusPedido.CONCLUIDO)
+            {
+                throw new ConflictException("PEDIDO_STATUS_INVALIDO", $"Pedido {pedido.Status} não pode receber perdas.");
+            }
+
+            if (pedido.Funcionarios.Count == 0)
+            {
+                throw new BusinessRuleException("RESPONSAVEL_OBRIGATORIO", "Pedido sem funcionários.");
+            }
+
+            foreach (var g in perdas.Where(p => p.Galao == GalaoPerda.CHEIO).GroupBy(p => p.ProdutoMarcaId!.Value))
+            {
+                var saldo = saldos.GetValueOrDefault(g.Key);
+                if (saldo < g.Sum(p => p.Quantidade))
+                {
+                    return new SaldoInsuficiente(g.Key, saldo, g.Sum(p => p.Quantidade));
+                }
+            }
+
+            foreach (var g in perdas.Where(p => p.Galao == GalaoPerda.VAZIO).GroupBy(p => p.TipoCascoId))
+            {
+                var saldo = SaldosCasco.GetValueOrDefault((g.Key, SituacaoCasco.VAZIO));
+                if (saldo < g.Sum(p => p.Quantidade))
+                {
+                    return new SaldoInsuficiente(g.Key, saldo, g.Sum(p => p.Quantidade));
+                }
+            }
+
+            foreach (var perda in perdas)
+            {
+                Perdas.Add(perda);
+                Responsaveis.AddRange(pedido.Funcionarios.Select(f => (perda.Id, f.Id)));
+                foreach (var m in perda.Movimentos)
+                {
+                    if (m.Destino == DestinoMovimento.PRODUTO)
+                    {
+                        saldos[perda.ProdutoMarcaId!.Value] = saldos.GetValueOrDefault(perda.ProdutoMarcaId.Value) + m.Quantidade;
+                    }
+                    else
+                    {
+                        var chave = (perda.TipoCascoId, m.Situacao!.Value);
+                        SaldosCasco[chave] = SaldosCasco.GetValueOrDefault(chave) + m.Quantidade;
+                    }
+                }
+            }
+
+            // O produto da perda vem dos itens do pedido (o fake não tem a tabela de associações).
+            ItemPedido produtoDe(Guid produtoMarcaId) =>
+                pedido.Itens.FirstOrDefault(i => i.ProdutoMarcaId == produtoMarcaId)
+                ?? new ItemPedido(Guid.Empty, Guid.Empty, produtoMarcaId, 0, 0m, null);
+            pedidos[pedidoId] = pedido with
+            {
+                Perdas = [.. pedido.Perdas ?? [], .. perdas.Select(p => new PerdaPedido(
+                    p.Galao, p.ProdutoMarcaId is null ? null : produtoDe(p.ProdutoMarcaId.Value).ProdutoId,
+                    p.ProdutoMarcaId is null ? null : produtoDe(p.ProdutoMarcaId.Value).MarcaId,
+                    p.TipoCascoId, p.Quantidade, p.Motivo, DateTimeOffset.UtcNow))]
+            };
+            return null;
+        }
+        finally
+        {
+            trava.Release();
+        }
+    }
+
     /// <summary>Para montar cenários que o ciclo ainda não alcança (ex.: CONCLUIDO sem passar pela venda).</summary>
     public void ForcarStatus(Guid pedidoId, StatusPedido status) =>
         pedidos[pedidoId] = pedidos[pedidoId] with { Status = status };

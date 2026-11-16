@@ -69,6 +69,36 @@ internal static class ChecagemEstoque
         return null;
     }
 
+    /// <summary>
+    /// Perda física (pedido já concluído): trava as associações e confere só o saldo ≥ saída, sem descontar reserva.
+    /// Na falta, devolve a primeira com o saldo físico em <c>Saldo</c>.
+    /// </summary>
+    public static async Task<SaldoInsuficiente?> ChecarSaldoFisicoAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, IReadOnlyDictionary<Guid, long> saidas,
+        CancellationToken cancellationToken)
+    {
+        var ids = saidas.Keys.ToArray();
+        await using (var command = new NpgsqlCommand(TravaProdutoMarcas, connection, transaction))
+        {
+            command.Parameters.AddWithValue("ids", ids);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+            }
+        }
+
+        var saldos = await LerAsync(connection, transaction, GetSaldosEstoque, ids, cancellationToken);
+        foreach (var (produtoMarcaId, saida) in saidas)
+        {
+            if (saldos.GetValueOrDefault(produtoMarcaId) < saida)
+            {
+                return new SaldoInsuficiente(produtoMarcaId, saldos.GetValueOrDefault(produtoMarcaId), saida);
+            }
+        }
+
+        return null;
+    }
+
     private static async Task<Dictionary<Guid, long>> LerAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, string sql, Guid[] ids,
         CancellationToken cancellationToken)

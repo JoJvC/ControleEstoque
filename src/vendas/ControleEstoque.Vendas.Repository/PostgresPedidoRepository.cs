@@ -110,7 +110,22 @@ public sealed class PostgresPedidoRepository : IPedidoRepository
             }
         }
 
-        return pedido with { Itens = itens, Funcionarios = funcionarios };
+        var perdas = new List<PerdaPedido>();
+        await using (var command = new NpgsqlCommand(Sql.GetPerdas, connection))
+        {
+            command.Parameters.AddWithValue("id", pedidoId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var cheio = !reader.IsDBNull(0);
+                perdas.Add(new PerdaPedido(
+                    cheio ? GalaoPerda.CHEIO : GalaoPerda.VAZIO, cheio ? reader.GetGuid(0) : null,
+                    cheio ? reader.GetGuid(1) : null, reader.GetGuid(2), reader.GetInt32(3),
+                    Enum.Parse<MotivoPerda>(reader.GetString(4)), reader.GetFieldValue<DateTimeOffset>(5)));
+            }
+        }
+
+        return pedido with { Itens = itens, Funcionarios = funcionarios, Perdas = perdas };
     }
 
     public async Task<IReadOnlyList<PedidoResumo>> ListAsync(
@@ -200,6 +215,142 @@ public sealed class PostgresPedidoRepository : IPedidoRepository
         }
 
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<SaldoInsuficiente?> RegistrarPerdasAsync(
+        Guid pedidoId, Guid funcionarioId, IReadOnlyList<PerdaGravacao> perdas, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // Ordem das travas: pedido, produto+marca dos cheios, tipo de casco dos vazios.
+        var status = await TravarPedidoAsync(connection, transaction, pedidoId, cancellationToken);
+        if (status != StatusPedido.CONCLUIDO)
+        {
+            throw new ConflictException("PEDIDO_STATUS_INVALIDO", $"Pedido {status} não pode receber perdas.");
+        }
+
+        var responsaveis = new List<Guid>();
+        await using (var command = new NpgsqlCommand(Sql.GetResponsaveis, connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", pedidoId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                responsaveis.Add(reader.GetGuid(0));
+            }
+        }
+
+        if (responsaveis.Count == 0)
+        {
+            throw new BusinessRuleException(
+                "RESPONSAVEL_OBRIGATORIO", "O pedido não tem funcionários para responder pela perda.");
+        }
+
+        var cheios = perdas.Where(p => p.Galao == GalaoPerda.CHEIO).GroupBy(p => p.ProdutoMarcaId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(p => (long)p.Quantidade));
+        if (cheios.Count > 0
+            && await ChecagemEstoque.ChecarSaldoFisicoAsync(connection, transaction, cheios, cancellationToken)
+                is { } faltaCheio)
+        {
+            return faltaCheio; // sem Commit: o Dispose da transação faz rollback.
+        }
+
+        var vazios = perdas.Where(p => p.Galao == GalaoPerda.VAZIO).GroupBy(p => p.TipoCascoId)
+            .ToDictionary(g => g.Key, g => g.Sum(p => (long)p.Quantidade));
+        if (vazios.Count > 0 && await ChecarVaziosAsync(connection, transaction, vazios, cancellationToken)
+                is { } faltaVazio)
+        {
+            return faltaVazio;
+        }
+
+        foreach (var perda in perdas)
+        {
+            await using (var command = new NpgsqlCommand(Sql.InsertBaixa, connection, transaction))
+            {
+                command.Parameters.AddWithValue("id", perda.Id);
+                command.Parameters.AddWithValue("tipoCascoId", perda.TipoCascoId);
+                command.Parameters.AddWithValue("quantidade", perda.Quantidade);
+                command.Parameters.AddWithValue("motivo", perda.Motivo.ToString());
+                command.Parameters.AddWithValue("criadoPor", funcionarioId);
+                command.Parameters.AddWithValue("pedidoId", pedidoId);
+                command.Parameters.Add(new NpgsqlParameter("produtoMarcaId", NpgsqlDbType.Uuid)
+                {
+                    Value = (object?)perda.ProdutoMarcaId ?? DBNull.Value
+                });
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            foreach (var responsavel in responsaveis)
+            {
+                await using var command = new NpgsqlCommand(Sql.InsertResponsavelBaixa, connection, transaction);
+                command.Parameters.AddWithValue("baixaId", perda.Id);
+                command.Parameters.AddWithValue("funcionarioId", responsavel);
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            foreach (var movimento in perda.Movimentos)
+            {
+                await using var command = new NpgsqlCommand(
+                    movimento.Destino == DestinoMovimento.PRODUTO ? Sql.InsertMovimento : Sql.InsertMovimentoCasco,
+                    connection, transaction);
+                command.Parameters.AddWithValue("tipo", movimento.Tipo.ToString());
+                command.Parameters.AddWithValue("quantidade", movimento.Quantidade);
+                command.Parameters.AddWithValue("baixaCascoId", perda.Id);
+                command.Parameters.AddWithValue("criadoPor", funcionarioId);
+                if (movimento.Destino == DestinoMovimento.PRODUTO)
+                {
+                    command.Parameters.AddWithValue("produtoMarcaId", perda.ProdutoMarcaId!.Value);
+                }
+                else
+                {
+                    command.Parameters.AddWithValue("tipoCascoId", perda.TipoCascoId);
+                    command.Parameters.AddWithValue("situacao", movimento.Situacao!.Value.ToString());
+                }
+
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return null;
+    }
+
+    /// <summary>Mesma regra do Estoque (trava o tipo, lê o saldo por situação), escrita aqui: sem referência ao Estoque.</summary>
+    private static async Task<SaldoInsuficiente?> ChecarVaziosAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, IReadOnlyDictionary<Guid, long> saidas,
+        CancellationToken cancellationToken)
+    {
+        var ids = saidas.Keys.Order().ToArray();
+        await using (var command = new NpgsqlCommand(Sql.TravaTiposCasco, connection, transaction))
+        {
+            command.Parameters.AddWithValue("ids", ids);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+            }
+        }
+
+        var saldos = new Dictionary<Guid, long>();
+        await using (var command = new NpgsqlCommand(Sql.GetSaldosVazio, connection, transaction))
+        {
+            command.Parameters.AddWithValue("ids", ids);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                saldos[reader.GetGuid(0)] = reader.GetInt64(1);
+            }
+        }
+
+        foreach (var (tipoCascoId, saida) in saidas)
+        {
+            if (saldos.GetValueOrDefault(tipoCascoId) < saida)
+            {
+                return new SaldoInsuficiente(tipoCascoId, saldos.GetValueOrDefault(tipoCascoId), saida);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>Soma de pedido_itens.quantidade do pedido por associação produto+marca (a reserva dele).</summary>
@@ -305,6 +456,46 @@ public sealed class PostgresPedidoRepository : IPedidoRepository
             FROM pedido_itens
             WHERE pedido_id = @id
             GROUP BY produto_marca_id
+            """;
+
+        public const string GetResponsaveis = "SELECT funcionario_id FROM pedido_funcionarios WHERE pedido_id = @id";
+
+        public const string TravaTiposCasco =
+            "SELECT id FROM tipos_casco WHERE id = ANY(@ids) ORDER BY id FOR NO KEY UPDATE";
+
+        public const string GetSaldosVazio = """
+            SELECT tipo_casco_id, COALESCE(SUM(quantidade), 0)::bigint
+            FROM movimentos_estoque_casco
+            WHERE tipo_casco_id = ANY(@ids) AND situacao = 'VAZIO' AND deleted_at IS NULL
+            GROUP BY tipo_casco_id
+            """;
+
+        public const string InsertBaixa = """
+            INSERT INTO baixas_casco (id, tipo_casco_id, quantidade, motivo, created_by, pedido_id, produto_marca_id)
+            VALUES (@id, @tipoCascoId, @quantidade, @motivo, @criadoPor, @pedidoId, @produtoMarcaId)
+            """;
+
+        public const string InsertResponsavelBaixa = """
+            INSERT INTO baixa_casco_responsaveis (baixa_id, funcionario_id) VALUES (@baixaId, @funcionarioId)
+            """;
+
+        public const string InsertMovimento = """
+            INSERT INTO movimentos_estoque (produto_marca_id, tipo, quantidade, baixa_casco_id, created_by)
+            VALUES (@produtoMarcaId, @tipo::tipo_movimento_estoque, @quantidade, @baixaCascoId, @criadoPor)
+            """;
+
+        public const string InsertMovimentoCasco = """
+            INSERT INTO movimentos_estoque_casco (tipo_casco_id, situacao, tipo, quantidade, baixa_casco_id, created_by)
+            VALUES (@tipoCascoId, @situacao::situacao_casco, @tipo::tipo_movimento_estoque, @quantidade,
+                    @baixaCascoId, @criadoPor)
+            """;
+
+        public const string GetPerdas = """
+            SELECT pm.produto_id, pm.marca_id, b.tipo_casco_id, b.quantidade, b.motivo, b.created_at
+            FROM baixas_casco b
+            LEFT JOIN produto_marcas pm ON pm.id = b.produto_marca_id
+            WHERE b.pedido_id = @id AND b.deleted_at IS NULL
+            ORDER BY b.created_at, b.id
             """;
 
         public const string Iniciar = """

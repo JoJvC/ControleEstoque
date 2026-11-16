@@ -48,3 +48,37 @@ public enum StatusPedido
     CONCLUIDO,
     CANCELADO
 }
+
+public enum GalaoPerda
+{
+    CHEIO,
+    VAZIO
+}
+
+/// <summary>Os nomes espelham os valores de baixas_casco.motivo.</summary>
+public enum MotivoPerda
+{
+    PERDIDO,
+    QUEBRADO
+}
+
+public enum DestinoMovimento
+{
+    PRODUTO, // movimentos_estoque (produto+marca)
+    CASCO    // movimentos_estoque_casco (tipo de casco)
+}
+
+/// <summary>Espelha o ENUM situacao_casco do init.sql.</summary>
+public enum SituacaoCasco
+{
+    VAZIO,
+    SUCATA
+}
+
+/// <summary>Subconjunto de tipo_movimento_estoque que a perda grava; os nomes espelham os labels do ENUM.</summary>
+public enum TipoMovimentoPerda
+{
+    BAIXA_QUEBRA,
+    BAIXA_PERDA,
+    ENTRADA_SUCATA
+}

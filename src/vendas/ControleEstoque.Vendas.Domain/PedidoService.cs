@@ -15,6 +15,14 @@ public interface IPedidoService
 
     /// <summary>Sem chave de permissão: nada foi cobrado. Libera a reserva.</summary>
     Task<Pedido> CancelarAsync(Guid pedidoId, Guid funcionarioId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Só em pedido CONCLUIDO: baixa o galão cheio (produto+marca) ou vazio (tipo de casco) perdido ou quebrado na
+    /// entrega, com sucata na quebra de tipo que aceita. Os responsáveis são os funcionários do pedido.
+    /// </summary>
+    Task<Pedido> RegistrarPerdasAsync(
+        Guid pedidoId, Guid funcionarioId, IReadOnlyList<OcorrenciaPerda> ocorrencias,
+        CancellationToken cancellationToken);
 }
 
 public sealed class PedidoService : IPedidoService
@@ -147,6 +155,111 @@ public sealed class PedidoService : IPedidoService
         await pedidos.CancelarAsync(pedidoId, funcionarioId, relogio.GetUtcNow(), cancellationToken);
         return await ObterAsync(pedidoId, cancellationToken);
     }
+
+    public async Task<Pedido> RegistrarPerdasAsync(
+        Guid pedidoId, Guid funcionarioId, IReadOnlyList<OcorrenciaPerda> ocorrencias,
+        CancellationToken cancellationToken)
+    {
+        if (ocorrencias is not { Count: > 0 })
+        {
+            throw new RequestValidationException("ITENS_OBRIGATORIOS", "Informe ao menos uma ocorrência de perda.");
+        }
+
+        foreach (var o in ocorrencias)
+        {
+            Validacao.EnumDefinido(o.Galao, "Galao");
+            Validacao.EnumDefinido(o.Motivo, "Motivo");
+            if (o.Quantidade <= 0)
+            {
+                throw new RequestValidationException("QUANTIDADE_INVALIDA", "Quantidade da perda deve ser positiva.");
+            }
+
+            if (o.Galao == GalaoPerda.CHEIO && (o.ProdutoId is null || o.MarcaId is null))
+            {
+                throw new RequestValidationException(
+                    "ID_INVALIDO", "ProdutoId e MarcaId são obrigatórios no galão cheio.");
+            }
+
+            if (o.Galao == GalaoPerda.VAZIO && o.TipoCascoId is null)
+            {
+                throw new RequestValidationException("ID_INVALIDO", "TipoCascoId é obrigatório no galão vazio.");
+            }
+
+            Validacao.IdPreenchido(o.ProdutoId, "ProdutoId");
+            Validacao.IdPreenchido(o.MarcaId, "MarcaId");
+            Validacao.IdPreenchido(o.TipoCascoId, "TipoCascoId");
+        }
+
+        await ExigirFuncionarioAsync(funcionarioId, cancellationToken);
+        var pedido = await ObterAsync(pedidoId, cancellationToken);
+        if (pedido.Status != StatusPedido.CONCLUIDO)
+        {
+            throw StatusInvalido(pedido.Status, "receber perdas");
+        }
+
+        // O repositório repete o status e os responsáveis sob a trava do pedido.
+        if (pedido.Funcionarios.Count == 0)
+        {
+            throw SemResponsavel();
+        }
+
+        var pares = ocorrencias.Where(o => o.Galao == GalaoPerda.CHEIO)
+            .Select(o => (o.ProdutoId!.Value, o.MarcaId!.Value)).Distinct().ToList();
+        var produtos = await lookup.GetProdutosAsync(pares, cancellationToken);
+        foreach (var par in pares.Where(p => !produtos.ContainsKey(p)))
+        {
+            throw new EntityNotFoundException(
+                "PRODUTO_MARCA_NAO_ENCONTRADO", $"Produto {par.Item1} com a marca {par.Item2} não encontrado.");
+        }
+
+        // Cheio: o casco vem da função pura (o específico da marca vence); sem casco não há tipo para a baixa.
+        Guid? CascoDe(OcorrenciaPerda o)
+        {
+            if (o.Galao == GalaoPerda.VAZIO)
+            {
+                return o.TipoCascoId;
+            }
+
+            var p = produtos[(o.ProdutoId!.Value, o.MarcaId!.Value)];
+            return RegrasCasco.Resolver(p.Tipo, p.TipoCascoProdutoId, p.TipoCascoMarcaId);
+        }
+
+        var cascos = ocorrencias.Select(o => (Ocorrencia: o, Casco: CascoDe(o))).ToList();
+        if (cascos.FirstOrDefault(c => c.Casco is null) is { Ocorrencia: { } semCasco })
+        {
+            throw new BusinessRuleException(
+                "PRODUTO_SEM_TIPO_CASCO",
+                $"Produto {semCasco.ProdutoId} com a marca {semCasco.MarcaId} não tem tipo de casco.");
+        }
+
+        var tipos = await lookup.GetTiposCascoAsync(
+            cascos.Select(c => c.Casco!.Value).Distinct().ToList(), cancellationToken);
+        if (cascos.FirstOrDefault(c => !tipos.ContainsKey(c.Casco!.Value)) is { Casco: { } semTipo })
+        {
+            throw new EntityNotFoundException(
+                "TIPO_CASCO_NAO_ENCONTRADO", $"Tipo de casco {semTipo} não encontrado.");
+        }
+
+        var perdas = cascos.Select(c => new PerdaGravacao(
+            Guid.NewGuid(), c.Ocorrencia.Galao,
+            c.Ocorrencia.Galao == GalaoPerda.CHEIO
+                ? produtos[(c.Ocorrencia.ProdutoId!.Value, c.Ocorrencia.MarcaId!.Value)].ProdutoMarcaId : null,
+            c.Casco!.Value, c.Ocorrencia.Quantidade, c.Ocorrencia.Motivo,
+            RegrasCasco.MovimentosDaPerda(
+                c.Ocorrencia.Galao, c.Ocorrencia.Motivo, c.Ocorrencia.Quantidade, tipos[c.Casco.Value].AceitaSucata)))
+            .ToList();
+
+        if (await pedidos.RegistrarPerdasAsync(pedidoId, funcionarioId, perdas, cancellationToken) is { } falta)
+        {
+            throw new InsufficientStockException(
+                $"Estoque ({falta.Saldo}) insuficiente para baixar {falta.Solicitado} em perdas.");
+        }
+
+        return await ObterAsync(pedidoId, cancellationToken);
+    }
+
+    private static BusinessRuleException SemResponsavel() => new(
+        "RESPONSAVEL_OBRIGATORIO", "O pedido não tem funcionários para responder pela perda.");
 
     private async Task ExigirFuncionarioAsync(Guid funcionarioId, CancellationToken cancellationToken)
     {

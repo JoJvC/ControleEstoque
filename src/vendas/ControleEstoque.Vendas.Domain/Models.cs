@@ -208,7 +208,8 @@ public sealed record PedidoResumo(
 public sealed record Pedido(
     Guid Id, Guid ClienteId, Guid? EnderecoEntregaId, StatusPedido Status, string? Observacao, Guid CreatedBy,
     DateTimeOffset CreatedAt, DateTimeOffset? IniciadoEm, DateTimeOffset? CanceladoEm, Guid? CanceladoPor,
-    IReadOnlyList<ItemPedido> Itens, IReadOnlyList<FuncionarioPedido> Funcionarios, Guid? VendaId = null);
+    IReadOnlyList<ItemPedido> Itens, IReadOnlyList<FuncionarioPedido> Funcionarios, Guid? VendaId = null,
+    IReadOnlyList<PerdaPedido>? Perdas = null);
 
 /// <summary>Conclusão do pedido em venda: o <see cref="NovaVenda"/> sem cliente e endereço, que vêm do pedido.</summary>
 public sealed record ConclusaoPedido(
@@ -220,3 +221,21 @@ public sealed record ConclusaoPedido(
     IReadOnlyList<SucataVenda> SucataEntregue,
     string? Observacao,
     Guid? CaixaId = null);
+
+/// <summary>Ocorrência pedida: CHEIO traz ProdutoId+MarcaId; VAZIO, TipoCascoId.</summary>
+public sealed record OcorrenciaPerda(
+    GalaoPerda Galao, Guid? ProdutoId, Guid? MarcaId, Guid? TipoCascoId, int Quantidade, MotivoPerda Motivo);
+
+/// <summary>Quantidade com sinal; Situacao só no destino CASCO.</summary>
+public sealed record MovimentoPerda(
+    DestinoMovimento Destino, SituacaoCasco? Situacao, TipoMovimentoPerda Tipo, int Quantidade);
+
+/// <summary>Ocorrência resolvida pelo serviço: o repositório só persiste. ProdutoMarcaId só no CHEIO.</summary>
+public sealed record PerdaGravacao(
+    Guid Id, GalaoPerda Galao, Guid? ProdutoMarcaId, Guid TipoCascoId, int Quantidade, MotivoPerda Motivo,
+    IReadOnlyList<MovimentoPerda> Movimentos);
+
+/// <summary>Perda registrada (baixas_casco com pedido_id); ProdutoId e MarcaId só no CHEIO.</summary>
+public sealed record PerdaPedido(
+    GalaoPerda Galao, Guid? ProdutoId, Guid? MarcaId, Guid TipoCascoId, int Quantidade, MotivoPerda Motivo,
+    DateTimeOffset RegistradoEm);

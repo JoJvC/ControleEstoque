@@ -143,6 +143,15 @@ public sealed record IniciarPedidoRequest(Guid FuncionarioId, IReadOnlyList<Guid
 
 public sealed record CancelarPedidoRequest(Guid FuncionarioId);
 
+public sealed record OcorrenciaPerdaRequest(
+    GalaoPerda Galao, Guid? ProdutoId, Guid? MarcaId, Guid? TipoCascoId, int Quantidade, MotivoPerda Motivo);
+
+public sealed record RegistrarPerdasRequest(Guid FuncionarioId, IReadOnlyList<OcorrenciaPerdaRequest>? Ocorrencias);
+
+public sealed record PerdaPedidoResponse(
+    GalaoPerda Galao, Guid? ProdutoId, Guid? MarcaId, Guid TipoCascoId, int Quantidade, MotivoPerda Motivo,
+    DateTimeOffset RegistradoEm);
+
 public sealed record PedidoResumoResponse(
     Guid Id,
     Guid ClienteId,
@@ -175,7 +184,8 @@ public sealed record PedidoResponse(
     Guid? CanceladoPor,
     IReadOnlyList<ItemPedidoResponse> Itens,
     IReadOnlyList<FuncionarioPedidoResponse> Funcionarios,
-    Guid? VendaId)
+    Guid? VendaId,
+    IReadOnlyList<PerdaPedidoResponse> Perdas)
 {
     public static PedidoResponse From(Pedido p) => new(
         p.Id, p.ClienteId, p.EnderecoEntregaId, p.Status, p.Observacao, p.CreatedBy, p.CreatedAt, p.IniciadoEm,
@@ -184,5 +194,7 @@ public sealed record PedidoResponse(
             i.ProdutoId, i.MarcaId, i.Quantidade, i.PrecoUnitario,
             i.Desconto is null ? null : new DescontoRequest(i.Desconto.Tipo, i.Desconto.Valor, i.Desconto.Motivo)))
             .ToList(),
-        p.Funcionarios.Select(f => new FuncionarioPedidoResponse(f.Id, f.Nome)).ToList(), p.VendaId);
+        p.Funcionarios.Select(f => new FuncionarioPedidoResponse(f.Id, f.Nome)).ToList(), p.VendaId,
+        (p.Perdas ?? []).Select(x => new PerdaPedidoResponse(
+            x.Galao, x.ProdutoId, x.MarcaId, x.TipoCascoId, x.Quantidade, x.Motivo, x.RegistradoEm)).ToList());
 }

@@ -146,6 +146,16 @@ public interface IPedidoRepository
     /// </summary>
     Task CancelarAsync(
         Guid pedidoId, Guid funcionarioId, DateTimeOffset canceladoEm, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Em uma transação: trava o pedido (sumido lança PEDIDO_NAO_ENCONTRADO; fora de CONCLUIDO lança
+    /// PEDIDO_STATUS_INVALIDO), lê os funcionários do pedido (nenhum lança RESPONSAVEL_OBRIGATORIO), confere o saldo
+    /// físico (sem descontar reserva) do produto+marca dos cheios e dos vazios do tipo e grava, por perda, a linha de
+    /// baixas_casco, os responsáveis e os movimentos. Sem saldo, faz rollback e devolve a falta (ProdutoId = produto+marca
+    /// no cheio, tipo de casco no vazio).
+    /// </summary>
+    Task<SaldoInsuficiente?> RegistrarPerdasAsync(
+        Guid pedidoId, Guid funcionarioId, IReadOnlyList<PerdaGravacao> perdas, CancellationToken cancellationToken);
 }
 
 public interface ICupomFiscalRepository

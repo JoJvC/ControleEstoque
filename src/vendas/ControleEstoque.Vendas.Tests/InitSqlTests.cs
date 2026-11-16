@@ -218,4 +218,21 @@ public sealed class InitSqlTests
         Assert.Matches(@"funcionario_id\s+UUID NOT NULL REFERENCES funcionarios\(id\)", tabela);
         Assert.Contains("PRIMARY KEY (pedido_id, funcionario_id)", tabela);
     }
+
+    [Fact]
+    public void PerdaDoPedido_TemRotuloColunasEFkNoSchema()
+    {
+        var sql = Ler();
+
+        Assert.Contains("ALTER TYPE tipo_movimento_estoque ADD VALUE IF NOT EXISTS 'BAIXA_PERDA';", sql);
+        Assert.Contains("ALTER TABLE baixas_casco ADD COLUMN IF NOT EXISTS pedido_id UUID REFERENCES pedidos(id);", sql);
+        Assert.Contains(
+            "ALTER TABLE baixas_casco ADD COLUMN IF NOT EXISTS produto_marca_id UUID REFERENCES produto_marcas(id);", sql);
+        Assert.Contains(
+            "ALTER TABLE movimentos_estoque ADD COLUMN IF NOT EXISTS baixa_casco_id UUID REFERENCES baixas_casco(id);",
+            sql);
+        Assert.True(
+            sql.IndexOf("CREATE TABLE baixas_casco", StringComparison.Ordinal)
+            < sql.IndexOf("ALTER TABLE movimentos_estoque ADD COLUMN IF NOT EXISTS baixa_casco_id", StringComparison.Ordinal));
+    }
 }

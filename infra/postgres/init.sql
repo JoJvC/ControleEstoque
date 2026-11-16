@@ -27,6 +27,8 @@ CREATE TYPE tipo_produto AS ENUM ('RETORNAVEL', 'DESCARTAVEL');
 CREATE TYPE tipo_movimento_estoque AS ENUM
     ('ENTRADA_ABASTECIMENTO', 'SAIDA_VENDA', 'DEVOLUCAO_CLIENTE',
      'ENTRADA_SUCATA', 'BAIXA_QUEBRA', 'AJUSTE');
+-- Volumes antigos (o tipo já existe sem o rótulo); BAIXA_PERDA: galão perdido (não quebrado) depois da conclusão do pedido.
+ALTER TYPE tipo_movimento_estoque ADD VALUE IF NOT EXISTS 'BAIXA_PERDA';
 
 -- Situação do casco no estoque físico, por tipo de casco (guardado por IF para poder repetir).
 DO $$
@@ -543,6 +545,12 @@ CREATE TABLE baixas_casco (
     deleted_at     TIMESTAMPTZ
 );
 
+-- Perda/quebra de galão depois da conclusão do pedido: pedido_id sempre; produto_marca_id só no galão cheio
+-- (NULL = vazio). No cheio, movimentos_estoque.baixa_casco_id aponta para a baixa.
+ALTER TABLE baixas_casco ADD COLUMN IF NOT EXISTS pedido_id UUID REFERENCES pedidos(id);
+ALTER TABLE baixas_casco ADD COLUMN IF NOT EXISTS produto_marca_id UUID REFERENCES produto_marcas(id);
+ALTER TABLE movimentos_estoque ADD COLUMN IF NOT EXISTS baixa_casco_id UUID REFERENCES baixas_casco(id);
+
 -- Um ou mais funcionários responsáveis pela quebra.
 CREATE TABLE baixa_casco_responsaveis (
     baixa_id        UUID NOT NULL REFERENCES baixas_casco(id),
@@ -552,6 +560,7 @@ CREATE TABLE baixa_casco_responsaveis (
 
 -- Ledger de estoque de casco por tipo e situação: saldo = SUM(quantidade). Quantidade é assinada.
 -- Quebra: -VAZIO (BAIXA_QUEBRA) e, se o tipo aceita sucata, +SUCATA (ENTRADA_SUCATA) do mesmo tipo.
+-- Perda (BAIXA_PERDA): só -VAZIO, sem sucata. A do pedido concluído tem baixas_casco.pedido_id.
 CREATE TABLE IF NOT EXISTS movimentos_estoque_casco (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tipo_casco_id   UUID NOT NULL REFERENCES tipos_casco(id),

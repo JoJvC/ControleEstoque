@@ -24,6 +24,7 @@ public enum TipoMovimentoEstoque
     DEVOLUCAO_CLIENTE,
     ENTRADA_SUCATA,
     BAIXA_QUEBRA,
+    BAIXA_PERDA,
     AJUSTE
 }
 

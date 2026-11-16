@@ -9,6 +9,7 @@ import { FakeStorage, operadorValido } from '../../core/permissions/testing';
 import { StorageService } from '../../core/platform/storage-service';
 import { ICONES } from '../../ui/atoms/icon';
 import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
+import { AcoesMais } from '../../layouts/shell-layout/acoes-mais';
 import { MaisPage } from './mais-page';
 
 describe('MaisPage', () => {
@@ -67,22 +68,46 @@ describe('MaisPage', () => {
     expect(rotulos(el).some((t) => t.includes('Funcionários e cargos'))).toBe(true);
   });
 
-  it('item Funcionários e cargos usa o ce-icon rh, não o emoji', async () => {
-    TestBed.inject(OperatorStore).select(operadorValido(['rh.gerir']));
+  it('nenhum emoji; cada link tem o ce-icon mapeado', async () => {
+    TestBed.inject(OperatorStore).select(operadorValido(['rh.gerir', 'relatorios.ver']));
     const fixture = TestBed.createComponent(MaisPage);
     const el = fixture.nativeElement as HTMLElement;
     await fixture.whenStable();
-    const link = Array.from(el.querySelectorAll<HTMLAnchorElement>('.mais__item')).find((a) =>
-      a.textContent?.includes('Funcionários e cargos'),
-    )!;
-    expect(link.querySelector('ce-icon svg path')!.getAttribute('d')).toBe(ICONES.rh[0]);
-    expect(link.textContent).not.toContain('🪪');
-    // os demais itens continuam com emoji
-    const estoque = Array.from(el.querySelectorAll<HTMLAnchorElement>('.mais__item')).find((a) =>
-      a.textContent?.includes('Estoque'),
-    )!;
-    expect(estoque.querySelector('ce-icon')).toBeNull();
-    expect(estoque.textContent).toContain('📦');
+    expect(el.innerHTML).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{25A0}-\u{25FF}]/u);
+    const esperado: Record<string, keyof typeof ICONES> = {
+      'Histórico de vendas': 'cupom',
+      Estoque: 'caixa',
+      'Caixa do dia': 'dinheiro',
+      Produtos: 'pacote',
+      Marcas: 'etiqueta',
+      'Tipos de casco': 'casco',
+      Aparência: 'paleta',
+      'Funcionários e cargos': 'rh',
+      Relatórios: 'grafico',
+    };
+    const links = Array.from(el.querySelectorAll<HTMLAnchorElement>('.mais__lista .mais__item'));
+    expect(links).toHaveLength(Object.keys(esperado).length);
+    for (const a of links) {
+      const nome = esperado[a.textContent!.trim()];
+      expect(a.querySelector('ce-icon svg path')!.getAttribute('d')).toBe(ICONES[nome][0]);
+    }
+    const acoes = Array.from(el.querySelectorAll('.mais__item--acao ce-icon svg path')).map((p) =>
+      p.getAttribute('d'),
+    );
+    expect(acoes[0]).toBe(ICONES.atualizar[0]);
+  });
+
+  it('botão Trocar operador chama a ação compartilhada', async () => {
+    TestBed.inject(OperatorStore).select(operadorValido([]));
+    const espia = vi
+      .spyOn(TestBed.inject(AcoesMais), 'trocarOperador')
+      .mockImplementation(() => undefined);
+    const fixture = TestBed.createComponent(MaisPage);
+    await fixture.whenStable();
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.mais__item--acao')!
+      .click();
+    expect(espia).toHaveBeenCalledTimes(1);
   });
 
   it('link Aparência aparece para operador sem permissões', async () => {

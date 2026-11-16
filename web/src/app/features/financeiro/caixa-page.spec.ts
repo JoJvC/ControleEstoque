@@ -167,7 +167,7 @@ describe('CaixaPage', () => {
   it('ABERTO: chip, rótulo, 3 chips, Entradas e Saídas', async () => {
     const { el } = await montar(RESUMO_ABERTO);
     const texto = norm(el.textContent);
-    expect(texto).toContain('● Aberto');
+    expect(texto).toContain('Aberto');
     expect(texto).toContain('Saldo do caixa agora');
     expect(texto).toContain('R$ 320,00');
     const chips = Array.from(el.querySelectorAll('.destaque__chips .chip-topo')).map((c) =>

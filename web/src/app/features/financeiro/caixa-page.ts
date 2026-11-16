@@ -52,7 +52,12 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
       <div ce-destaque>
         @if (store.status() === 'ok' && store.resumo(); as resumo) {
           <p class="destaque__status">
-            <span class="chip-topo">{{ fechado() ? 'Fechado' : '● Aberto' }}</span>
+            <span class="chip-topo">
+              @if (!fechado()) {
+                <span class="chip-topo__ponto" aria-hidden="true"></span>
+              }
+              {{ fechado() ? 'Fechado' : 'Aberto' }}
+            </span>
           </p>
           <p class="destaque__rotulo">
             {{ fechado() ? 'Saldo no fechamento' : 'Saldo do caixa agora' }}
@@ -214,6 +219,15 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
 
       display: block;
       margin-top: var(--ce-space-2);
+    }
+
+    .chip-topo__ponto {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: var(--ce-space-1);
+      border-radius: 50%;
+      background: currentColor;
     }
 
     .chip-topo {

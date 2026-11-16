@@ -32,7 +32,8 @@ public sealed class SerieDiariaFaturamentoTests
     {
         var lookup = new FakeVendaLookup();
         var vendas = new FakeVendaRepository(lookup.SaldosEstoque);
-        var sut = new VendaService(vendas, lookup, new FakeCupomFiscalRepository(), new FakePermissaoLookup());
+        var sut = new VendaService(vendas, lookup, new FakeCupomFiscalRepository(), new FakePermissaoLookup(),
+            new FakePedidoRepository(lookup.SaldosEstoque, vendas.Reservas));
         var clienteId = Guid.NewGuid();
 
         await sut.ListarAsync(clienteId, null, null, 1, 1, CancellationToken.None);

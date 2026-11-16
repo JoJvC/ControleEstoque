@@ -321,6 +321,88 @@ public sealed class VendasApiTests : IClassFixture<VendasApiTests.Fabrica>
         Assert.Equal("PEDIDO_STATUS_INVALIDO", await CodigoAsync(repetido));
     }
 
+    private Task<HttpResponseMessage> ConcluirPedidoAsync(Guid id, CenarioPedido c, int quantidade, decimal pago) =>
+        fabrica.CreateClient().PostAsync($"/v1/pedidos/{id}/conclusao", Json($$"""
+            {"funcionarioId":"{{c.FuncionarioId}}",
+             "itens":[{"produtoId":"{{c.Produto.ProdutoId}}","marcaId":"{{c.Produto.MarcaId}}",
+                       "quantidade":{{quantidade}},"precoUnitario":8}],
+             "pagamentos":[{"forma":"PIX","valor":{{pago}}}]}
+            """));
+
+    private async Task<JsonElement> LerPedidoAsync(Guid id)
+    {
+        var resposta = await fabrica.CreateClient().GetAsync($"/v1/pedidos/{id}");
+        return JsonDocument.Parse(await resposta.Content.ReadAsStringAsync()).RootElement;
+    }
+
+    [Fact]
+    public async Task PostConclusaoViraVendaDevolve201EOPedidoTrazVendaId()
+    {
+        var c = NovoCenario(10);
+        var id = await CriarPedidoAsync(c, 3);
+        Assert.Equal(JsonValueKind.Null, (await LerPedidoAsync(id)).GetProperty("vendaId").ValueKind);
+        await IniciarPedidoAsync(id, c, $"[\"{c.EntregadorId}\"]");
+        Assert.Equal(JsonValueKind.Null, (await LerPedidoAsync(id)).GetProperty("vendaId").ValueKind);
+
+        var resposta = await ConcluirPedidoAsync(id, c, 2, 16);
+
+        Assert.Equal(HttpStatusCode.Created, resposta.StatusCode);
+        using var venda = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync());
+        var vendaId = venda.RootElement.GetProperty("id").GetGuid();
+        Assert.Equal($"/v1/vendas/{vendaId}", resposta.Headers.Location!.ToString());
+        Assert.Equal(16m, venda.RootElement.GetProperty("totalPago").GetDecimal());
+        var pedido = await LerPedidoAsync(id);
+        Assert.Equal("CONCLUIDO", pedido.GetProperty("status").GetString());
+        Assert.Equal(vendaId, pedido.GetProperty("vendaId").GetGuid());
+        Assert.Equal(c.EntregadorId, pedido.GetProperty("funcionarios")[0].GetProperty("id").GetGuid());
+        Assert.Equal(8, fabrica.Lookup.SaldosEstoque[c.Produto.ProdutoMarcaId]);
+        Assert.Equal(0, fabrica.Vendas.Reservas[c.Produto.ProdutoMarcaId]);
+    }
+
+    [Fact]
+    public async Task PostConclusaoDePendenteOuJaConcluidoDevolve409PedidoStatusInvalido()
+    {
+        var c = NovoCenario(10);
+        var pendente = await CriarPedidoAsync(c, 1);
+        var concluido = await CriarPedidoAsync(c, 1);
+        await IniciarPedidoAsync(concluido, c, $"[\"{c.EntregadorId}\"]");
+        await ConcluirPedidoAsync(concluido, c, 1, 8);
+
+        var daPendente = await ConcluirPedidoAsync(pendente, c, 1, 8);
+        var repetida = await ConcluirPedidoAsync(concluido, c, 1, 8);
+
+        Assert.Equal(HttpStatusCode.Conflict, daPendente.StatusCode);
+        Assert.Equal("PEDIDO_STATUS_INVALIDO", await CodigoAsync(daPendente));
+        Assert.Equal(HttpStatusCode.Conflict, repetida.StatusCode);
+        Assert.Equal("PEDIDO_STATUS_INVALIDO", await CodigoAsync(repetida));
+    }
+
+    [Fact]
+    public async Task PostConclusaoDePedidoInexistenteDevolve404PedidoNaoEncontrado()
+    {
+        var c = NovoCenario(10);
+
+        var resposta = await ConcluirPedidoAsync(Guid.NewGuid(), c, 1, 8);
+
+        Assert.Equal(HttpStatusCode.NotFound, resposta.StatusCode);
+        Assert.Equal("PEDIDO_NAO_ENCONTRADO", await CodigoAsync(resposta));
+    }
+
+    [Fact]
+    public async Task PostConclusaoSemItensDevolve400ItensObrigatorios()
+    {
+        var c = NovoCenario(10);
+        var id = await CriarPedidoAsync(c, 1);
+        await IniciarPedidoAsync(id, c, $"[\"{c.EntregadorId}\"]");
+
+        var resposta = await fabrica.CreateClient().PostAsync($"/v1/pedidos/{id}/conclusao", Json($$"""
+            {"funcionarioId":"{{c.FuncionarioId}}"}
+            """));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resposta.StatusCode);
+        Assert.Equal("ITENS_OBRIGATORIOS", await CodigoAsync(resposta));
+    }
+
     public sealed class Fabrica : WebApplicationFactory<Program>
     {
         internal FakeVendaLookup Lookup { get; } = new();
@@ -331,6 +413,7 @@ public sealed class VendasApiTests : IClassFixture<VendasApiTests.Fabrica>
         {
             Vendas = new FakeVendaRepository(Lookup.SaldosEstoque);
             Pedidos = new FakePedidoRepository(Lookup.SaldosEstoque, Vendas.Reservas);
+            Vendas.Pedidos = Pedidos;
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)

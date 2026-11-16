@@ -392,6 +392,10 @@ CREATE INDEX idx_vendas_data        ON vendas(data)           WHERE deleted_at I
 
 ALTER TABLE vendas ADD COLUMN IF NOT EXISTS desconto_sucata NUMERIC(19,2) NOT NULL DEFAULT 0;
 
+-- Conclusão do pedido em venda: a venda gerada e quando. Os pedido_itens ficam como histórico do que foi pedido.
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS venda_id UUID UNIQUE REFERENCES vendas(id);
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS concluido_em TIMESTAMPTZ;
+
 -- Desconto é por item, manual (valor ou percentual), com motivo obrigatório.
 CREATE TABLE venda_itens (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),

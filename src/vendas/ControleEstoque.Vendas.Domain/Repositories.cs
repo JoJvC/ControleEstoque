@@ -60,6 +60,16 @@ public interface IVendaRepository
     Task<ResultadoGravacao> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Conclui o pedido em venda numa transação só. Trava o pedido primeiro (FOR UPDATE; sumido lança
+    /// EntityNotFoundException PEDIDO_NAO_ENCONTRADO; fora de EM_ANDAMENTO lança ConflictException
+    /// PEDIDO_STATUS_INVALIDO), depois faz o mesmo que <see cref="CriarAsync"/> (caixa, cliente, produtos, saldo,
+    /// efeitos), com a reserva do próprio pedido fora da conta do saldo, e grava CONCLUIDO, <c>venda_id</c> e
+    /// <c>concluido_em</c> (= <c>Instante</c> da gravação). Sem saldo, faz rollback e devolve a falta.
+    /// </summary>
+    Task<ResultadoGravacao> ConcluirPedidoAsync(
+        Guid pedidoId, VendaGravacao gravacao, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Edição por replay: soft-deleta itens, pagamentos, movimentos de estoque,
     /// movimentos de casco (do cliente e do estoque), vasilhames, sucatas da venda e lançamentos de fiado vinculados
     /// à venda, e reinsere conforme a gravação — tudo em uma transação. A checagem de saldo roda

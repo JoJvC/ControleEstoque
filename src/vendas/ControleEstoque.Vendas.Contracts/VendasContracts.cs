@@ -35,6 +35,17 @@ public sealed record CreateVendaRequest(
     string? Observacao,
     Guid? CaixaId = null);
 
+/// <summary>Conclusão do pedido: como CreateVendaRequest, sem cliente e endereço (vêm do pedido) e sem funcionários do pedido.</summary>
+public sealed record ConcluirPedidoRequest(
+    Guid FuncionarioId,
+    List<ItemVendaRequest>? Itens,
+    List<VasilhameVendaRequest>? Vasilhames,
+    List<PagamentoRequest>? Pagamentos,
+    List<CascoQuantidadeRequest>? CascosDevolvidos,
+    List<SucataEntregueRequest>? SucataEntregue,
+    string? Observacao,
+    Guid? CaixaId = null);
+
 public sealed record CancelarVendaRequest(Guid FuncionarioId);
 
 public sealed record VendaResponse(
@@ -163,7 +174,8 @@ public sealed record PedidoResponse(
     DateTimeOffset? CanceladoEm,
     Guid? CanceladoPor,
     IReadOnlyList<ItemPedidoResponse> Itens,
-    IReadOnlyList<FuncionarioPedidoResponse> Funcionarios)
+    IReadOnlyList<FuncionarioPedidoResponse> Funcionarios,
+    Guid? VendaId)
 {
     public static PedidoResponse From(Pedido p) => new(
         p.Id, p.ClienteId, p.EnderecoEntregaId, p.Status, p.Observacao, p.CreatedBy, p.CreatedAt, p.IniciadoEm,
@@ -172,5 +184,5 @@ public sealed record PedidoResponse(
             i.ProdutoId, i.MarcaId, i.Quantidade, i.PrecoUnitario,
             i.Desconto is null ? null : new DescontoRequest(i.Desconto.Tipo, i.Desconto.Valor, i.Desconto.Motivo)))
             .ToList(),
-        p.Funcionarios.Select(f => new FuncionarioPedidoResponse(f.Id, f.Nome)).ToList());
+        p.Funcionarios.Select(f => new FuncionarioPedidoResponse(f.Id, f.Nome)).ToList(), p.VendaId);
 }

@@ -172,14 +172,25 @@ public sealed class FakeVendaRepository : IVendaRepository
     private static ConflictException CaixaFechado() =>
         new("CAIXA_FECHADO", "Não é possível lançar pagamento em caixa fechado.");
 
-    public async Task<ResultadoGravacao> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken)
+    /// <summary>Pedidos compartilhados com a conclusão (o mesmo estado e as mesmas reservas); ligue-o nos cenários de pedido.</summary>
+    internal FakePedidoRepository? Pedidos { get; set; }
+
+    public Task<ResultadoGravacao> CriarAsync(VendaGravacao gravacao, CancellationToken cancellationToken) =>
+        GravarAsync(gravacao, null);
+
+    public Task<ResultadoGravacao> ConcluirPedidoAsync(
+        Guid pedidoId, VendaGravacao gravacao, CancellationToken cancellationToken) =>
+        Pedidos!.ConcluirAsync(pedidoId, gravacao.VendaId, reserva => GravarAsync(gravacao, reserva), cancellationToken);
+
+    private async Task<ResultadoGravacao> GravarAsync(
+        VendaGravacao gravacao, IReadOnlyDictionary<Guid, long>? reservaPropria)
     {
         if (CaixaHojeFechado && gravacao.Pagamentos.Count > 0)
         {
             throw CaixaFechado();
         }
 
-        var falta = await BaixarSaldoAsync(gravacao);
+        var falta = await BaixarSaldoAsync(gravacao, reservaPropria);
         if (falta is not null)
         {
             return new ResultadoGravacao([], falta);
@@ -249,7 +260,8 @@ public sealed class FakeVendaRepository : IVendaRepository
         .ToList();
 
     /// <summary>Devolve as saídas antigas da venda (soft-delete), checa e grava as novas; falha não grava nada.</summary>
-    private async Task<SaldoInsuficiente?> BaixarSaldoAsync(VendaGravacao gravacao)
+    private async Task<SaldoInsuficiente?> BaixarSaldoAsync(
+        VendaGravacao gravacao, IReadOnlyDictionary<Guid, long>? reservaPropria = null)
     {
         var novas = gravacao.Itens
             .GroupBy(i => i.ProdutoMarcaId)
@@ -264,10 +276,11 @@ public sealed class FakeVendaRepository : IVendaRepository
             foreach (var (produtoId, saida) in novas)
             {
                 var reservado = Reservas.GetValueOrDefault(produtoId);
-                if (RecusarSempre || EstoqueDisponivel.Falta(lidos[produtoId], reservado, saida))
+                var propria = reservaPropria?.GetValueOrDefault(produtoId) ?? 0;
+                if (RecusarSempre || EstoqueDisponivel.FaltaNaConclusao(lidos[produtoId], reservado, propria, saida))
                 {
                     return new SaldoInsuficiente(
-                        produtoId, EstoqueDisponivel.Disponivel(lidos[produtoId], reservado), saida);
+                        produtoId, EstoqueDisponivel.Disponivel(lidos[produtoId], reservado - propria), saida);
                 }
             }
 
@@ -497,7 +510,46 @@ internal sealed class FakePedidoRepository : IPedidoRepository
         }
     }
 
-    /// <summary>Para montar cenários que o ciclo ainda não alcança (ex.: CONCLUIDO, que é a parte 2 do item 17).</summary>
+    /// <summary>
+    /// Conclusão sob a trava do pedido: confere EM_ANDAMENTO, roda <paramref name="gravar"/> com a reserva própria e,
+    /// sem falta, libera a reserva e marca CONCLUIDO com a venda.
+    /// </summary>
+    internal async Task<ResultadoGravacao> ConcluirAsync(
+        Guid pedidoId, Guid vendaId, Func<IReadOnlyDictionary<Guid, long>, Task<ResultadoGravacao>> gravar,
+        CancellationToken cancellationToken)
+    {
+        await trava.WaitAsync(cancellationToken);
+        try
+        {
+            var pedido = Travar(pedidoId);
+            if (!TransicoesPedido.PodeConcluir(pedido.Status))
+            {
+                throw new ConflictException("PEDIDO_STATUS_INVALIDO", $"Pedido {pedido.Status} não pode ser concluído.");
+            }
+
+            var propria = pedido.Itens.GroupBy(i => i.ProdutoMarcaId)
+                .ToDictionary(g => g.Key, g => g.Sum(i => (long)i.Quantidade));
+            var resultado = await gravar(propria);
+            if (resultado.Falta is not null)
+            {
+                return resultado;
+            }
+
+            foreach (var (produtoMarcaId, quantidade) in propria)
+            {
+                reservas[produtoMarcaId] -= quantidade;
+            }
+
+            pedidos[pedidoId] = pedido with { Status = StatusPedido.CONCLUIDO, VendaId = vendaId };
+            return resultado;
+        }
+        finally
+        {
+            trava.Release();
+        }
+    }
+
+    /// <summary>Para montar cenários que o ciclo ainda não alcança (ex.: CONCLUIDO sem passar pela venda).</summary>
     public void ForcarStatus(Guid pedidoId, StatusPedido status) =>
         pedidos[pedidoId] = pedidos[pedidoId] with { Status = status };
 

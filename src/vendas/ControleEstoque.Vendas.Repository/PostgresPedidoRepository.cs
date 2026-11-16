@@ -79,7 +79,8 @@ public sealed class PostgresPedidoRepository : IPedidoRepository
                 reader.GetGuid(5), reader.GetFieldValue<DateTimeOffset>(6),
                 reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7),
                 reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
-                reader.IsDBNull(9) ? null : reader.GetGuid(9), [], []);
+                reader.IsDBNull(9) ? null : reader.GetGuid(9), [], [],
+                reader.IsDBNull(10) ? null : reader.GetGuid(10));
         }
 
         var itens = new List<ItemPedido>();
@@ -152,16 +153,7 @@ public sealed class PostgresPedidoRepository : IPedidoRepository
             throw new ConflictException("PEDIDO_STATUS_INVALIDO", $"Pedido {status} não pode ser iniciado.");
         }
 
-        var saidas = new Dictionary<Guid, long>();
-        await using (var command = new NpgsqlCommand(Sql.QuantidadesPorProdutoMarca, connection, transaction))
-        {
-            command.Parameters.AddWithValue("id", pedidoId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                saidas[reader.GetGuid(0)] = reader.GetInt64(1);
-            }
-        }
+        var saidas = await QuantidadesPorProdutoMarcaAsync(connection, transaction, pedidoId, cancellationToken);
 
         if (await ChecagemEstoque.ChecarAsync(connection, transaction, saidas, cancellationToken) is { } falta)
         {
@@ -210,7 +202,24 @@ public sealed class PostgresPedidoRepository : IPedidoRepository
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private static async Task<StatusPedido> TravarPedidoAsync(
+    /// <summary>Soma de pedido_itens.quantidade do pedido por associação produto+marca (a reserva dele).</summary>
+    internal static async Task<Dictionary<Guid, long>> QuantidadesPorProdutoMarcaAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Guid pedidoId,
+        CancellationToken cancellationToken)
+    {
+        var quantidades = new Dictionary<Guid, long>();
+        await using var command = new NpgsqlCommand(Sql.QuantidadesPorProdutoMarca, connection, transaction);
+        command.Parameters.AddWithValue("id", pedidoId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            quantidades[reader.GetGuid(0)] = reader.GetInt64(1);
+        }
+
+        return quantidades;
+    }
+
+    internal static async Task<StatusPedido> TravarPedidoAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid pedidoId,
         CancellationToken cancellationToken)
     {
@@ -259,7 +268,7 @@ public sealed class PostgresPedidoRepository : IPedidoRepository
 
         public const string GetPedido = """
             SELECT id, cliente_id, endereco_entrega_id, status::text, observacao, created_by, created_at,
-                   iniciado_em, cancelado_em, cancelado_por
+                   iniciado_em, cancelado_em, cancelado_por, venda_id
             FROM pedidos
             WHERE id = @id
             """;

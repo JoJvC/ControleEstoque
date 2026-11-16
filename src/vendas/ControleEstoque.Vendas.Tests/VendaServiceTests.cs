@@ -8,6 +8,7 @@ public sealed class VendaServiceTests
     private readonly FakeVendaRepository vendas;
     private readonly FakeVendaLookup lookup = new();
     private readonly FakeCupomFiscalRepository cupons = new();
+    private readonly FakePedidoRepository pedidos;
     private readonly VendaService sut;
 
     private readonly Guid clienteId = Guid.NewGuid();
@@ -21,7 +22,9 @@ public sealed class VendaServiceTests
     public VendaServiceTests()
     {
         vendas = new FakeVendaRepository(lookup.SaldosEstoque);
-        sut = new VendaService(vendas, lookup, cupons, new FakePermissaoLookup());
+        pedidos = new FakePedidoRepository(lookup.SaldosEstoque, vendas.Reservas);
+        vendas.Pedidos = pedidos;
+        sut = new VendaService(vendas, lookup, cupons, new FakePermissaoLookup(), pedidos);
         lookup.Clientes.Add(clienteId);
         lookup.Funcionarios.Add(funcionarioId);
         cascoG = lookup.AddTipoCasco(30m, aceitaSucata: true);
@@ -993,7 +996,6 @@ public sealed class VendaServiceTests
 
     private async Task ReservarAsync(ProdutoVenda produto, int quantidade)
     {
-        var pedidos = new FakePedidoRepository(lookup.SaldosEstoque, vendas.Reservas);
         var pedidoService = new PedidoService(pedidos, lookup);
         var pedido = await pedidoService.CriarAsync(
             new NovoPedido(
@@ -1027,6 +1029,180 @@ public sealed class VendaServiceTests
 
         await sut.EditarAsync(criada.Id, NovaVendaDe(descartavel, 10, 8m), CancellationToken.None);
         Assert.NotNull(vendas.UltimaEdicao);
+    }
+
+    // ---- Conclusão do pedido em venda ---------------------------------------
+
+    private async Task<Pedido> PedidoEmAndamentoAsync(ProdutoVenda produto, int quantidade)
+    {
+        var pedidoService = new PedidoService(pedidos, lookup);
+        var pedido = await pedidoService.CriarAsync(
+            new NovoPedido(
+                clienteId, funcionarioId, null,
+                [new ItemVenda(produto.ProdutoId, produto.MarcaId, quantidade, 8m, null)], [], null),
+            CancellationToken.None);
+        return await pedidoService.IniciarAsync(pedido.Id, funcionarioId, [funcionarioId], CancellationToken.None);
+    }
+
+    private ConclusaoPedido ConclusaoDe(
+        ProdutoVenda produto, int quantidade, decimal preco, IReadOnlyList<PagamentoVenda>? pagamentos = null) => new(
+        funcionarioId, [new ItemVenda(produto.ProdutoId, produto.MarcaId, quantidade, preco, null)],
+        [], pagamentos ?? [], [], [], null);
+
+    [Fact]
+    public async Task ConcluirPedidoAsync_PediuTresELevouDois_BaixaDoisELiberaAReserva()
+    {
+        lookup.SaldosEstoque[descartavel.ProdutoMarcaId] = 3;
+        var pedido = await PedidoEmAndamentoAsync(descartavel, 3);
+        Assert.Equal(3, vendas.Reservas[descartavel.ProdutoMarcaId]);
+
+        var resultado = await sut.ConcluirPedidoAsync(
+            pedido.Id, ConclusaoDe(descartavel, 2, 8m, [new PagamentoVenda(FormaPagamento.PIX, 16m)]),
+            CancellationToken.None);
+
+        Assert.Equal(2, Assert.Single(vendas.UltimaGravacao!.Itens).Quantidade);
+        Assert.Equal(1, lookup.SaldosEstoque[descartavel.ProdutoMarcaId]);
+        Assert.Equal(0, vendas.Reservas[descartavel.ProdutoMarcaId]);
+        var concluido = (await pedidos.GetAsync(pedido.Id, CancellationToken.None))!;
+        Assert.Equal(StatusPedido.CONCLUIDO, concluido.Status);
+        Assert.Equal(resultado.Id, concluido.VendaId);
+        Assert.Equal(3, Assert.Single(concluido.Itens).Quantidade); // o pedido guarda o que foi pedido
+        Assert.Equal(StatusPagamento.PAGA, resultado.StatusPagamento);
+    }
+
+    [Fact]
+    public async Task ConcluirPedidoAsync_PagamentoParcial_GeraFiadoDoFaltante()
+    {
+        var pedido = await PedidoEmAndamentoAsync(descartavel, 3);
+
+        var resultado = await sut.ConcluirPedidoAsync(
+            pedido.Id, ConclusaoDe(descartavel, 3, 8m, [new PagamentoVenda(FormaPagamento.PIX, 10m)]),
+            CancellationToken.None);
+
+        Assert.Equal(14m, resultado.SaldoFiadoGerado); // 24 − 10
+        Assert.Equal(14m, vendas.UltimaGravacao!.DebitoFiado);
+        Assert.Equal(StatusPagamento.PARCIAL, resultado.StatusPagamento);
+    }
+
+    [Fact]
+    public async Task ConcluirPedidoAsync_ComVasilhameCascosESucata_GravaIgualAVendaEquivalente()
+    {
+        lookup.SaldosCasco[(clienteId, cascoG.Id)] = 3;
+        var pedido = await PedidoEmAndamentoAsync(agua, 2);
+        var pagamentos = new[] { new PagamentoVenda(FormaPagamento.PIX, 50m) };
+        var vasilhames = new[] { new VasilhameVenda(cascoG.Id, 1, 12.5m, ModoCreditoVasilhame.CONVERTER_CASCO) };
+        var devolvidos = new[] { new CascoQuantidade(cascoG.Id, 1) };
+        var sucata = new[] { new SucataVenda(cascoG.Id, 2, 3m) };
+        var itens = new[] { new ItemVenda(agua.ProdutoId, agua.MarcaId, 2, 50m, null) };
+
+        await sut.ConcluirPedidoAsync(
+            pedido.Id, new ConclusaoPedido(funcionarioId, itens, vasilhames, pagamentos, devolvidos, sucata, "obs"),
+            CancellationToken.None);
+        var daConclusao = vendas.UltimaGravacao!;
+        await sut.CriarAsync(
+            new NovaVenda(clienteId, funcionarioId, null, itens, vasilhames, pagamentos, devolvidos, sucata, "obs"),
+            CancellationToken.None);
+        var daVenda = vendas.UltimaGravacao!;
+
+        Assert.NotEqual(daVenda.VendaId, daConclusao.VendaId);
+        Assert.Equal(daVenda.ClienteId, daConclusao.ClienteId);
+        Assert.Equal(daVenda.FuncionarioId, daConclusao.FuncionarioId);
+        Assert.Equal(daVenda.Observacao, daConclusao.Observacao);
+        Assert.Equal(
+            (daVenda.TotalBruto, daVenda.TotalDesconto, daVenda.DescontoSucata, daVenda.TotalLiquido, daVenda.Status,
+                daVenda.DebitoFiado, daVenda.CreditoGerado, daVenda.UsoCredito),
+            (daConclusao.TotalBruto, daConclusao.TotalDesconto, daConclusao.DescontoSucata, daConclusao.TotalLiquido,
+                daConclusao.Status, daConclusao.DebitoFiado, daConclusao.CreditoGerado, daConclusao.UsoCredito));
+        Assert.Equal(daVenda.Itens, daConclusao.Itens);
+        Assert.Equal(daVenda.Vasilhames, daConclusao.Vasilhames);
+        Assert.Equal(daVenda.Pagamentos, daConclusao.Pagamentos);
+        Assert.Equal(daVenda.CascosEmprestados, daConclusao.CascosEmprestados);
+        Assert.Equal(daVenda.CascosDevolvidos, daConclusao.CascosDevolvidos);
+        Assert.Equal(daVenda.VaziosSaidos, daConclusao.VaziosSaidos);
+        Assert.Equal(daVenda.CascosConvertidos, daConclusao.CascosConvertidos);
+        Assert.Equal(daVenda.SucataEntregue, daConclusao.SucataEntregue);
+        Assert.NotEmpty(daConclusao.SucataEntregue);
+        Assert.NotEmpty(daConclusao.Vasilhames);
+    }
+
+    [Theory]
+    [InlineData(StatusPedido.PENDENTE)]
+    [InlineData(StatusPedido.CANCELADO)]
+    [InlineData(StatusPedido.CONCLUIDO)]
+    public async Task ConcluirPedidoAsync_ForaDeEmAndamento_Lanca409PedidoStatusInvalido(StatusPedido status)
+    {
+        var pedido = await PedidoEmAndamentoAsync(descartavel, 1);
+        pedidos.ForcarStatus(pedido.Id, status);
+
+        var ex = await Assert.ThrowsAsync<ConflictException>(() =>
+            sut.ConcluirPedidoAsync(pedido.Id, ConclusaoDe(descartavel, 1, 8m), CancellationToken.None));
+
+        Assert.Equal("PEDIDO_STATUS_INVALIDO", ex.Code);
+        Assert.Null(vendas.UltimaGravacao);
+    }
+
+    [Fact]
+    public async Task ConcluirPedidoAsync_SegundaConclusaoDoMesmoPedido_Lanca409()
+    {
+        var pedido = await PedidoEmAndamentoAsync(descartavel, 2);
+        var conclusao = ConclusaoDe(descartavel, 2, 8m);
+
+        await sut.ConcluirPedidoAsync(pedido.Id, conclusao, CancellationToken.None);
+        var ex = await Assert.ThrowsAsync<ConflictException>(() =>
+            sut.ConcluirPedidoAsync(pedido.Id, conclusao, CancellationToken.None));
+
+        Assert.Equal("PEDIDO_STATUS_INVALIDO", ex.Code);
+        Assert.Equal(28, lookup.SaldosEstoque[descartavel.ProdutoMarcaId]); // baixou uma vez só
+    }
+
+    [Fact]
+    public async Task ConcluirPedidoAsync_PedidoInexistente_Lanca404()
+    {
+        var ex = await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            sut.ConcluirPedidoAsync(Guid.NewGuid(), ConclusaoDe(descartavel, 1, 8m), CancellationToken.None));
+
+        Assert.Equal("PEDIDO_NAO_ENCONTRADO", ex.Code);
+    }
+
+    [Fact]
+    public async Task ConcluirPedidoAsync_SemFuncionariosDoPedido_AceitaEMantemOsDoPedido()
+    {
+        var entregador = Guid.NewGuid();
+        lookup.Funcionarios.Add(entregador);
+        var pedidoService = new PedidoService(pedidos, lookup);
+        var criado = await pedidoService.CriarAsync(
+            new NovoPedido(
+                clienteId, funcionarioId, null,
+                [new ItemVenda(descartavel.ProdutoId, descartavel.MarcaId, 1, 8m, null)], [], null),
+            CancellationToken.None);
+        await pedidoService.IniciarAsync(criado.Id, funcionarioId, [entregador], CancellationToken.None);
+
+        await sut.ConcluirPedidoAsync(criado.Id, ConclusaoDe(descartavel, 1, 8m), CancellationToken.None);
+
+        var concluido = (await pedidos.GetAsync(criado.Id, CancellationToken.None))!;
+        Assert.Equal([entregador], concluido.Funcionarios.Select(f => f.Id));
+        Assert.Equal(funcionarioId, vendas.UltimaGravacao!.FuncionarioId); // quem registrou a venda
+        Assert.Equal(clienteId, vendas.UltimaGravacao.ClienteId);          // o cliente vem do pedido
+    }
+
+    [Fact]
+    public async Task ConcluirPedidoAsync_SaldoIgnoraAReservaPropriaMasContaADeOutrosPedidos()
+    {
+        lookup.SaldosEstoque[descartavel.ProdutoMarcaId] = 20;
+        var outro = await PedidoEmAndamentoAsync(descartavel, 4);
+        var proprio = await PedidoEmAndamentoAsync(descartavel, 3);
+        lookup.SaldosEstoque[descartavel.ProdutoMarcaId] = 5; // reservado 7; disponível para o próprio = 5 − 4 = 1
+
+        await Assert.ThrowsAsync<InsufficientStockException>(() =>
+            sut.ConcluirPedidoAsync(proprio.Id, ConclusaoDe(descartavel, 3, 8m), CancellationToken.None));
+        Assert.Equal(StatusPedido.EM_ANDAMENTO, (await pedidos.GetAsync(proprio.Id, CancellationToken.None))!.Status);
+        Assert.Equal(7, vendas.Reservas[descartavel.ProdutoMarcaId]);
+
+        await sut.ConcluirPedidoAsync(proprio.Id, ConclusaoDe(descartavel, 1, 8m), CancellationToken.None);
+
+        Assert.Equal(4, lookup.SaldosEstoque[descartavel.ProdutoMarcaId]);
+        Assert.Equal(4, vendas.Reservas[descartavel.ProdutoMarcaId]); // só a do outro pedido
+        Assert.Equal(StatusPedido.EM_ANDAMENTO, (await pedidos.GetAsync(outro.Id, CancellationToken.None))!.Status);
     }
 
     private NovaVenda NovaVendaDe(

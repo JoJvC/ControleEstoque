@@ -208,4 +208,15 @@ public sealed record PedidoResumo(
 public sealed record Pedido(
     Guid Id, Guid ClienteId, Guid? EnderecoEntregaId, StatusPedido Status, string? Observacao, Guid CreatedBy,
     DateTimeOffset CreatedAt, DateTimeOffset? IniciadoEm, DateTimeOffset? CanceladoEm, Guid? CanceladoPor,
-    IReadOnlyList<ItemPedido> Itens, IReadOnlyList<FuncionarioPedido> Funcionarios);
+    IReadOnlyList<ItemPedido> Itens, IReadOnlyList<FuncionarioPedido> Funcionarios, Guid? VendaId = null);
+
+/// <summary>Conclusão do pedido em venda: o <see cref="NovaVenda"/> sem cliente e endereço, que vêm do pedido.</summary>
+public sealed record ConclusaoPedido(
+    Guid FuncionarioId,
+    IReadOnlyList<ItemVenda> Itens,
+    IReadOnlyList<VasilhameVenda> Vasilhames,
+    IReadOnlyList<PagamentoVenda> Pagamentos,
+    IReadOnlyList<CascoQuantidade> CascosDevolvidos,
+    IReadOnlyList<SucataVenda> SucataEntregue,
+    string? Observacao,
+    Guid? CaixaId = null);

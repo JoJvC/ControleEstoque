@@ -112,6 +112,15 @@ public static class VendasEndpoints
             Results.Ok(PedidoResponse.From(await pedidos.IniciarAsync(
                 id, request.FuncionarioId, request.FuncionariosIds ?? [], cancellationToken))));
 
+        // Só a partir de EM_ANDAMENTO: vira uma venda de fato (itens editáveis, pagamento só aqui) e libera a reserva.
+        app.MapPost("/v1/pedidos/{id:guid}/conclusao", async (
+            Guid id, ConcluirPedidoRequest request, IVendaService vendas, CancellationToken cancellationToken) =>
+        {
+            var resultado = await vendas.ConcluirPedidoAsync(id, ToConclusao(request), cancellationToken);
+            PlatformTelemetry.VendasRegistradasTotal.Add(1);
+            return Results.Created($"/v1/vendas/{resultado.Id}", VendaResponse.From(resultado));
+        });
+
         // Sem chave de permissão: nada foi cobrado. Libera a reserva.
         app.MapPost("/v1/pedidos/{id:guid}/cancelamento", async (
             Guid id, CancelarPedidoRequest request, IPedidoService pedidos, CancellationToken cancellationToken) =>
@@ -137,10 +146,18 @@ public static class VendasEndpoints
         return app;
     }
 
-    private static NovaVenda ToNovaVenda(CreateVendaRequest request) => new(
-        request.ClienteId,
+    private static NovaVenda ToNovaVenda(CreateVendaRequest request)
+    {
+        var c = ToConclusao(new ConcluirPedidoRequest(
+            request.FuncionarioId, request.Itens, request.Vasilhames, request.Pagamentos, request.CascosDevolvidos,
+            request.SucataEntregue, request.Observacao, request.CaixaId));
+        return new NovaVenda(
+            request.ClienteId, c.FuncionarioId, request.EnderecoEntregaId, c.Itens, c.Vasilhames, c.Pagamentos,
+            c.CascosDevolvidos, c.SucataEntregue, c.Observacao, c.CaixaId);
+    }
+
+    private static ConclusaoPedido ToConclusao(ConcluirPedidoRequest request) => new(
         request.FuncionarioId,
-        request.EnderecoEntregaId,
         Validacao.SemNulos(request.Itens, "Itens").Select(i => new ItemVenda(
             i.ProdutoId, i.MarcaId, i.Quantidade, i.PrecoUnitario,
             i.Desconto is null ? null : new Desconto(

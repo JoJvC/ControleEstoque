@@ -23,8 +23,10 @@ public sealed class PedidoServiceTests
     {
         vendas = new FakeVendaRepository(lookup.SaldosEstoque);
         pedidos = new FakePedidoRepository(lookup.SaldosEstoque, vendas.Reservas);
+        vendas.Pedidos = pedidos;
         sut = new PedidoService(pedidos, lookup, new RelogioFixo(Agora));
-        vendaService = new VendaService(vendas, lookup, new FakeCupomFiscalRepository(), new FakePermissaoLookup());
+        vendaService = new VendaService(
+            vendas, lookup, new FakeCupomFiscalRepository(), new FakePermissaoLookup(), pedidos);
         lookup.Clientes.Add(clienteId);
         foreach (var id in new[] { funcionarioId, entregador, outroEntregador })
         {

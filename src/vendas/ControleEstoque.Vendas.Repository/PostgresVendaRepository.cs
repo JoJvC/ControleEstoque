@@ -16,6 +16,57 @@ public sealed class PostgresVendaRepository : IVendaRepository
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        var resultado = await GravarVendaAsync(connection, transaction, gravacao, null, cancellationToken);
+        if (resultado.Falta is null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        return resultado; // com falta: sem Commit, o Dispose da transação faz rollback.
+    }
+
+    public async Task<ResultadoGravacao> ConcluirPedidoAsync(
+        Guid pedidoId, VendaGravacao gravacao, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // O pedido é a primeira trava (como no início do pedido), antes de caixa, cliente e produtos.
+        var status = await PostgresPedidoRepository.TravarPedidoAsync(connection, transaction, pedidoId, cancellationToken);
+        if (!TransicoesPedido.PodeConcluir(status))
+        {
+            throw new ConflictException("PEDIDO_STATUS_INVALIDO", $"Pedido {status} não pode ser concluído.");
+        }
+
+        var reservaPropria = await PostgresPedidoRepository.QuantidadesPorProdutoMarcaAsync(
+            connection, transaction, pedidoId, cancellationToken);
+        var resultado = await GravarVendaAsync(connection, transaction, gravacao, reservaPropria, cancellationToken);
+        if (resultado.Falta is not null)
+        {
+            return resultado; // sem Commit: o Dispose da transação faz rollback.
+        }
+
+        await using (var command = new NpgsqlCommand(Sql.ConcluirPedido, connection, transaction))
+        {
+            command.Parameters.AddWithValue("pedidoId", pedidoId);
+            command.Parameters.AddWithValue("vendaId", gravacao.VendaId);
+            command.Parameters.Add(Instante(gravacao));
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return resultado;
+    }
+
+    /// <summary>
+    /// Miolo da criação da venda, na transação do chamador (que confirma): travas, saldo, venda e efeitos.
+    /// Com falta de saldo devolve a falta e nada foi gravado. <paramref name="reservaPropria"/> é a reserva do pedido
+    /// que está virando esta venda (fora da conta do saldo).
+    /// </summary>
+    private static async Task<ResultadoGravacao> GravarVendaAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, VendaGravacao gravacao,
+        IReadOnlyDictionary<Guid, long>? reservaPropria, CancellationToken cancellationToken)
+    {
         // Ordem das travas: caixa, venda/cliente, produtos. Venda sem pagamento (só fiado) não toca o caixa,
         // salvo quando o caixa foi escolhido (caixa reaberto).
         if (gravacao.CaixaId is { } caixaId)
@@ -29,9 +80,9 @@ public sealed class PostgresVendaRepository : IVendaRepository
 
         await TravarClienteParaCreditoAsync(connection, transaction, gravacao, cancellationToken);
 
-        if (await ChecarSaldoAsync(connection, transaction, gravacao, cancellationToken) is { } falta)
+        if (await ChecarSaldoAsync(connection, transaction, gravacao, reservaPropria, cancellationToken) is { } falta)
         {
-            return new ResultadoGravacao([], falta); // sem Commit: o Dispose da transação faz rollback.
+            return new ResultadoGravacao([], falta);
         }
 
         await using (var command = new NpgsqlCommand(Sql.InsertVenda, connection, transaction))
@@ -44,7 +95,6 @@ public sealed class PostgresVendaRepository : IVendaRepository
         await InserirEfeitosAsync(connection, transaction, gravacao, cancellationToken);
 
         var saldo = await GetSaldoCascoAsync(connection, transaction, gravacao.ClienteId, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
         return new ResultadoGravacao(saldo);
     }
 
@@ -72,7 +122,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
 
         await TravarClienteParaCreditoAsync(connection, transaction, gravacao, cancellationToken);
 
-        if (await ChecarSaldoAsync(connection, transaction, gravacao, cancellationToken) is { } falta)
+        if (await ChecarSaldoAsync(connection, transaction, gravacao, null, cancellationToken) is { } falta)
         {
             return new ResultadoGravacao([], falta); // sem Commit: o Dispose da transação faz rollback.
         }
@@ -332,12 +382,12 @@ public sealed class PostgresVendaRepository : IVendaRepository
     /// </summary>
     private static async Task<SaldoInsuficiente?> ChecarSaldoAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, VendaGravacao gravacao,
-        CancellationToken cancellationToken)
+        IReadOnlyDictionary<Guid, long>? reservaPropria, CancellationToken cancellationToken)
     {
         var saidas = gravacao.Itens
             .GroupBy(i => i.ProdutoMarcaId)
             .ToDictionary(g => g.Key, g => g.Sum(i => (long)i.Quantidade));
-        return await ChecagemEstoque.ChecarAsync(connection, transaction, saidas, cancellationToken);
+        return await ChecagemEstoque.ChecarAsync(connection, transaction, saidas, cancellationToken, reservaPropria);
     }
 
     // ---- privados -----------------------------------------------------------
@@ -831,6 +881,11 @@ public sealed class PostgresVendaRepository : IVendaRepository
             LEFT JOIN LATERAL (SELECT numero, emitido_em FROM cupons_fiscais
                                WHERE venda_id = v.id AND deleted_at IS NULL
                                ORDER BY emitido_em DESC LIMIT 1) cf ON true
+            """;
+
+        public const string ConcluirPedido = """
+            UPDATE pedidos SET status = 'CONCLUIDO', venda_id = @vendaId, concluido_em = COALESCE(@instante, now())
+            WHERE id = @pedidoId
             """;
 
         public const string InsertVenda = """

@@ -10,6 +10,7 @@ public sealed class VendaServiceLacunasTests
     private readonly FakeVendaRepository vendas;
     private readonly FakeVendaLookup lookup = new();
     private readonly FakeCupomFiscalRepository cupons = new();
+    private readonly FakePedidoRepository pedidos;
     private readonly VendaService sut;
 
     private readonly Guid clienteId = Guid.NewGuid();
@@ -21,7 +22,9 @@ public sealed class VendaServiceLacunasTests
     public VendaServiceLacunasTests()
     {
         vendas = new FakeVendaRepository(lookup.SaldosEstoque);
-        sut = new VendaService(vendas, lookup, cupons, new FakePermissaoLookup());
+        pedidos = new FakePedidoRepository(lookup.SaldosEstoque, vendas.Reservas);
+        vendas.Pedidos = pedidos;
+        sut = new VendaService(vendas, lookup, cupons, new FakePermissaoLookup(), pedidos);
         lookup.Clientes.Add(clienteId);
         lookup.Funcionarios.Add(funcionarioId);
         cascoG = lookup.AddTipoCasco(30m, aceitaSucata: true);

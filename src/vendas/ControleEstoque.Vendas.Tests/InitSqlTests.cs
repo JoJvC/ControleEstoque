@@ -178,6 +178,19 @@ public sealed class InitSqlTests
     }
 
     [Fact]
+    public void Pedidos_ConclusaoGuardaVendaEInstanteComAddColumnIfNotExistsDepoisDeVendas()
+    {
+        var sql = Ler();
+
+        Assert.Contains(
+            "ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS venda_id UUID UNIQUE REFERENCES vendas(id);", sql);
+        Assert.Contains("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS concluido_em TIMESTAMPTZ;", sql);
+        Assert.True(
+            sql.IndexOf("CREATE TABLE vendas (", StringComparison.Ordinal)
+            < sql.IndexOf("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS venda_id", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void PedidoItens_ReferenciaProdutoMarcaComQuantidadePositivaEDescontoComoVendaItens()
     {
         var sql = Ler();

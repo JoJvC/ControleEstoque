@@ -5,6 +5,14 @@ namespace ControleEstoque.Vendas.Domain;
 public interface IVendaService
 {
     Task<ResultadoVenda> CriarAsync(NovaVenda venda, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Conclui o pedido EM_ANDAMENTO em venda (mesmas validações e efeitos de <see cref="CriarAsync"/>), com itens e
+    /// pagamento da conclusão; o pedido vira CONCLUIDO na mesma transação e a reserva dele deixa de contar.
+    /// </summary>
+    Task<ResultadoVenda> ConcluirPedidoAsync(
+        Guid pedidoId, ConclusaoPedido conclusao, CancellationToken cancellationToken);
+
     Task<ResultadoVenda> EditarAsync(Guid vendaId, NovaVenda venda, CancellationToken cancellationToken);
 
     /// <summary>Cancela a venda; exige <c>vendas.cancelar</c> (ou <c>*</c>) e o caixa do dia da venda aberto.</summary>
@@ -26,41 +34,45 @@ public sealed class VendaService : IVendaService
     private readonly IVendaLookup lookup;
     private readonly ICupomFiscalRepository cupons;
     private readonly IPermissaoFuncionarioLookup permissoes;
+    private readonly IPedidoRepository pedidos;
     private readonly TimeProvider relogio;
 
     public VendaService(
         IVendaRepository vendas, IVendaLookup lookup, ICupomFiscalRepository cupons,
-        IPermissaoFuncionarioLookup permissoes, TimeProvider? relogio = null)
+        IPermissaoFuncionarioLookup permissoes, IPedidoRepository pedidos, TimeProvider? relogio = null)
     {
         this.vendas = vendas;
         this.lookup = lookup;
         this.cupons = cupons;
         this.permissoes = permissoes;
+        this.pedidos = pedidos;
         this.relogio = relogio ?? TimeProvider.System;
     }
 
     public async Task<ResultadoVenda> CriarAsync(NovaVenda venda, CancellationToken cancellationToken)
     {
-        var gravacao = await MontarGravacaoAsync(Guid.NewGuid(), venda, cancellationToken);
-        if (venda.CaixaId is { } caixaId)
-        {
-            Validacao.IdPreenchido(caixaId, "CaixaId");
-            var caixa = await lookup.GetCaixaAsync(caixaId, cancellationToken)
-                ?? throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", $"Caixa {caixaId} não encontrado.");
-            if (!caixa.Aberto)
-            {
-                throw new ConflictException("CAIXA_FECHADO", "Não é possível lançar venda em caixa fechado.");
-            }
+        var gravacao = await GravacaoComCaixaAsync(Guid.NewGuid(), venda, cancellationToken);
+        var gravado = await vendas.CriarAsync(gravacao, cancellationToken);
+        return await ToResultadoAsync(gravacao, gravado, cancellationToken);
+    }
 
-            // O repositório repete a checagem sob a trava do caixa.
-            gravacao = gravacao with
-            {
-                CaixaId = caixaId,
-                Instante = RelogioLancamento.InstanteDoLancamento(caixa.Data, relogio.GetUtcNow())
-            };
+    public async Task<ResultadoVenda> ConcluirPedidoAsync(
+        Guid pedidoId, ConclusaoPedido conclusao, CancellationToken cancellationToken)
+    {
+        // Só falha cedo; o repositório confere de novo, sob a trava do pedido.
+        var pedido = await pedidos.GetAsync(pedidoId, cancellationToken)
+            ?? throw new EntityNotFoundException("PEDIDO_NAO_ENCONTRADO", $"Pedido {pedidoId} não encontrado.");
+        if (!TransicoesPedido.PodeConcluir(pedido.Status))
+        {
+            throw new ConflictException("PEDIDO_STATUS_INVALIDO", $"Pedido {pedido.Status} não pode ser concluído.");
         }
 
-        var gravado = await vendas.CriarAsync(gravacao, cancellationToken);
+        var venda = new NovaVenda(
+            pedido.ClienteId, conclusao.FuncionarioId, pedido.EnderecoEntregaId, conclusao.Itens, conclusao.Vasilhames,
+            conclusao.Pagamentos, conclusao.CascosDevolvidos, conclusao.SucataEntregue, conclusao.Observacao,
+            conclusao.CaixaId);
+        var gravacao = await GravacaoComCaixaAsync(Guid.NewGuid(), venda, cancellationToken);
+        var gravado = await vendas.ConcluirPedidoAsync(pedidoId, gravacao, cancellationToken);
         return await ToResultadoAsync(gravacao, gravado, cancellationToken);
     }
 
@@ -175,6 +187,32 @@ public sealed class VendaService : IVendaService
         Validacao.IdPreenchido(produtoId, "ProdutoId");
         Validacao.IdPreenchido(marcaId, "MarcaId");
         return vendas.GetUltimoPrecoAsync(clienteId, produtoId, marcaId, cancellationToken);
+    }
+
+    /// <summary>Monta a gravação e, com <c>CaixaId</c>, confere o caixa e fixa o instante dele (criação e conclusão).</summary>
+    private async Task<VendaGravacao> GravacaoComCaixaAsync(
+        Guid vendaId, NovaVenda venda, CancellationToken cancellationToken)
+    {
+        var gravacao = await MontarGravacaoAsync(vendaId, venda, cancellationToken);
+        if (venda.CaixaId is not { } caixaId)
+        {
+            return gravacao;
+        }
+
+        Validacao.IdPreenchido(caixaId, "CaixaId");
+        var caixa = await lookup.GetCaixaAsync(caixaId, cancellationToken)
+            ?? throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", $"Caixa {caixaId} não encontrado.");
+        if (!caixa.Aberto)
+        {
+            throw new ConflictException("CAIXA_FECHADO", "Não é possível lançar venda em caixa fechado.");
+        }
+
+        // O repositório repete a checagem sob a trava do caixa.
+        return gravacao with
+        {
+            CaixaId = caixaId,
+            Instante = RelogioLancamento.InstanteDoLancamento(caixa.Data, relogio.GetUtcNow())
+        };
     }
 
     /// <summary>Valida o comando, resolve lookups e monta o modelo de gravação com os efeitos da venda.</summary>

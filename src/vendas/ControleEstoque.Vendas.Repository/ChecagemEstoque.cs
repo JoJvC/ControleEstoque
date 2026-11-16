@@ -33,10 +33,12 @@ internal static class ChecagemEstoque
     /// <summary>
     /// Trava as associações em ordem de id e, em outras instruções da mesma transação (READ COMMITTED), confere
     /// saldo − reservado − saída por associação. Na falta, devolve a primeira com o disponível em <c>Saldo</c>.
+    /// <paramref name="reservaPropria"/> (conclusão do pedido): a reserva do próprio pedido por associação, que sai do
+    /// reservado; nulo = comportamento normal.
     /// </summary>
     public static async Task<SaldoInsuficiente?> ChecarAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, IReadOnlyDictionary<Guid, long> saidas,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, IReadOnlyDictionary<Guid, long>? reservaPropria = null)
     {
         var ids = saidas.Keys.ToArray();
 
@@ -56,9 +58,11 @@ internal static class ChecagemEstoque
         {
             var saldo = saldos.GetValueOrDefault(produtoMarcaId);
             var reservado = reservados.GetValueOrDefault(produtoMarcaId);
-            if (EstoqueDisponivel.Falta(saldo, reservado, saida))
+            var propria = reservaPropria?.GetValueOrDefault(produtoMarcaId) ?? 0;
+            if (EstoqueDisponivel.FaltaNaConclusao(saldo, reservado, propria, saida))
             {
-                return new SaldoInsuficiente(produtoMarcaId, EstoqueDisponivel.Disponivel(saldo, reservado), saida);
+                return new SaldoInsuficiente(
+                    produtoMarcaId, EstoqueDisponivel.Disponivel(saldo, reservado - propria), saida);
             }
         }
 

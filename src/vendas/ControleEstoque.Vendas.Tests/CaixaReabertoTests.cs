@@ -12,6 +12,7 @@ public sealed class CaixaReabertoTests
     private readonly FakePermissaoLookup permissoes = new();
     private readonly FakeCupomFiscalRepository cupons = new();
     private readonly FakeVendaRepository vendas;
+    private readonly FakePedidoRepository pedidos;
     private readonly ProdutoVenda agua;
     private readonly Guid clienteId = Guid.NewGuid();
     private readonly Guid funcionarioId = Guid.NewGuid();
@@ -19,6 +20,7 @@ public sealed class CaixaReabertoTests
     public CaixaReabertoTests()
     {
         vendas = new FakeVendaRepository(lookup.SaldosEstoque);
+        pedidos = new FakePedidoRepository(lookup.SaldosEstoque, vendas.Reservas);
         lookup.Clientes.Add(clienteId);
         lookup.Funcionarios.Add(funcionarioId);
         agua = lookup.AddProduto(TipoProduto.DESCARTAVEL, "Carvão 5kg", 100);
@@ -27,7 +29,7 @@ public sealed class CaixaReabertoTests
     private static DateTimeOffset Em(int dia, int h, int m = 0) => new(2026, 11, dia, h, m, 0, Sp);
 
     private VendaService ServicoEm(DateTimeOffset agora) =>
-        new(vendas, lookup, cupons, permissoes, new RelogioFixo(agora));
+        new(vendas, lookup, cupons, permissoes, pedidos, new RelogioFixo(agora));
 
     private NovaVenda NovaVendaNoCaixa(Guid? caixaId, bool aPrazo = false) => new(
         clienteId, funcionarioId, null,

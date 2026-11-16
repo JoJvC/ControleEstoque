@@ -177,8 +177,24 @@ export function fiadoDe(liquido: number, pagamentos: readonly PagamentoEdicao[])
   return Math.max(0, centavos(liquido - totalPagoDe(pagamentos)));
 }
 
-export function pagamentoExcede(liquido: number, pagamentos: readonly PagamentoEdicao[]): boolean {
-  return totalPagoDe(pagamentos) > liquido;
+export interface SituacaoPagamento {
+  readonly tipo: 'fiado' | 'pago' | 'credito';
+  readonly valor: number;
+}
+
+/** Pago < líquido: fiado; pago = líquido (> 0): pago; pago > líquido: a sobra vira crédito do cliente. */
+export function situacaoPagamento(
+  liquido: number,
+  pagamentos: readonly PagamentoEdicao[],
+): SituacaoPagamento {
+  const pago = totalPagoDe(pagamentos);
+  if (pago > liquido) {
+    return { tipo: 'credito', valor: centavos(pago - liquido) };
+  }
+  if (pago < liquido) {
+    return { tipo: 'fiado', valor: fiadoDe(liquido, pagamentos) };
+  }
+  return { tipo: 'pago', valor: 0 };
 }
 
 // Saldo ainda a pagar de uma venda já gravada (pagamentos do detalhe); nunca negativo.

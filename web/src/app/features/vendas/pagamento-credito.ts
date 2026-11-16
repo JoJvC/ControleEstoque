@@ -24,24 +24,27 @@ export function limitarCredito(
 }
 
 /**
- * Limita as linhas de crédito ao disponível; sem crédito (null ou 0) a linha de crédito sai da lista,
+ * Limita a soma das linhas de crédito a min(disponível, líquido) (espelho de CREDITO_INSUFICIENTE e
+ * CREDITO_EXCEDE_TOTAL); sem crédito (null ou 0) a linha de crédito sai da lista,
  * para o crédito de um cliente nunca ir no pedido de outro nem ficar órfã com 0,00.
  */
 export function limitarPagamentos(
   pagamentos: readonly PagamentoEdicao[],
   creditoDisponivel: number | null,
+  liquido: number,
 ): readonly PagamentoEdicao[] {
   if (creditoDisponivel === null || creditoDisponivel <= 0) {
     return pagamentos.some((p) => p.forma === FORMA_CREDITO)
       ? pagamentos.filter((p) => p.forma !== FORMA_CREDITO)
       : pagamentos;
   }
+  const teto = Math.min(creditoDisponivel, liquido);
   let usado = 0;
   return pagamentos.map((p) => {
     if (p.forma !== FORMA_CREDITO || p.valor === null) {
       return p;
     }
-    const valor = limitarCredito(p.valor, creditoDisponivel, usado);
+    const valor = limitarCredito(p.valor, teto, usado);
     usado += valor;
     return valor === p.valor ? p : { ...p, valor };
   });

@@ -226,7 +226,8 @@ web/
                 └──────────────────────────────────────────────┘
 [4. Pagamento]  ce-pagamento-lista: N formas (PIX, crédito, débito,
                 dinheiro, outro), cada uma com valor; mostra ao vivo:
-                Total | Pago | "Vai para fiado: R$ X" (destaque --ce-warning)
+                Total | Pago | "Vai para fiado: R$ X" (destaque --ce-warning) |
+                "Sobra de R$ X vira crédito de <cliente>" (pago acima do total)
 [5. Revisão]    totais, saldo de casco resultante, confirmar
 Pós-registro:   tela de sucesso com StatusPagamento, SaldoCascoCliente,
                 atalho "Emitir cupom fiscal"
@@ -271,7 +272,7 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 
 ### Sprint F5 — PDV e Vendas (core do sistema) ✅ (concluída em 2026-11-13)
 - [x] `vendas-api.ts` + models; `VendaStore`
-- [x] PDV completo (Seção 6.3), incluindo: seção de cascos condicionada a item de ÁGUA; toggle "devolvidos na hora" (preenche e mantém editável); desconto por item com motivo obrigatório (validação client-side espelhando `DESCONTO_SEM_MOTIVO`); pagamentos N formas com faltante→fiado explícito; bloqueio client-side de `SUM(pagamentos) > total`
+- [x] PDV completo (Seção 6.3), incluindo: seção de cascos condicionada a item de ÁGUA; toggle "devolvidos na hora" (preenche e mantém editável); desconto por item com motivo obrigatório (validação client-side espelhando `DESCONTO_SEM_MOTIVO`); pagamentos N formas com faltante→fiado explícito; sobra do pagamento (`SUM(pagamentos) > total`) aceita e avisada como crédito do cliente
 - [x] Lista de vendas (filtros + paginação) e detalhe
 - [x] Edição de venda (mesmo form pré-carregado; `VENDA_JA_FATURADA` → tela somente leitura com aviso)
 - [x] Pagamento pós-venda (sheet no detalhe; 422 `PAGAMENTO_EXCEDE_SALDO` inline)
@@ -375,7 +376,7 @@ Pendente:
 
 4. **Desconto por item, motivo obrigatório.** O desconto fica no item (não no total) e o form não submete sem motivo. Exibir total bruto, desconto e líquido separados.
 
-5. **Faltante vira fiado — e o usuário precisa ver isso.** Na tela de pagamento, `total − SUM(pagamentos)` aparece ao vivo como "Vai para fiado: R$ X" em cor de alerta. Soma dos pagamentos acima do total é bloqueada no client (espelho do 400 `PAGAMENTO_EXCEDE_TOTAL`).
+5. **Faltante vira fiado — e o usuário precisa ver isso.** Na tela de pagamento, `total − SUM(pagamentos)` aparece ao vivo como "Vai para fiado: R$ X" em cor de alerta. Soma dos pagamentos acima do total não é bloqueada: a sobra aparece como "Sobra de R$ X vira crédito de <cliente>" (o servidor grava `CREDITO_SOBRA_VENDA`); só a forma `CREDITO_CLIENTE` é limitada a min(disponível, líquido).
 
 6. **Servidor é a fonte de verdade de saldos e status.** Cálculos locais servem só para feedback ao vivo; após qualquer escrita, a tela exibe o que o **response** trouxe (`statusPagamento`, `saldoCascoCliente`, `novoSaldoFiado`…) e re-consulta `GET /saldos` ao voltar ao cliente. Nunca manter contador local de estoque/casco/fiado.
 

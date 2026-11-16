@@ -53,7 +53,6 @@ import {
   itemNovo,
   itensDaUltimaVenda,
   mesmoItem,
-  pagamentoExcede,
   paraCreateVendaRequest,
   rascunhoDeVenda,
   totaisDe,
@@ -695,6 +694,8 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
     .grade__venda {
       position: sticky;
       top: calc(56px + env(safe-area-inset-top, 0px) + var(--ce-space-4));
+      // a coluna cabe na janela: o corpo do painel rola e o Confirmar fica no rodapé
+      max-height: calc(100dvh - 56px - env(safe-area-inset-top, 0px) - 2 * var(--ce-space-4));
     }
 
     .grade__total,
@@ -911,9 +912,6 @@ export class PdvPage implements OnInit {
   );
   protected readonly pago = computed(() => totalPagoDe(this.pagamentos()));
   protected readonly fiado = computed(() => fiadoDe(this.totais().liquido, this.pagamentos()));
-  protected readonly excede = computed(() =>
-    pagamentoExcede(this.totais().liquido, this.pagamentos()),
-  );
   // Feedback ao vivo (Regra 8.6): em venda nova com saldo carregado, o saldo do cliente por tipo entra
   // na conta; na edição o saldo já inclui a venda original, então só conta o casco desta venda.
   private readonly saldoBaseDeCascos = computed(() =>
@@ -965,8 +963,7 @@ export class PdvPage implements OnInit {
   });
 
   protected readonly podeRegistrar = computed(
-    () =>
-      this.enderecoOk() && !this.carrinhoVazio() && !this.excede() && !this.sucataPassaDoTotal(),
+    () => this.enderecoOk() && !this.carrinhoVazio() && !this.sucataPassaDoTotal(),
   );
 
   // Barra fixa do celular
@@ -1013,7 +1010,7 @@ export class PdvPage implements OnInit {
     clienteNome: this.saldoBaseDeCascos() === null ? null : (this.clienteSelecionado()?.nome ?? ''),
     pagamentos: this.pagamentos(),
     creditoDisponivel: this.creditoDisponivel(),
-    excede: this.excede(),
+    nomeDoCliente: this.clienteSelecionado()?.nome ?? '',
     erro: this.erro(),
     enviando: this.enviando(),
     podeRegistrar: this.podeRegistrar(),
@@ -1173,7 +1170,7 @@ export class PdvPage implements OnInit {
 
   // O crédito é do cliente: sem saldos carregados (troca ou remoção de cliente) a linha de crédito sai.
   private removerCredito(): void {
-    this.pagamentos.update((atual) => limitarPagamentos(atual, null));
+    this.pagamentos.update((atual) => limitarPagamentos(atual, null, 0));
   }
 
   private carregarSaldos(clienteId: string): void {
@@ -1182,7 +1179,9 @@ export class PdvPage implements OnInit {
         if (this.clienteSelecionado()?.id === clienteId) {
           this.saldos.set(saldos);
           // O crédito pode ter mudado: a linha de crédito não passa do que o servidor diz agora.
-          this.pagamentos.update((atual) => limitarPagamentos(atual, this.creditoDisponivel()));
+          this.pagamentos.update((atual) =>
+            limitarPagamentos(atual, this.creditoDisponivel(), this.totais().liquido),
+          );
         }
       },
       error: () => undefined, // sem saldo, os chips ficam ocultos; o resto da venda segue
@@ -1396,6 +1395,7 @@ export class PdvPage implements OnInit {
       produto,
       marca,
       existente,
+      clienteId: this.clienteSelecionado()?.id ?? null,
     });
     return firstValueFrom(ref.closed);
   }
@@ -1434,7 +1434,9 @@ export class PdvPage implements OnInit {
         this.alterarVasilhame(acao.tipoCascoId, acao.mudanca);
         break;
       case 'pagamentos':
-        this.pagamentos.set(limitarPagamentos(acao.valor, this.creditoDisponivel()));
+        this.pagamentos.set(
+          limitarPagamentos(acao.valor, this.creditoDisponivel(), this.totais().liquido),
+        );
         break;
       case 'atalho':
         this.aplicarAtalho(acao);
@@ -1471,6 +1473,7 @@ export class PdvPage implements OnInit {
           ? atual.map((p, i) => (i === indice ? { ...p, valor } : p))
           : [...atual, { forma: 'DINHEIRO', valor }],
         this.creditoDisponivel(),
+        this.totais().liquido,
       ),
     );
   }
@@ -1482,7 +1485,7 @@ export class PdvPage implements OnInit {
     const funcionarioId = original?.funcionarioId ?? this.operador.operator()?.id;
     const cliente = this.clienteSelecionado();
     const edicaoBloqueada = this.id() !== undefined && (!original || original.cupomEmitido);
-    if (this.enviando() || this.excede() || !funcionarioId || !cliente || edicaoBloqueada) {
+    if (this.enviando() || !funcionarioId || !cliente || edicaoBloqueada) {
       return;
     }
     this.enviando.set(true);

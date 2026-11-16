@@ -1,10 +1,13 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { formatDate } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 
 import { ProdutoMarcaResponse, ProdutoResponse } from '../../core/api/models/estoque';
 import { rotuloDaMarca } from '../../core/api/produto-leitura';
 import { TipoDesconto } from '../../core/api/models/vendas';
+import { VendasApi } from '../../core/api/vendas-api';
+import { ApiError } from '../../core/http/api-error';
 import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
 import { TextInput } from '../../ui/atoms/text-input';
@@ -19,6 +22,7 @@ export interface ItemVendaSheetDados {
   readonly produto: ProdutoResponse;
   readonly marca: ProdutoMarcaResponse;
   readonly existente: ItemCarrinho | null;
+  readonly clienteId: string | null;
 }
 
 /** Resultado: ItemCarrinho (adicionar/atualizar), 'remover' ou undefined (cancelou). */
@@ -52,6 +56,21 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
             <ce-money-input [formControl]="preco" />
           </ce-form-field>
         </div>
+
+        <ce-button
+          variante="ghost"
+          [block]="true"
+          [disabled]="dados.clienteId === null || semUltimoPreco()"
+          [loading]="buscandoUltimo()"
+          (click)="repetirUltimoPreco()"
+        >
+          Repetir último preço
+        </ce-button>
+        @if (dados.clienteId === null) {
+          <p class="dica">Escolha o cliente para repetir o último preço</p>
+        } @else if (avisoUltimo(); as aviso) {
+          <p class="dica">{{ aviso }}</p>
+        }
 
         <ce-checkbox [formControl]="comDesconto">Aplicar desconto neste item</ce-checkbox>
 
@@ -212,6 +231,11 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
       font-size: var(--ce-font-lg);
     }
 
+    .dica {
+      color: var(--ce-text-muted);
+      font-size: var(--ce-font-sm);
+    }
+
     .erro {
       color: var(--ce-danger);
       font-size: var(--ce-font-sm);
@@ -220,6 +244,7 @@ export type ItemVendaSheetResultado = ItemCarrinho | 'remover';
 })
 export class ItemVendaSheet {
   protected readonly ref = inject(DialogRef<ItemVendaSheetResultado>);
+  private readonly vendasApi = inject(VendasApi);
   protected readonly dados = inject<ItemVendaSheetDados>(DIALOG_DATA);
   protected readonly precoSugerido = this.dados.marca.precoReferencia;
   protected readonly titulo = `${this.dados.produto.nome} — ${rotuloDaMarca(this.dados.marca.marcaNome)}`;
@@ -253,6 +278,9 @@ export class ItemVendaSheet {
   });
 
   protected readonly erro = signal<string | null>(null);
+  protected readonly buscandoUltimo = signal(false);
+  protected readonly semUltimoPreco = signal(false);
+  protected readonly avisoUltimo = signal<string | null>(null);
 
   // sinais-espelho dos controls para os totais ao vivo
   private readonly quantidadeSig = signal(this.quantidade.value);
@@ -317,6 +345,34 @@ export class ItemVendaSheet {
     if (item !== null) {
       this.ref.close(item);
     }
+  }
+
+  protected repetirUltimoPreco(): void {
+    if (this.dados.clienteId === null) {
+      return;
+    }
+    this.buscandoUltimo.set(true);
+    this.avisoUltimo.set(null);
+    this.vendasApi
+      .ultimoPreco(this.dados.clienteId, this.dados.produto.id, this.dados.marca.marcaId)
+      .subscribe({
+        next: (ultimo) => {
+          this.buscandoUltimo.set(false);
+          if (ultimo === null) {
+            this.semUltimoPreco.set(true);
+            this.avisoUltimo.set('Nenhuma venda anterior deste produto para este cliente');
+            return;
+          }
+          this.preco.setValue(ultimo.precoUnitario);
+          this.avisoUltimo.set(`Última venda em ${formatDate(ultimo.data, 'dd/MM/yyyy', 'en-US')}`);
+        },
+        error: (e: unknown) => {
+          this.buscandoUltimo.set(false);
+          this.avisoUltimo.set(
+            e instanceof ApiError ? e.userMessage : 'Erro ao buscar o último preço.',
+          );
+        },
+      });
   }
 
   protected remover(): void {

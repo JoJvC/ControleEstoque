@@ -14,7 +14,7 @@ import {
   valorDoAtalho,
   fiadoDe,
   itensDaUltimaVenda,
-  pagamentoExcede,
+  situacaoPagamento,
   saldoAPagar,
   excedeSaldo,
   paraCreateVendaRequest,
@@ -167,10 +167,12 @@ describe('pagamentos', () => {
     expect(excedeSaldo(0.3, 0.1 + 0.2)).toBe(false);
   });
 
-  it('pagamentoExcede só quando pago > líquido', () => {
-    expect(pagamentoExcede(250, [pix(250)])).toBe(false);
-    expect(pagamentoExcede(250, [pix(250.01)])).toBe(true);
-    expect(pagamentoExcede(250, [pix(100), pix(151)])).toBe(true);
+  it('situacaoPagamento: fiado, pago, crédito e líquido 0', () => {
+    expect(situacaoPagamento(250, [pix(100)])).toEqual({ tipo: 'fiado', valor: 150 });
+    expect(situacaoPagamento(250, [pix(250)])).toEqual({ tipo: 'pago', valor: 0 });
+    expect(situacaoPagamento(50, [pix(60)])).toEqual({ tipo: 'credito', valor: 10 });
+    expect(situacaoPagamento(250, [pix(100), pix(151)])).toEqual({ tipo: 'credito', valor: 1 });
+    expect(situacaoPagamento(0, [])).toEqual({ tipo: 'pago', valor: 0 });
   });
 });
 

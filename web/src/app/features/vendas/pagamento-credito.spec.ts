@@ -49,9 +49,32 @@ describe('limitarPagamentos', () => {
       { forma: 'PIX', valor: 80 },
       { forma: 'CREDITO_CLIENTE', valor: 80 },
     ];
-    expect(limitarPagamentos(linhas, 30)).toEqual([
+    expect(limitarPagamentos(linhas, 30, 100)).toEqual([
       { forma: 'PIX', valor: 80 },
       { forma: 'CREDITO_CLIENTE', valor: 30 },
+    ]);
+  });
+
+  it('limita ao líquido quando o disponível é maior', () => {
+    expect(limitarPagamentos([{ forma: 'CREDITO_CLIENTE', valor: 70 }], 80, 50)).toEqual([
+      { forma: 'CREDITO_CLIENTE', valor: 50 },
+    ]);
+  });
+
+  it('limita ao disponível quando ele é menor que o líquido', () => {
+    expect(limitarPagamentos([{ forma: 'CREDITO_CLIENTE', valor: 70 }], 30, 50)).toEqual([
+      { forma: 'CREDITO_CLIENTE', valor: 30 },
+    ]);
+  });
+
+  it('reparte o crédito entre duas linhas sem passar do líquido', () => {
+    const linhas = [
+      { forma: 'CREDITO_CLIENTE', valor: 30 },
+      { forma: 'CREDITO_CLIENTE', valor: 40 },
+    ];
+    expect(limitarPagamentos(linhas, 80, 50)).toEqual([
+      { forma: 'CREDITO_CLIENTE', valor: 30 },
+      { forma: 'CREDITO_CLIENTE', valor: 20 },
     ]);
   });
 
@@ -60,12 +83,14 @@ describe('limitarPagamentos', () => {
       { forma: 'PIX', valor: 20 },
       { forma: 'CREDITO_CLIENTE', valor: 5 },
     ];
-    expect(limitarPagamentos(linhas, null)).toEqual([{ forma: 'PIX', valor: 20 }]);
-    expect(limitarPagamentos(linhas, 0)).toEqual([{ forma: 'PIX', valor: 20 }]);
+    expect(limitarPagamentos(linhas, null, 100)).toEqual([{ forma: 'PIX', valor: 20 }]);
+    expect(limitarPagamentos(linhas, 0, 100)).toEqual([{ forma: 'PIX', valor: 20 }]);
   });
 
   it('linha de crédito sem valor digitado fica quando há crédito', () => {
-    expect(limitarPagamentos([{ forma: 'CREDITO_CLIENTE', valor: null }], 30)[0].valor).toBeNull();
+    expect(
+      limitarPagamentos([{ forma: 'CREDITO_CLIENTE', valor: null }], 30, 100)[0].valor,
+    ).toBeNull();
   });
 });
 

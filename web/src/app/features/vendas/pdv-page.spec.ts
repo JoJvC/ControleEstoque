@@ -506,6 +506,7 @@ describe('PdvPage: venda em uma tela', () => {
       produto: AGUA,
       marca: AGUA.marcas[0],
       existente: itemDe(AGUA, 2),
+      clienteId: 'c-1',
     });
     expect(t.texto(t.linha(AGUA))).toContain('preço editado');
     expect(t.barra()).toContain('R$ 90,00');
@@ -529,6 +530,7 @@ describe('PdvPage: venda em uma tela', () => {
       produto: GALAO,
       marca: GALAO.marcas[0],
       existente: null,
+      clienteId: 'c-1',
     });
   });
 
@@ -918,7 +920,7 @@ describe('PdvPage: cobrar no desktop (painel à direita)', () => {
     await t.depoisDoPost();
   });
 
-  it('formas, valor e atalhos Tudo, Metade e Tudo fiado sempre visíveis; "Vai para fiado: R$ X" muda ao digitar; acima do total bloqueia', async () => {
+  it('formas, valor e atalhos Tudo, Metade e Tudo fiado sempre visíveis; "Vai para fiado: R$ X" muda ao digitar; acima do total vira crédito', async () => {
     const t = await comAguas(5);
     expect(t.exato(t.painel(), 'Dinheiro')).toHaveLength(1);
     expect(t.exato(t.painel(), 'PIX')).toHaveLength(1);
@@ -936,8 +938,9 @@ describe('PdvPage: cobrar no desktop (painel à direita)', () => {
     expect(t.texto(t.painel())).toMatch(/Vai para fiado: R\$ 50,00/);
 
     await t.digitar(t.campoDoPainel('.forma-linha ce-money-input input'), '30000');
-    expect(t.alertas()).toContain('A soma dos pagamentos ultrapassa o total da venda.');
-    expect(t.botaoEm(t.painel(), 'Confirmar venda').disabled).toBe(true);
+    expect(t.alertas()).toEqual([]);
+    expect(t.texto(t.painel())).toContain('Sobra de R$ 50,00 vira crédito de Ana');
+    expect(t.botaoEm(t.painel(), 'Confirmar venda').disabled).toBe(false);
 
     t.exato(t.painel(), 'Metade')[0].click();
     await assentar(t.fixture);
@@ -1095,6 +1098,26 @@ describe('PdvPage: cobrar no desktop (painel à direita)', () => {
     await assentar(t.fixture);
 
     expect(t.valores()).toEqual(['', '250,00']);
+  });
+
+  it('Confirmar com pagamento acima do total envia os pagamentos como estão', async () => {
+    const t = await comAguas(5);
+    await t.digitar(t.campoDoPainel('.forma-linha ce-money-input input'), '30000');
+
+    t.painel().querySelector<HTMLElement>('[data-testid="confirmar-venda"]')!.click();
+    await assentar(t.fixture);
+    const req = t.http.expectOne(URL_VENDAS);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body.pagamentos).toEqual([{ forma: 'DINHEIRO', valor: 300 }]);
+  });
+
+  it('no desktop o Confirmar fica fora da região que rola', async () => {
+    const t = await comAguas(5);
+    const confirmar = t.painel().querySelector('[data-testid="confirmar-venda"]');
+
+    expect(t.painel().querySelector('[data-rolagem]')).not.toBeNull();
+    expect(confirmar).not.toBeNull();
+    expect(confirmar!.closest('[data-rolagem]')).toBeNull();
   });
 
   it('o painel mostra "Total" uma única vez', async () => {
@@ -1607,7 +1630,7 @@ describe('PdvPage em modo edição', () => {
     return t;
   }
 
-  it('teto do crédito na edição: saldo 20 + estorno da venda (20 de crédito + 60 de fiado) = 100', async () => {
+  it('teto do crédito na edição: saldo 20 + estorno da venda (20 de crédito + 60 de fiado) = 100, limitado ao líquido (95)', async () => {
     const t = await montar('v-1');
     t.http.expectOne(`${URL_VENDAS}/v-1`).flush({
       ...VENDA_EDICAO,
@@ -1625,7 +1648,7 @@ describe('PdvPage em modo edição', () => {
 
     expect(t.valores()).toEqual(['20,00']);
     await t.digitar(t.campoDoPainel('.forma-linha ce-money-input input'), '15000');
-    expect(t.valores()).toEqual(['100,00']);
+    expect(t.valores()).toEqual(['95,00']);
   });
 
   async function responderLista(t: T) {
@@ -1850,6 +1873,7 @@ describe('PdvPage: busca com sugestão', () => {
       produto: AGUA_2,
       marca: AGUA_2.marcas[1],
       existente: null,
+      clienteId: expect.anything(),
     });
   });
 

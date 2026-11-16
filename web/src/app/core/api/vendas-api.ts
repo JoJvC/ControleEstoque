@@ -1,12 +1,13 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 
 import { ConfigStore } from '../config/app-config';
 import {
   AddPagamentoRequest,
   CreateVendaRequest,
   CupomFiscalResponse,
+  UltimoPrecoResponse,
   VendaDetalheResponse,
   VendaResponse,
 } from './models/vendas';
@@ -61,6 +62,24 @@ export class VendasApi {
       params = params.set('pageSize', filtros.pageSize);
     }
     return this.http.get<VendaDetalheResponse[]>(`${this.base}/vendas`, { params });
+  }
+
+  /** Preço unitário da última venda do cliente para o produto/marca; 204 (sem venda anterior) vira null. */
+  ultimoPreco(
+    clienteId: string,
+    produtoId: string,
+    marcaId: string,
+  ): Observable<UltimoPrecoResponse | null> {
+    const params = new HttpParams()
+      .set('clienteId', clienteId)
+      .set('produtoId', produtoId)
+      .set('marcaId', marcaId);
+    return this.http
+      .get<UltimoPrecoResponse>(`${this.base}/vendas/ultimo-preco`, {
+        params,
+        observe: 'response',
+      })
+      .pipe(map((r) => (r.status === 204 ? null : r.body)));
   }
 
   adicionarPagamento(id: string, request: AddPagamentoRequest): Observable<VendaResponse> {

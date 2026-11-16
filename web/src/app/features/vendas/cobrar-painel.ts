@@ -11,7 +11,6 @@ import {
 import { FormsModule } from '@angular/forms';
 
 import { rotuloDaMarca } from '../../core/api/produto-leitura';
-import { mensagemDoErro } from '../../core/http/error-messages';
 import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
 import { Icon } from '../../ui/atoms/icon';
@@ -25,7 +24,7 @@ import {
   ItemCarrinho,
   TotaisCarrinho,
   VasilhameCarrinho,
-  fiadoDe,
+  situacaoPagamento,
   rotuloCascoNaRua,
   totalItemDe,
   valorDescontoDe,
@@ -76,7 +75,8 @@ export interface CobrarEstado {
   readonly pagamentos: readonly PagamentoEdicao[];
   /** Crédito do cliente da venda; null sem cliente ou sem saldos carregados. */
   readonly creditoDisponivel: number | null;
-  readonly excede: boolean;
+  /** Nome do cliente da venda: a sobra do pagamento vira crédito dele. */
+  readonly nomeDoCliente: string;
   readonly erro: string | null;
   readonly enviando: boolean;
   readonly podeRegistrar: boolean;
@@ -106,238 +106,261 @@ export type CobrarAcao =
   template: `
     @let e = estado();
     <div class="painel">
-      <div class="linhas">
-        @for (item of e.itens; track $index) {
-          <div class="linha">
-            <span>
-              {{ item.quantidade }}× {{ item.produto.nome }} —
-              {{ rotuloMarca(item.marca.marcaNome) }}
-              @if (item.desconto) {
-                <span class="desconto">
-                  desc. {{ descontoDe(item) | cePreco }}
-                  @if (item.desconto.motivo) {
-                    · {{ item.desconto.motivo }}
-                  }
-                </span>
-              }
-            </span>
-            <span class="valor">{{ totalDe(item) | cePreco }}</span>
-          </div>
-        }
-      </div>
-
-      <dl class="totais">
-        <div class="totais__linha">
-          <dt>Bruto</dt>
-          <dd>{{ e.totais.bruto | cePreco }}</dd>
-        </div>
-        @if (e.totais.desconto - e.descontoSucata > 0) {
-          <div class="totais__linha">
-            <dt>Desconto (por item)</dt>
-            <dd>− {{ e.totais.desconto - e.descontoSucata | cePreco }}</dd>
-          </div>
-        }
-        @if (e.descontoSucata > 0) {
-          <div class="totais__linha">
-            <dt>Desconto da sucata</dt>
-            <dd>− {{ e.descontoSucata | cePreco }}</dd>
-          </div>
-        }
-        <div class="totais__linha totais__linha--total">
-          <dt>Total</dt>
-          <dd>{{ e.totais.liquido | cePreco }}</dd>
-        </div>
-      </dl>
-
-      @if (e.vasilhames.length > 0) {
-        <section class="vasilhame" aria-label="Vasilhames">
-          <h3 class="titulo"><ce-icon nome="casco" [tamanho]="20" /> Vasilhames comprados agora</h3>
-          @for (v of e.vasilhames; track v.tipoCascoId) {
-            <ce-form-field [rotulo]="'Vasilhame ' + v.nome">
-              <ce-quantity-stepper
-                [rotulo]="'Quantidade de Vasilhame ' + v.nome"
-                [item]="'Vasilhame ' + v.nome"
-                [ngModel]="v.quantidade"
-                (ngModelChange)="mudarVasilhame(v.tipoCascoId, { quantidade: $event })"
-              />
-              <ce-money-input
-                [rotulo]="'Valor unitário de Vasilhame ' + v.nome"
-                [ngModel]="v.precoUnitario"
-                (ngModelChange)="mudarVasilhame(v.tipoCascoId, { precoUnitario: $event ?? 0 })"
-              />
-            </ce-form-field>
-            @if (v.escolhaModo) {
-              <div class="modos" role="group" [attr.aria-label]="'Crédito de ' + v.nome">
-                @for (m of modos; track m.valor) {
-                  <button
-                    type="button"
-                    class="forma"
-                    [class.forma--ativa]="v.modo === m.valor"
-                    [attr.aria-pressed]="v.modo === m.valor"
-                    (click)="mudarVasilhame(v.tipoCascoId, { modo: m.valor })"
-                  >
-                    {{ m.rotulo }}
-                  </button>
+      <div class="corpo" data-rolagem>
+        <div class="linhas">
+          @for (item of e.itens; track $index) {
+            <div class="linha">
+              <span>
+                {{ item.quantidade }}× {{ item.produto.nome }} —
+                {{ rotuloMarca(item.marca.marcaNome) }}
+                @if (item.desconto) {
+                  <span class="desconto">
+                    desc. {{ descontoDe(item) | cePreco }}
+                    @if (item.desconto.motivo) {
+                      · {{ item.desconto.motivo }}
+                    }
+                  </span>
                 }
-              </div>
-            }
-            <p class="vasilhame__total">
-              {{ v.nome }}: {{ v.total | cePreco }}
-              @if (v.abatida > 0) {
-                <span class="dica">· {{ v.abatida }} abatido(s) do crédito</span>
-              }
-            </p>
+              </span>
+              <span class="valor">{{ totalDe(item) | cePreco }}</span>
+            </div>
           }
-          <p class="vasilhame__total">Total dos vasilhames: {{ e.totalVasilhames | cePreco }}</p>
-        </section>
-      }
+        </div>
 
-      @if (e.cascos.length > 0) {
-        <section class="casco" aria-label="Cascos">
-          <h3 class="titulo">
-            <ce-icon nome="casco-na-rua" [tamanho]="20" /> Cascos devolvidos agora
-          </h3>
-          <ce-checkbox
-            [ngModel]="e.cascosNaHora"
-            (ngModelChange)="acao.emit({ tipo: 'naHora', valor: $event })"
-          >
-            Devolveu todos na hora
-          </ce-checkbox>
-          @for (c of e.cascos; track c.tipoCascoId) {
-            <ce-form-field [rotulo]="'Cascos devolvidos — ' + c.nome">
-              <ce-quantity-stepper
-                [rotulo]="'Cascos devolvidos de ' + c.nome"
-                [ngModel]="c.devolvidos"
-                [disabled]="c.travado"
-                (ngModelChange)="
-                  acao.emit({ tipo: 'cascos', tipoCascoId: c.tipoCascoId, valor: $event })
-                "
-              />
-            </ce-form-field>
-            <p class="casco__rua" role="status">
-              {{ c.nome }}: {{ rotuloCascoNaRua(c.naRua, c.aMais, e.clienteNome) }}
-            </p>
+        <dl class="totais">
+          <div class="totais__linha">
+            <dt>Bruto</dt>
+            <dd>{{ e.totais.bruto | cePreco }}</dd>
+          </div>
+          @if (e.totais.desconto - e.descontoSucata > 0) {
+            <div class="totais__linha">
+              <dt>Desconto (por item)</dt>
+              <dd>− {{ e.totais.desconto - e.descontoSucata | cePreco }}</dd>
+            </div>
           }
-        </section>
-        @if (temSucata(e)) {
-          <section class="sucata" aria-label="Sucata">
-            <h3 class="titulo"><ce-icon nome="sucata" [tamanho]="20" /> Sucata entregue agora</h3>
-            @for (c of e.cascos; track c.tipoCascoId) {
-              @if (c.aceitaSucata) {
-                <ce-form-field
-                  [rotulo]="'Sucata entregue — ' + c.nome"
-                  dica="Contagem própria, em separado dos cascos. Desconto por unidade em R$."
-                >
-                  <ce-quantity-stepper
-                    [rotulo]="'Sucata entregue de ' + c.nome"
-                    [ngModel]="c.sucata"
-                    (ngModelChange)="
-                      acao.emit({ tipo: 'sucata', tipoCascoId: c.tipoCascoId, valor: $event })
-                    "
-                  />
-                  <ce-money-input
-                    [rotulo]="'Desconto por unidade de sucata de ' + c.nome"
-                    [ngModel]="c.valorSucata"
-                    (ngModelChange)="
-                      acao.emit({
-                        tipo: 'sucataValor',
-                        tipoCascoId: c.tipoCascoId,
-                        valor: $event ?? 0,
-                      })
-                    "
-                  />
-                </ce-form-field>
+          @if (e.descontoSucata > 0) {
+            <div class="totais__linha">
+              <dt>Desconto da sucata</dt>
+              <dd>− {{ e.descontoSucata | cePreco }}</dd>
+            </div>
+          }
+          <div class="totais__linha totais__linha--total">
+            <dt>Total</dt>
+            <dd>{{ e.totais.liquido | cePreco }}</dd>
+          </div>
+        </dl>
+
+        @if (e.vasilhames.length > 0) {
+          <section class="vasilhame" aria-label="Vasilhames">
+            <h3 class="titulo">
+              <ce-icon nome="casco" [tamanho]="20" /> Vasilhames comprados agora
+            </h3>
+            @for (v of e.vasilhames; track v.tipoCascoId) {
+              <ce-form-field [rotulo]="'Vasilhame ' + v.nome">
+                <ce-quantity-stepper
+                  [rotulo]="'Quantidade de Vasilhame ' + v.nome"
+                  [item]="'Vasilhame ' + v.nome"
+                  [ngModel]="v.quantidade"
+                  (ngModelChange)="mudarVasilhame(v.tipoCascoId, { quantidade: $event })"
+                />
+                <ce-money-input
+                  [rotulo]="'Valor unitário de Vasilhame ' + v.nome"
+                  [ngModel]="v.precoUnitario"
+                  (ngModelChange)="mudarVasilhame(v.tipoCascoId, { precoUnitario: $event ?? 0 })"
+                />
+              </ce-form-field>
+              @if (v.escolhaModo) {
+                <div class="modos" role="group" [attr.aria-label]="'Crédito de ' + v.nome">
+                  @for (m of modos; track m.valor) {
+                    <button
+                      type="button"
+                      class="forma"
+                      [class.forma--ativa]="v.modo === m.valor"
+                      [attr.aria-pressed]="v.modo === m.valor"
+                      (click)="mudarVasilhame(v.tipoCascoId, { modo: m.valor })"
+                    >
+                      {{ m.rotulo }}
+                    </button>
+                  }
+                </div>
               }
-            }
-            <p class="sucata__total">Desconto da sucata: {{ e.descontoSucata | cePreco }}</p>
-            @if (e.sucataExcede) {
-              <p class="erro" role="alert">
-                O desconto da sucata passa do total da venda. Reduza o valor ou a quantidade.
+              <p class="vasilhame__total">
+                {{ v.nome }}: {{ v.total | cePreco }}
+                @if (v.abatida > 0) {
+                  <span class="dica">· {{ v.abatida }} abatido(s) do crédito</span>
+                }
               </p>
             }
-            <p class="sucata__aviso">
-              <ce-icon nome="info" [tamanho]="18" /> Sucata não abate o débito de casco.
-            </p>
+            <p class="vasilhame__total">Total dos vasilhames: {{ e.totalVasilhames | cePreco }}</p>
           </section>
         }
-      }
 
-      <h3 class="titulo">Pagamento</h3>
-      <div class="formas" role="group" aria-label="Formas de pagamento">
-        @for (forma of formas(); track forma.value) {
+        @if (e.cascos.length > 0) {
+          <section class="casco" aria-label="Cascos">
+            <h3 class="titulo">
+              <ce-icon nome="casco-na-rua" [tamanho]="20" /> Cascos devolvidos agora
+            </h3>
+            <ce-checkbox
+              [ngModel]="e.cascosNaHora"
+              (ngModelChange)="acao.emit({ tipo: 'naHora', valor: $event })"
+            >
+              Devolveu todos na hora
+            </ce-checkbox>
+            @for (c of e.cascos; track c.tipoCascoId) {
+              <ce-form-field [rotulo]="'Cascos devolvidos — ' + c.nome">
+                <ce-quantity-stepper
+                  [rotulo]="'Cascos devolvidos de ' + c.nome"
+                  [ngModel]="c.devolvidos"
+                  [disabled]="c.travado"
+                  (ngModelChange)="
+                    acao.emit({ tipo: 'cascos', tipoCascoId: c.tipoCascoId, valor: $event })
+                  "
+                />
+              </ce-form-field>
+              <p class="casco__rua" role="status">
+                {{ c.nome }}: {{ rotuloCascoNaRua(c.naRua, c.aMais, e.clienteNome) }}
+              </p>
+            }
+          </section>
+          @if (temSucata(e)) {
+            <section class="sucata" aria-label="Sucata">
+              <h3 class="titulo"><ce-icon nome="sucata" [tamanho]="20" /> Sucata entregue agora</h3>
+              @for (c of e.cascos; track c.tipoCascoId) {
+                @if (c.aceitaSucata) {
+                  <ce-form-field
+                    [rotulo]="'Sucata entregue — ' + c.nome"
+                    dica="Contagem própria, em separado dos cascos. Desconto por unidade em R$."
+                  >
+                    <ce-quantity-stepper
+                      [rotulo]="'Sucata entregue de ' + c.nome"
+                      [ngModel]="c.sucata"
+                      (ngModelChange)="
+                        acao.emit({ tipo: 'sucata', tipoCascoId: c.tipoCascoId, valor: $event })
+                      "
+                    />
+                    <ce-money-input
+                      [rotulo]="'Desconto por unidade de sucata de ' + c.nome"
+                      [ngModel]="c.valorSucata"
+                      (ngModelChange)="
+                        acao.emit({
+                          tipo: 'sucataValor',
+                          tipoCascoId: c.tipoCascoId,
+                          valor: $event ?? 0,
+                        })
+                      "
+                    />
+                  </ce-form-field>
+                }
+              }
+              <p class="sucata__total">Desconto da sucata: {{ e.descontoSucata | cePreco }}</p>
+              @if (e.sucataExcede) {
+                <p class="erro" role="alert">
+                  O desconto da sucata passa do total da venda. Reduza o valor ou a quantidade.
+                </p>
+              }
+              <p class="sucata__aviso">
+                <ce-icon nome="info" [tamanho]="18" /> Sucata não abate o débito de casco.
+              </p>
+            </section>
+          }
+        }
+
+        <h3 class="titulo">Pagamento</h3>
+        <div class="formas" role="group" aria-label="Formas de pagamento">
+          @for (forma of formas(); track forma.value) {
+            <button
+              type="button"
+              class="forma"
+              [class.forma--ativa]="selecionada(forma.value)"
+              [attr.aria-pressed]="selecionada(forma.value)"
+              (click)="alternarForma(forma.value)"
+            >
+              {{ forma.label }}
+            </button>
+          }
+        </div>
+        @for (pagamento of e.pagamentos; track pagamento.forma; let indice = $index) {
+          <div class="forma-linha">
+            <span class="forma-linha__rotulo">{{ rotuloDe(pagamento.forma) }}</span>
+            <ce-money-input
+              class="forma-linha__campo"
+              [rotulo]="'Valor em ' + rotuloDe(pagamento.forma)"
+              [ngModel]="pagamento.valor"
+              [maximo]="pagamento.forma === formaCredito ? (e.creditoDisponivel ?? 0) : null"
+              (ngModelChange)="mudarValor(indice, $event)"
+            />
+          </div>
+        }
+        <ce-button variante="ghost" [disabled]="!temOutraForma()" (click)="outraForma()">
+          <ce-icon nome="mais" [tamanho]="18" /> Outra forma
+        </ce-button>
+        <div class="atalhos">
+          <button type="button" class="atalho" (click)="atalhoDe('tudo')">Tudo</button>
+          <button type="button" class="atalho" (click)="atalhoDe('metade')">Metade</button>
           <button
             type="button"
-            class="forma"
-            [class.forma--ativa]="selecionada(forma.value)"
-            [attr.aria-pressed]="selecionada(forma.value)"
-            (click)="alternarForma(forma.value)"
+            class="atalho atalho--fiado"
+            (click)="acao.emit({ tipo: 'tudoFiado' })"
           >
-            {{ forma.label }}
+            Tudo fiado
           </button>
-        }
-      </div>
-      @for (pagamento of e.pagamentos; track pagamento.forma; let indice = $index) {
-        <div class="forma-linha">
-          <span class="forma-linha__rotulo">{{ rotuloDe(pagamento.forma) }}</span>
-          <ce-money-input
-            class="forma-linha__campo"
-            [rotulo]="'Valor em ' + rotuloDe(pagamento.forma)"
-            [ngModel]="pagamento.valor"
-            [maximo]="pagamento.forma === formaCredito ? (e.creditoDisponivel ?? 0) : null"
-            (ngModelChange)="mudarValor(indice, $event)"
-          />
         </div>
-      }
-      <ce-button variante="ghost" [disabled]="!temOutraForma()" (click)="outraForma()">
-        <ce-icon nome="mais" [tamanho]="18" /> Outra forma
-      </ce-button>
-      <div class="atalhos">
-        <button type="button" class="atalho" (click)="atalhoDe('tudo')">Tudo</button>
-        <button type="button" class="atalho" (click)="atalhoDe('metade')">Metade</button>
-        <button
-          type="button"
-          class="atalho atalho--fiado"
-          (click)="acao.emit({ tipo: 'tudoFiado' })"
-        >
-          Tudo fiado
-        </button>
-      </div>
-      @if (!e.excede) {
-        @let fiado = fiadoDe(e.totais.liquido, e.pagamentos);
-        @if (fiado > 0) {
-          <p class="resumo resumo--fiado" role="status">Vai para fiado: {{ fiado | cePreco }}</p>
+        @let situacao = situacaoPagamento(e.totais.liquido, e.pagamentos);
+        @if (situacao.tipo === 'fiado') {
+          <p class="resumo resumo--fiado" role="status">
+            Vai para fiado: {{ situacao.valor | cePreco }}
+          </p>
+        } @else if (situacao.tipo === 'credito') {
+          <p class="resumo resumo--pago" role="status">
+            Sobra de {{ situacao.valor | cePreco }} vira crédito de {{ e.nomeDoCliente }}
+          </p>
         } @else if (e.totais.liquido > 0) {
           <p class="resumo resumo--pago" role="status">Pago por completo</p>
         }
-      }
-      @if (e.excede) {
-        <p class="erro" role="alert">{{ mensagemExcede }}</p>
-      }
-      @if (e.erro; as mensagem) {
-        <p class="erro" role="alert">{{ mensagem }}</p>
-      }
-
-      <ce-button
-        [block]="true"
-        [loading]="e.enviando"
-        [disabled]="!e.podeRegistrar"
-        (click)="acao.emit({ tipo: 'registrar' })"
-      >
-        {{ e.rotuloConfirmar }} · {{ e.totais.liquido | cePreco }}
-      </ce-button>
+        @if (e.erro; as mensagem) {
+          <p class="erro" role="alert">{{ mensagem }}</p>
+        }
+      </div>
+      <div class="rodape">
+        <ce-button
+          data-testid="confirmar-venda"
+          [block]="true"
+          [loading]="e.enviando"
+          [disabled]="!e.podeRegistrar"
+          (click)="acao.emit({ tipo: 'registrar' })"
+        >
+          {{ e.rotuloConfirmar }} · {{ e.totais.liquido | cePreco }}
+        </ce-button>
+      </div>
     </div>
   `,
   styles: `
     @use 'mixins';
 
+    // Em coluna com altura limitada (desktop) só o .corpo rola; o .rodape com o botão fica sempre à vista.
     :host {
-      display: block;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
 
     .painel {
       display: flex;
       flex-direction: column;
       gap: var(--ce-space-3);
+      min-height: 0;
+    }
+
+    .corpo {
+      display: flex;
+      flex-direction: column;
+      gap: var(--ce-space-3);
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .rodape {
+      flex: none;
     }
 
     .linhas {
@@ -526,10 +549,9 @@ export class CobrarPainel {
   readonly estado = input.required<CobrarEstado>();
   readonly acao = output<CobrarAcao>();
 
-  protected readonly mensagemExcede = mensagemDoErro('PAGAMENTO_EXCEDE_TOTAL', 422);
   protected readonly formas = computed(() => formasDaVenda(this.estado().creditoDisponivel));
   protected readonly formaCredito = FORMA_CREDITO;
-  protected readonly fiadoDe = fiadoDe;
+  protected readonly situacaoPagamento = situacaoPagamento;
   protected readonly rotuloCascoNaRua = rotuloCascoNaRua;
   protected readonly rotuloMarca = rotuloDaMarca;
   protected readonly descontoDe = valorDescontoDe;
@@ -594,7 +616,7 @@ export class CobrarPainel {
   }
 
   protected mudarValor(indice: number, valor: number | null): void {
-    const { pagamentos, creditoDisponivel } = this.estado();
+    const { pagamentos, creditoDisponivel, totais } = this.estado();
     this.acao.emit({
       tipo: 'pagamentos',
       valor: pagamentos.map((p, i) => {
@@ -604,7 +626,10 @@ export class CobrarPainel {
         if (p.forma !== FORMA_CREDITO || valor === null) {
           return { ...p, valor };
         }
-        return { ...p, valor: limitarCredito(valor, creditoDisponivel ?? 0, 0) };
+        return {
+          ...p,
+          valor: limitarCredito(valor, Math.min(creditoDisponivel ?? 0, totais.liquido), 0),
+        };
       }),
     });
   }

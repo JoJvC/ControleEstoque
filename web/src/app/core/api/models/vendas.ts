@@ -76,6 +76,12 @@ export interface VendaResponse {
   saldoCascoClientePorTipo: SaldoCascoPorTipoResponse[];
 }
 
+export interface UltimoPrecoResponse {
+  vendaId: string;
+  data: string;
+  precoUnitario: number;
+}
+
 export interface SaldoCascoPorTipoResponse {
   tipoCascoId: string;
   nome: string;

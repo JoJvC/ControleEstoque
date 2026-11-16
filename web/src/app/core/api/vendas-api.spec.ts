@@ -172,4 +172,28 @@ describe('VendasApi', () => {
       expect(resp).toEqual([{ funcionarioId: 'f1' }]);
     });
   });
+
+  describe('ultimoPreco', () => {
+    const URL = `${BASE}/ultimo-preco`;
+
+    it('envia clienteId, produtoId e marcaId e devolve o corpo no 200', () => {
+      let resp: unknown;
+      api.ultimoPreco('c-1', 'p-1', 'm-1').subscribe((r) => (resp = r));
+      const req = http.expectOne((r) => r.url === URL);
+      expect(req.request.method).toBe('GET');
+      expect(req.request.params.get('clienteId')).toBe('c-1');
+      expect(req.request.params.get('produtoId')).toBe('p-1');
+      expect(req.request.params.get('marcaId')).toBe('m-1');
+      const corpo = { vendaId: 'v-1', data: '2026-11-01T10:00:00', precoUnitario: 12 };
+      req.flush(corpo);
+      expect(resp).toEqual(corpo);
+    });
+
+    it('204 devolve null', () => {
+      let resp: unknown = 'pendente';
+      api.ultimoPreco('c-1', 'p-1', 'm-1').subscribe((r) => (resp = r));
+      http.expectOne((r) => r.url === URL).flush(null, { status: 204, statusText: 'No Content' });
+      expect(resp).toBeNull();
+    });
+  });
 });

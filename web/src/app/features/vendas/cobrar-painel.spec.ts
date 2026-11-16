@@ -58,7 +58,7 @@ const ESTADO: CobrarEstado = {
   clienteNome: 'Ana',
   pagamentos: [{ forma: 'PIX', valor: 200 }],
   creditoDisponivel: null,
-  excede: false,
+  nomeDoCliente: 'Ana',
   erro: null,
   enviando: false,
   podeRegistrar: true,
@@ -245,16 +245,22 @@ describe('CobrarPainel', () => {
     expect(t.campo('.casco ce-quantity-stepper input').disabled).toBe(false);
   });
 
-  it('input: excede mostra a mensagem do erro; erro e rótulo vêm do estado', async () => {
+  it('input: pagamento acima do total mostra o aviso de crédito, sem alerta de excesso', async () => {
+    const t = montar({ pagamentos: [{ forma: 'PIX', valor: 250 }] });
+    await t.fixture.whenStable();
+
+    expect(t.texto()).toContain('Sobra de R$ 10,00 vira crédito de Ana');
+    expect(t.el.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('input: erro e rótulo vêm do estado', async () => {
     const t = montar({
-      excede: true,
       erro: 'O caixa do dia já está fechado.',
       rotuloConfirmar: 'Salvar alterações',
     });
     await t.fixture.whenStable();
 
     const alertas = Array.from(t.el.querySelectorAll('[role="alert"]')).map((a) => a.textContent);
-    expect(alertas).toContain('A soma dos pagamentos ultrapassa o total da venda.');
     expect(alertas).toContain('O caixa do dia já está fechado.');
     expect(t.botao('Salvar alterações')).toBeTruthy();
   });

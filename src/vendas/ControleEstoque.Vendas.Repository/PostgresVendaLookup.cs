@@ -47,6 +47,28 @@ public sealed class PostgresVendaLookup : IVendaLookup
         return creditos;
     }
 
+    public async Task<IReadOnlyDictionary<Guid, long>> GetSaldoCascoPorTipoAsync(
+        Guid clienteId, IReadOnlyCollection<Guid> tipoCascoIds, Guid? vendaIgnorada,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.SaldoCascoPorTipo, connection);
+        command.Parameters.AddWithValue("clienteId", clienteId);
+        command.Parameters.AddWithValue("tipoCascoIds", tipoCascoIds.ToArray());
+        command.Parameters.Add(new NpgsqlParameter("vendaIgnorada", NpgsqlTypes.NpgsqlDbType.Uuid)
+        {
+            Value = (object?)vendaIgnorada ?? DBNull.Value
+        });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var saldos = new Dictionary<Guid, long>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            saldos[reader.GetGuid(0)] = reader.GetInt64(1);
+        }
+
+        return saldos;
+    }
+
     public Task<bool> FuncionarioExisteAsync(Guid funcionarioId, CancellationToken cancellationToken) =>
         ExistsAsync(Sql.FuncionarioExiste, funcionarioId, cancellationToken);
 
@@ -137,6 +159,25 @@ public sealed class PostgresVendaLookup : IVendaLookup
                        WHEN 'DEVOLUCAO'       THEN -quantidade
                        WHEN 'CONVERSAO_VALOR' THEN -quantidade
                    END) < 0
+            """;
+
+        // Mesma conta de vw_saldo_casco_cliente por tipo (positivo = cliente deve): devedor = max(0, saldo).
+        public const string SaldoCascoPorTipo = """
+            SELECT tipo_casco_id,
+                   (SUM(CASE tipo
+                       WHEN 'EMPRESTIMO'      THEN  quantidade
+                       WHEN 'DEVOLUCAO'       THEN -quantidade
+                       WHEN 'CONVERSAO_VALOR' THEN -quantidade
+                   END))::bigint
+            FROM movimentos_casco_cliente
+            WHERE cliente_id = @clienteId AND tipo_casco_id = ANY(@tipoCascoIds) AND deleted_at IS NULL
+              AND (@vendaIgnorada IS NULL OR venda_id IS NULL OR venda_id <> @vendaIgnorada)
+            GROUP BY tipo_casco_id
+            HAVING SUM(CASE tipo
+                       WHEN 'EMPRESTIMO'      THEN  quantidade
+                       WHEN 'DEVOLUCAO'       THEN -quantidade
+                       WHEN 'CONVERSAO_VALOR' THEN -quantidade
+                   END) > 0
             """;
 
         public const string FuncionarioExiste =

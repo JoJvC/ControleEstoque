@@ -25,6 +25,12 @@ public sealed class InitSqlTests
     }
 
     [Fact]
+    public void InitSql_NaoTemMaisDebitoConversaoCasco()
+    {
+        Assert.DoesNotContain("DEBITO_CONVERSAO_" + "CASCO", Ler());
+    }
+
+    [Fact]
     public void VendaItens_ReferenciaProdutoMarcaESemCamposDeVasilhame()
     {
         var sql = Ler();
@@ -50,7 +56,7 @@ public sealed class InitSqlTests
         Assert.Matches(@"quantidade\s+INT NOT NULL CHECK \(quantidade > 0\)", vasilhames);
         Assert.Contains("quantidade_abatida", vasilhames);
         Assert.Matches(@"preco_unitario\s+NUMERIC\(19,2\) NOT NULL CHECK \(preco_unitario >= 0\)", vasilhames);
-        Assert.Contains("modo IN ('ABATER_CREDITO', 'COMPRAR')", vasilhames);
+        Assert.Contains("modo IN ('ABATER_CREDITO', 'COMPRAR', 'CONVERTER_CASCO')", vasilhames);
         Assert.Matches(@"total\s+NUMERIC\(19,2\) NOT NULL", vasilhames);
         Assert.Matches(@"deleted_at\s+TIMESTAMPTZ", vasilhames);
 

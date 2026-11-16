@@ -56,7 +56,6 @@ CREATE TYPE tipo_movimento_casco AS ENUM
 
 CREATE TYPE tipo_lancamento_fiado AS ENUM
     ('DEBITO_VENDA',            -- parte não paga de uma venda
-     'DEBITO_CONVERSAO_CASCO',  -- conversão de débito de casco em valor
      'CREDITO_CONVERSAO_SUCATA',-- sucata entregue convertida em crédito
      'PAGAMENTO',               -- baixa por pagamento do cliente
      'DEBITO_USO_CREDITO',      -- crédito do cliente usado como forma de pagamento da venda
@@ -368,7 +367,7 @@ CREATE TABLE IF NOT EXISTS venda_vasilhames (
     quantidade         INT NOT NULL CHECK (quantidade > 0),
     quantidade_abatida INT NOT NULL DEFAULT 0 CHECK (quantidade_abatida >= 0 AND quantidade_abatida <= quantidade),
     preco_unitario     NUMERIC(19,2) NOT NULL CHECK (preco_unitario >= 0),
-    modo               TEXT NOT NULL DEFAULT 'ABATER_CREDITO' CHECK (modo IN ('ABATER_CREDITO', 'COMPRAR')),
+    modo               TEXT NOT NULL DEFAULT 'ABATER_CREDITO' CHECK (modo IN ('ABATER_CREDITO', 'COMPRAR', 'CONVERTER_CASCO')),
     total              NUMERIC(19,2) NOT NULL DEFAULT 0 CHECK (total >= 0),
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at         TIMESTAMPTZ
@@ -684,7 +683,6 @@ SELECT c.id AS cliente_id,
        c.nome,
        COALESCE(SUM(CASE l.tipo
            WHEN 'DEBITO_VENDA'             THEN  l.valor
-           WHEN 'DEBITO_CONVERSAO_CASCO'   THEN  l.valor
            WHEN 'DEBITO_USO_CREDITO'       THEN  l.valor
            WHEN 'CREDITO_CONVERSAO_SUCATA' THEN -l.valor
            WHEN 'PAGAMENTO'                THEN -l.valor
@@ -692,7 +690,6 @@ SELECT c.id AS cliente_id,
        END), 0) AS saldo_devedor,
        -COALESCE(SUM(CASE l.tipo
            WHEN 'DEBITO_VENDA'             THEN  l.valor
-           WHEN 'DEBITO_CONVERSAO_CASCO'   THEN  l.valor
            WHEN 'DEBITO_USO_CREDITO'       THEN  l.valor
            WHEN 'CREDITO_CONVERSAO_SUCATA' THEN -l.valor
            WHEN 'PAGAMENTO'                THEN -l.valor

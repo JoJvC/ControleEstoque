@@ -45,23 +45,12 @@ public interface ITipoCascoLeituraRepository
 
 public interface ICascoClienteRepository
 {
-    /// <summary>Saldo do cliente no tipo de casco.</summary>
-    Task<long> GetSaldoAsync(Guid clienteId, Guid tipoCascoId, CancellationToken cancellationToken);
-
     /// <summary>
-    /// Devolução física avulsa: DEVOLUCAO do tipo no ledger + entrada de vazio do tipo no estoque de casco.
-    /// Retorna o total do cliente (todos os tipos).
+    /// Devolução física avulsa de vários tipos, numa transação: DEVOLUCAO de cada tipo no ledger
+    /// + entrada de vazio do tipo no estoque de casco. Retorna o total do cliente e o saldo por tipo.
     /// </summary>
     Task<ResultadoDevolucaoCasco> DevolverAsync(
-        Guid clienteId, Guid tipoCascoId, int quantidade, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Conversão em valor: CONVERSAO_VALOR no ledger + DEBITO_CONVERSAO_CASCO no fiado.
-    /// NÃO dá entrada no estoque físico — o casco fica com o cliente, agora comprado.
-    /// </summary>
-    Task<ResultadoConversaoCasco> ConverterAsync(
-        Guid clienteId, Guid tipoCascoId, int quantidade, decimal valorUnitario,
-        CancellationToken cancellationToken);
+        Guid clienteId, IReadOnlyList<LinhaDevolucaoCasco> linhas, CancellationToken cancellationToken);
 }
 
 public interface ISucataClienteRepository

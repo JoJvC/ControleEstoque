@@ -87,18 +87,13 @@ public static class ClientesEndpoints
             Guid id, DevolucaoCascosRequest request, ICascoClienteService cascos,
             CancellationToken cancellationToken) =>
         {
-            var resultado = await cascos.DevolverAsync(id, request.TipoCascoId, request.Quantidade, cancellationToken);
-            return Results.Ok(new DevolucaoCascosResponse(resultado.NovoSaldoCascos));
-        });
-
-        app.MapPost("/v1/clientes/{id:guid}/cascos/conversoes", async (
-            Guid id, ConversaoCascosRequest request, ICascoClienteService cascos,
-            CancellationToken cancellationToken) =>
-        {
-            var resultado = await cascos.ConverterAsync(
-                id, request.TipoCascoId, request.Quantidade, cancellationToken);
-            return Results.Ok(new ConversaoCascosResponse(
-                resultado.NovoSaldoCascos, resultado.NovoSaldoFiado, resultado.NovoSaldo));
+            var resultado = await cascos.DevolverAsync(
+                id,
+                request.Linhas?.Select(l => new LinhaDevolucaoCasco(l.TipoCascoId, l.Quantidade)).ToList(),
+                cancellationToken);
+            return Results.Ok(new DevolucaoCascosResponse(
+                resultado.NovoSaldoCascos,
+                resultado.SaldoPorTipo.Select(c => new CascoPorTipoResponse(c.TipoCascoId, c.Nome, c.Saldo)).ToList()));
         });
 
         // ---- Entrega de Sucata (não abate casco) -----------------------------

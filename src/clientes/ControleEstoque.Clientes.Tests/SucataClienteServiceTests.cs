@@ -15,7 +15,7 @@ public sealed class SucataClienteServiceTests
     public SucataClienteServiceTests()
     {
         sut = new SucataClienteService(sucatas, clientes, tipos);
-        tipo = tipos.Add("20L Genérico", 25m, aceitaSucata: true);
+        tipo = tipos.Add("20L Genérico", aceitaSucata: true);
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class SucataClienteServiceTests
     public async Task EntregarAsync_QuandoTipoNaoAceitaSucata_LancaSucataNaoAceita()
     {
         var cliente = clientes.Add("Cliente X");
-        var semSucata = tipos.Add("20L Marca X", 25m, aceitaSucata: false);
+        var semSucata = tipos.Add("20L Marca X", aceitaSucata: false);
 
         var e = await Assert.ThrowsAsync<BusinessRuleException>(
             () => sut.EntregarAsync(cliente.Id, semSucata.Id, 1, null, CancellationToken.None));

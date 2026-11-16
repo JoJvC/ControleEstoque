@@ -108,9 +108,9 @@ internal sealed class FakeTipoCascoLeituraRepository : ITipoCascoLeituraReposito
     private readonly Dictionary<Guid, TipoCascoCliente> tipos = new();
 
     /// <summary>Tipo apagado não é cadastrado aqui: a leitura devolve null, como o Postgres com deleted_at.</summary>
-    public TipoCascoCliente Add(string nome, decimal precoVasilhame = 0m, bool aceitaSucata = false)
+    public TipoCascoCliente Add(string nome, bool aceitaSucata = false)
     {
-        var tipo = new TipoCascoCliente(Guid.NewGuid(), nome, aceitaSucata, precoVasilhame);
+        var tipo = new TipoCascoCliente(Guid.NewGuid(), nome, aceitaSucata);
         tipos[tipo.Id] = tipo;
         return tipo;
     }
@@ -129,8 +129,6 @@ internal sealed class FakeCascoClienteRepository : ICascoClienteRepository
 
     public int TotalChamadasDeEscrita { get; private set; }
 
-    public List<(Guid Tipo, int Quantidade, decimal ValorUnitario)> Conversoes { get; } = new();
-
     public void SetSaldo(Guid clienteId, Guid tipoCascoId, long saldo) => saldos[(clienteId, tipoCascoId)] = saldo;
 
     public Task<long> GetSaldoAsync(Guid clienteId, Guid tipoCascoId, CancellationToken cancellationToken) =>
@@ -139,21 +137,19 @@ internal sealed class FakeCascoClienteRepository : ICascoClienteRepository
     private long Total(Guid clienteId) => saldos.Where(kv => kv.Key.Cliente == clienteId).Sum(kv => kv.Value);
 
     public Task<ResultadoDevolucaoCasco> DevolverAsync(
-        Guid clienteId, Guid tipoCascoId, int quantidade, CancellationToken cancellationToken)
+        Guid clienteId, IReadOnlyList<LinhaDevolucaoCasco> linhas, CancellationToken cancellationToken)
     {
         TotalChamadasDeEscrita++;
-        saldos[(clienteId, tipoCascoId)] = saldos.GetValueOrDefault((clienteId, tipoCascoId)) - quantidade;
-        return Task.FromResult(new ResultadoDevolucaoCasco(Total(clienteId)));
-    }
+        foreach (var l in linhas)
+        {
+            saldos[(clienteId, l.TipoCascoId)] = saldos.GetValueOrDefault((clienteId, l.TipoCascoId)) - l.Quantidade;
+        }
 
-    public Task<ResultadoConversaoCasco> ConverterAsync(
-        Guid clienteId, Guid tipoCascoId, int quantidade, decimal valorUnitario,
-        CancellationToken cancellationToken)
-    {
-        TotalChamadasDeEscrita++;
-        Conversoes.Add((tipoCascoId, quantidade, valorUnitario));
-        saldos[(clienteId, tipoCascoId)] = saldos.GetValueOrDefault((clienteId, tipoCascoId)) - quantidade;
-        return Task.FromResult(new ResultadoConversaoCasco(Total(clienteId), quantidade * valorUnitario));
+        var porTipo = saldos
+            .Where(kv => kv.Key.Cliente == clienteId && kv.Value != 0)
+            .Select(kv => new SaldoCascoPorTipo(kv.Key.Tipo, "tipo", kv.Value))
+            .ToList();
+        return Task.FromResult(new ResultadoDevolucaoCasco(Total(clienteId), porTipo));
     }
 }
 

@@ -5,9 +5,7 @@ namespace ControleEstoque.Clientes.Domain;
 public interface ICascoClienteService
 {
     Task<ResultadoDevolucaoCasco> DevolverAsync(
-        Guid clienteId, Guid tipoCascoId, int quantidade, CancellationToken cancellationToken);
-    Task<ResultadoConversaoCasco> ConverterAsync(
-        Guid clienteId, Guid tipoCascoId, int quantidade, CancellationToken cancellationToken);
+        Guid clienteId, IReadOnlyList<LinhaDevolucaoCasco>? linhas, CancellationToken cancellationToken);
 }
 
 public sealed class CascoClienteService : ICascoClienteService
@@ -25,46 +23,31 @@ public sealed class CascoClienteService : ICascoClienteService
     }
 
     public async Task<ResultadoDevolucaoCasco> DevolverAsync(
-        Guid clienteId, Guid tipoCascoId, int quantidade, CancellationToken cancellationToken)
+        Guid clienteId, IReadOnlyList<LinhaDevolucaoCasco>? linhas, CancellationToken cancellationToken)
     {
-        if (quantidade <= 0)
+        if (linhas is null || linhas.Count == 0)
+        {
+            throw new RequestValidationException("ITENS_OBRIGATORIOS", "Informe ao menos um tipo de casco.");
+        }
+
+        if (linhas.Any(l => l.Quantidade <= 0))
         {
             throw new RequestValidationException("QUANTIDADE_INVALIDA", "Quantidade deve ser positiva.");
         }
 
-        await GarantirClienteAsync(clienteId, cancellationToken);
-        await ObterTipoAsync(tipoCascoId, cancellationToken);
-        return await cascos.DevolverAsync(clienteId, tipoCascoId, quantidade, cancellationToken);
-    }
-
-    public async Task<ResultadoConversaoCasco> ConverterAsync(
-        Guid clienteId, Guid tipoCascoId, int quantidade, CancellationToken cancellationToken)
-    {
-        if (quantidade <= 0)
+        if (linhas.GroupBy(l => l.TipoCascoId).Any(g => g.Count() > 1))
         {
-            throw new RequestValidationException("QUANTIDADE_INVALIDA", "Quantidade deve ser positiva.");
+            throw new RequestValidationException(
+                "TIPO_CASCO_DUPLICADO", "Cada tipo de casco aparece no máximo uma vez.");
         }
 
         await GarantirClienteAsync(clienteId, cancellationToken);
-        var tipo = await ObterTipoAsync(tipoCascoId, cancellationToken);
-
-        if (tipo.PrecoVasilhame <= 0)
+        foreach (var linha in linhas)
         {
-            throw new BusinessRuleException(
-                "PRECO_VASILHAME_NAO_DEFINIDO",
-                $"Tipo de casco '{tipo.Nome}' não tem preço de vasilhame; não é possível converter em valor.");
+            await ObterTipoAsync(linha.TipoCascoId, cancellationToken);
         }
 
-        var saldo = await cascos.GetSaldoAsync(clienteId, tipoCascoId, cancellationToken);
-        if (quantidade > saldo)
-        {
-            throw new BusinessRuleException(
-                "CONVERSAO_MAIOR_QUE_SALDO",
-                $"Cliente deve {saldo} casco(s) de '{tipo.Nome}'; não é possível converter {quantidade}.");
-        }
-
-        return await cascos.ConverterAsync(
-            clienteId, tipoCascoId, quantidade, tipo.PrecoVasilhame, cancellationToken);
+        return await cascos.DevolverAsync(clienteId, linhas, cancellationToken);
     }
 
     private async Task<TipoCascoCliente> ObterTipoAsync(Guid tipoCascoId, CancellationToken cancellationToken) =>

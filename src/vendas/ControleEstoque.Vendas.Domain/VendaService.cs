@@ -232,6 +232,24 @@ public sealed class VendaService : IVendaService
         var creditosCasco = tiposAbate.Count == 0
             ? new Dictionary<Guid, long>()
             : await lookup.GetCreditoCascoPorTipoAsync(venda.ClienteId, tiposAbate, vendaId, cancellationToken);
+        var tiposConverter = venda.Vasilhames
+            .Where(v => v.Modo == ModoCreditoVasilhame.CONVERTER_CASCO).Select(v => v.TipoCascoId).ToList();
+        if (tiposConverter.Count > 0)
+        {
+            var devedores = await lookup.GetSaldoCascoPorTipoAsync(
+                venda.ClienteId, tiposConverter, vendaId, cancellationToken);
+            foreach (var v in venda.Vasilhames.Where(v => v.Modo == ModoCreditoVasilhame.CONVERTER_CASCO))
+            {
+                var saldo = devedores.GetValueOrDefault(v.TipoCascoId);
+                if (v.Quantidade > saldo)
+                {
+                    throw new BusinessRuleException(
+                        "CONVERSAO_MAIOR_QUE_SALDO",
+                        $"Cliente deve {saldo} casco(s) do tipo {v.TipoCascoId}; não é possível converter {v.Quantidade}.");
+                }
+            }
+        }
+
         var vasilhames = venda.Vasilhames
             .Select(v => VendaCalculos.CalcularVasilhame(v, creditosCasco.GetValueOrDefault(v.TipoCascoId)))
             .ToList();
@@ -261,7 +279,9 @@ public sealed class VendaService : IVendaService
         foreach (var tipo in cheios.Select(c => c.TipoCascoId).Concat(vasilhames.Select(v => v.TipoCascoId)).Distinct())
         {
             var g = cheios.FirstOrDefault(c => c.TipoCascoId == tipo)?.Quantidade ?? 0;
-            var v = vasilhames.FirstOrDefault(x => x.TipoCascoId == tipo)?.Quantidade ?? 0;
+            // CONVERTER_CASCO só baixa o saldo de casco: não conta como vasilhame saído dos vazios.
+            var v = vasilhames.FirstOrDefault(
+                x => x.TipoCascoId == tipo && x.Modo != ModoCreditoVasilhame.CONVERTER_CASCO)?.Quantidade ?? 0;
             if (g > v)
             {
                 emprestimos.Add(new CascoQuantidade(tipo, g - v));
@@ -299,7 +319,10 @@ public sealed class VendaService : IVendaService
             vendaId, venda.ClienteId, venda.FuncionarioId, venda.EnderecoEntregaId, venda.Observacao,
             totais.TotalBruto, totais.TotalDesconto, totais.DescontoSucata, totais.TotalLiquido, totais.Status,
             totais.Itens, vasilhames, venda.Pagamentos,
-            emprestimos, devolvidos, vaziosSaidos, venda.SucataEntregue,
+            emprestimos, devolvidos, vaziosSaidos,
+            vasilhames.Where(v => v.Modo == ModoCreditoVasilhame.CONVERTER_CASCO)
+                .Select(v => new CascoQuantidade(v.TipoCascoId, v.Quantidade)).ToList(),
+            venda.SucataEntregue,
             totais.Faltante, totais.CreditoGerado, usoCredito);
     }
 

@@ -44,6 +44,76 @@ public sealed class VendaServiceTests
         Assert.Empty(g.Vasilhames);
     }
 
+    private VasilhameVenda Converter(int quantidade, decimal preco = 12.5m) =>
+        new(cascoG.Id, quantidade, preco, ModoCreditoVasilhame.CONVERTER_CASCO);
+
+    [Fact]
+    public async Task CriarAsync_ConverterCasco_BaixaOCascoCobraPrecoEditadoEViraFiadoPendente()
+    {
+        lookup.SaldosCasco[(clienteId, cascoG.Id)] = 3;
+
+        await sut.CriarAsync(NovaVendaSoVasilhame([Converter(2)]), CancellationToken.None);
+
+        var g = vendas.UltimaGravacao!;
+        Assert.Equal([new CascoQuantidade(cascoG.Id, 2)], g.CascosConvertidos);
+        Assert.Equal(25m, g.TotalLiquido); // 2 x 12,50, não o preço do tipo (30)
+        Assert.Equal(StatusPagamento.PENDENTE, g.Status);
+        Assert.Equal(25m, g.DebitoFiado);
+        Assert.Empty(g.VaziosSaidos);
+    }
+
+    [Fact]
+    public async Task CriarAsync_ConverterCasco_AcimaDoSaldo_LancaConversaoMaiorQueSaldo()
+    {
+        lookup.SaldosCasco[(clienteId, cascoG.Id)] = 3;
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => sut.CriarAsync(NovaVendaSoVasilhame([Converter(4)]), CancellationToken.None));
+
+        Assert.Equal("CONVERSAO_MAIOR_QUE_SALDO", e.Code);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-2)]
+    public async Task CriarAsync_ConverterCasco_ComSaldoZeroOuNegativo_Recusa(long saldo)
+    {
+        lookup.SaldosCasco[(clienteId, cascoG.Id)] = saldo;
+
+        var e = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => sut.CriarAsync(NovaVendaSoVasilhame([Converter(1)]), CancellationToken.None));
+
+        Assert.Equal("CONVERSAO_MAIOR_QUE_SALDO", e.Code);
+    }
+
+    [Fact]
+    public async Task CriarAsync_ConverterCasco_ComCheioRetornavelDoMesmoTipo_NaoGeraVaziosSaidos()
+    {
+        lookup.SaldosCasco[(clienteId, cascoG.Id)] = 3;
+        var venda = NovaVendaDe(agua, 2, 40m) with { Vasilhames = [Converter(2)] };
+
+        await sut.CriarAsync(venda, CancellationToken.None);
+
+        var g = vendas.UltimaGravacao!;
+        Assert.Empty(g.VaziosSaidos);
+        Assert.Equal([new CascoQuantidade(cascoG.Id, 2)], g.CascosConvertidos);
+    }
+
+    [Fact]
+    public async Task EditarAsync_ConverterCasco_IgnoraAPropriaVendaNoSaldo()
+    {
+        var vendaId = Guid.NewGuid();
+        vendas.VendasExistentes.Add(vendaId);
+        // Saldo atual 1 (já sem os 2 convertidos pela própria venda): converter 3 só vale se a venda for ignorada.
+        lookup.SaldosCasco[(clienteId, cascoG.Id)] = 1;
+        lookup.ConvertidoPorVenda[(vendaId, cascoG.Id)] = 2;
+
+        await sut.EditarAsync(vendaId, NovaVendaSoVasilhame([Converter(3)]), CancellationToken.None);
+
+        Assert.Equal(vendaId, lookup.UltimaVendaIgnoradaSaldoCasco);
+        Assert.Equal([new CascoQuantidade(cascoG.Id, 3)], vendas.UltimaEdicao!.CascosConvertidos);
+    }
+
     // Preço do vasilhame do tipo G nos exemplos da spec: R$ 15 (informado na venda).
     private static VasilhameVenda Vasilhame(TipoCascoVenda tipo, int quantidade, ModoCreditoVasilhame modo = ModoCreditoVasilhame.ABATER_CREDITO) =>
         new(tipo.Id, quantidade, 15m, modo);

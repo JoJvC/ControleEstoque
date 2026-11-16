@@ -385,7 +385,7 @@ public sealed class PostgresVendaRepository : IVendaRepository
         CancellationToken cancellationToken)
     {
         var abatidos = gravacao.Vasilhames.Where(v => v.QuantidadeAbatida > 0).ToList();
-        if (gravacao.UsoCredito <= 0 && abatidos.Count == 0)
+        if (gravacao.UsoCredito <= 0 && abatidos.Count == 0 && gravacao.CascosConvertidos.Count == 0)
         {
             return;
         }
@@ -406,6 +406,25 @@ public sealed class PostgresVendaRepository : IVendaRepository
             }
 
             VendaCalculos.ValidarUsoCredito(gravacao.UsoCredito, Math.Max(0m, saldo));
+        }
+
+        foreach (var convertido in gravacao.CascosConvertidos)
+        {
+            long saldoCasco;
+            await using (var command = new NpgsqlCommand(Sql.SaldoCascoTipo, connection, transaction))
+            {
+                command.Parameters.AddWithValue("clienteId", gravacao.ClienteId);
+                command.Parameters.AddWithValue("tipoCascoId", convertido.TipoCascoId);
+                saldoCasco = (long?)await command.ExecuteScalarAsync(cancellationToken) ?? 0L;
+            }
+
+            if (convertido.Quantidade > Math.Max(0L, saldoCasco))
+            {
+                throw new BusinessRuleException(
+                    "CONVERSAO_MAIOR_QUE_SALDO",
+                    $"Cliente deve {Math.Max(0L, saldoCasco)} casco(s) do tipo {convertido.TipoCascoId}; " +
+                    $"não é possível converter {convertido.Quantidade}.");
+            }
         }
 
         foreach (var vasilhame in abatidos)
@@ -496,6 +515,13 @@ public sealed class PostgresVendaRepository : IVendaRepository
                     connection, transaction, gravacao, "EMPRESTIMO",
                     new CascoQuantidade(vasilhame.TipoCascoId, vasilhame.QuantidadeAbatida), cancellationToken);
             }
+        }
+
+        // Conversão de casco em venda: baixa o saldo devedor do tipo, ligada à venda; sem movimento de vazios.
+        foreach (var casco in gravacao.CascosConvertidos)
+        {
+            await InserirMovimentoCascoAsync(
+                connection, transaction, gravacao, "CONVERSAO_VALOR", casco, cancellationToken);
         }
 
         // Vasilhames além dos galões cheios da venda saem dos vazios da loja (sem bloqueio por saldo).

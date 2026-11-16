@@ -36,5 +36,6 @@ public enum TipoDesconto
 public enum ModoCreditoVasilhame
 {
     ABATER_CREDITO, // padrão: vasilhames cobertos pelo crédito não são cobrados e o crédito diminui
-    COMPRAR         // cobra tudo e o crédito segue
+    COMPRAR,        // cobra tudo e o crédito segue
+    CONVERTER_CASCO // cobra tudo e baixa o saldo devedor de casco do tipo (limitado a ele); não mexe nos vazios
 }

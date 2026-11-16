@@ -17,14 +17,14 @@ public sealed class PostgresTipoCascoLeituraRepository : ITipoCascoLeituraReposi
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
             ? new TipoCascoCliente(
-                reader.GetGuid(0), reader.GetString(1), reader.GetBoolean(2), reader.GetDecimal(3))
+                reader.GetGuid(0), reader.GetString(1), reader.GetBoolean(2))
             : null;
     }
 
     private static class Sql
     {
         public const string Get = """
-            SELECT id, nome, aceita_sucata, preco_vasilhame
+            SELECT id, nome, aceita_sucata
             FROM tipos_casco
             WHERE id = @id AND deleted_at IS NULL
             """;

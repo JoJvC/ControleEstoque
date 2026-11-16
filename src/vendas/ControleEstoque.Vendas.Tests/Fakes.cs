@@ -71,6 +71,26 @@ internal sealed class FakeVendaLookup : IVendaLookup
             .ToDictionary(x => x.Tipo, x => x.Credito));
     }
 
+    /// <summary>Saldo de casco por cliente e tipo (positivo = cliente deve).</summary>
+    public Dictionary<(Guid ClienteId, Guid TipoCascoId), long> SaldosCasco { get; } = new();
+
+    /// <summary>Quantidade já convertida por venda e tipo (a venda ignorada devolve a conversão ao saldo).</summary>
+    public Dictionary<(Guid VendaId, Guid TipoCascoId), long> ConvertidoPorVenda { get; } = new();
+
+    public Guid? UltimaVendaIgnoradaSaldoCasco { get; private set; }
+
+    public Task<IReadOnlyDictionary<Guid, long>> GetSaldoCascoPorTipoAsync(
+        Guid clienteId, IReadOnlyCollection<Guid> tipoCascoIds, Guid? vendaIgnorada,
+        CancellationToken cancellationToken)
+    {
+        UltimaVendaIgnoradaSaldoCasco = vendaIgnorada;
+        return Task.FromResult<IReadOnlyDictionary<Guid, long>>(tipoCascoIds
+            .Select(t => (Tipo: t, Saldo: SaldosCasco.GetValueOrDefault((clienteId, t))
+                + (vendaIgnorada is { } v ? ConvertidoPorVenda.GetValueOrDefault((v, t)) : 0L)))
+            .Where(x => x.Saldo > 0)
+            .ToDictionary(x => x.Tipo, x => x.Saldo));
+    }
+
     public Task<bool> FuncionarioExisteAsync(Guid funcionarioId, CancellationToken cancellationToken) =>
         Task.FromResult(Funcionarios.Contains(funcionarioId));
 

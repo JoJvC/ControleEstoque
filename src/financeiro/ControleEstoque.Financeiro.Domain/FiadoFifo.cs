@@ -71,7 +71,7 @@ public static class FiadoFifo
     }
 
     /// <summary>
-    /// Parte da sobra que de fato virou crédito: com outro débito no saldo (ex.: conversão de casco),
+    /// Parte da sobra que de fato virou crédito: com outro débito no saldo (ex.: uso de crédito como pagamento),
     /// a sobra abate esse débito primeiro.
     /// </summary>
     public static decimal CreditoGerado(decimal sobra, decimal novoSaldo) =>

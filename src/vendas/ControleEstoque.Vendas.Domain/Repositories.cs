@@ -18,6 +18,13 @@ public interface IVendaLookup
     Task<IReadOnlyDictionary<Guid, long>> GetCreditoCascoPorTipoAsync(
         Guid clienteId, IReadOnlyCollection<Guid> tipoCascoIds, Guid? vendaIgnorada,
         CancellationToken cancellationToken);
+    /// <summary>
+    /// Saldo devedor de casco do cliente por tipo (max(0, saldo)), só dos tipos pedidos, sem contar os movimentos
+    /// da venda <paramref name="vendaIgnorada"/>. Limita o modo CONVERTER_CASCO.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, long>> GetSaldoCascoPorTipoAsync(
+        Guid clienteId, IReadOnlyCollection<Guid> tipoCascoIds, Guid? vendaIgnorada,
+        CancellationToken cancellationToken);
     Task<bool> FuncionarioExisteAsync(Guid funcionarioId, CancellationToken cancellationToken);
     Task<bool> EnderecoPertenceAoClienteAsync(
         Guid enderecoId, Guid clienteId, CancellationToken cancellationToken);

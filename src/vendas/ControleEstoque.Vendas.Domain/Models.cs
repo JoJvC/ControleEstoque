@@ -103,6 +103,7 @@ public sealed record VendaGravacao(
     IReadOnlyList<CascoQuantidade> CascosEmprestados,
     IReadOnlyList<CascoQuantidade> CascosDevolvidos,
     IReadOnlyList<CascoQuantidade> VaziosSaidos,
+    IReadOnlyList<CascoQuantidade> CascosConvertidos,
     IReadOnlyList<SucataVenda> SucataEntregue,
     decimal DebitoFiado,
     decimal CreditoGerado,

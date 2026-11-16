@@ -37,6 +37,7 @@ export const NAV_ITENS: readonly NavItem[] = [
     onde: 'desktop',
     naMais: true,
   },
+  { path: '/pedidos', label: 'Pedidos', icone: 'pacote', onde: 'desktop', naMais: true },
   { path: '/produtos', label: 'Produtos', icone: 'pacote', onde: 'desktop', naMais: true },
   { path: '/marcas', label: 'Marcas', icone: 'etiqueta', onde: 'desktop', naMais: true },
   { path: '/tipos-casco', label: 'Tipos de casco', icone: 'casco', onde: 'desktop', naMais: true },

@@ -78,6 +78,7 @@ describe('MaisPage', () => {
       'Histórico de vendas': 'cupom',
       Estoque: 'caixa',
       'Caixa do dia': 'dinheiro',
+      Pedidos: 'pacote',
       Produtos: 'pacote',
       Marcas: 'etiqueta',
       'Tipos de casco': 'casco',

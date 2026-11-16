@@ -40,6 +40,8 @@ const MENSAGENS: Record<string, string> = {
   DIARIAS_JA_LANCADAS: 'As diárias deste caixa já foram lançadas.',
   DIARIA_INVALIDA: 'Valor de diária inválido.',
   PERMISSAO_NEGADA: 'Você não tem permissão para esta ação.',
+  FUNCIONARIOS_OBRIGATORIOS: 'Escolha pelo menos um funcionário para iniciar o pedido.',
+  PEDIDO_STATUS_INVALIDO: 'A situação deste pedido mudou. A tela foi atualizada.',
 };
 
 const GENERICA_POR_STATUS: Record<number, string> = {

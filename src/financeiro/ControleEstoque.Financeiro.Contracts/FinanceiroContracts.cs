@@ -19,17 +19,21 @@ public sealed record CaixaResponse(
 
 public sealed record DespesaResponse(Guid Id, Guid TipoDespesaId, string TipoDespesa, decimal Valor, string? Descricao);
 
+public sealed record CaixaDiariasPendentesResponse(Guid Id, DateOnly Data);
+
 public sealed record ResumoCaixaResponse(
     CaixaResponse Caixa,
     decimal Entradas,
     decimal TotalDespesas,
     decimal SaldoParcial,
-    IReadOnlyList<DespesaResponse> Despesas)
+    IReadOnlyList<DespesaResponse> Despesas,
+    IReadOnlyList<CaixaDiariasPendentesResponse> CaixasComDiariasPendentes)
 {
     public static ResumoCaixaResponse From(ResumoCaixa r) => new(
         CaixaResponse.From(r.Caixa), r.Entradas, r.TotalDespesas, r.SaldoParcial,
         r.Despesas.Select(d =>
-            new DespesaResponse(d.Id, d.TipoDespesaId, d.TipoDespesaNome, d.Valor, d.Descricao)).ToList());
+            new DespesaResponse(d.Id, d.TipoDespesaId, d.TipoDespesaNome, d.Valor, d.Descricao)).ToList(),
+        r.CaixasComDiariasPendentes.Select(c => new CaixaDiariasPendentesResponse(c.Id, c.Data)).ToList());
 }
 
 public sealed record CreateDespesaRequest(Guid TipoDespesaId, decimal Valor, string? Descricao);
@@ -45,6 +49,10 @@ public sealed record FechamentoResponse(
     decimal TotalSaidas,
     decimal SaldoFinal,
     int DiariasLancadas);
+
+public sealed record LancarDiariasRequest(List<DiariaFechamentoRequest>? Diarias);
+
+public sealed record LancamentoDiariasResponse(Guid CaixaId, DateOnly Data, int DiariasLancadas);
 
 public sealed record CreateTipoDespesaRequest(string Nome);
 

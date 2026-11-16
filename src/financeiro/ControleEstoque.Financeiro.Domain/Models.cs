@@ -14,7 +14,11 @@ public sealed record Caixa(
     decimal? TotalEntradas,
     decimal? TotalSaidas,
     decimal? SaldoFinal,
-    DateTimeOffset? FechadoEm);
+    DateTimeOffset? FechadoEm,
+    bool FechadoPeloSistema = false,
+    bool DiariasPendentes = false);
+
+public sealed record CaixaDiariasPendentes(Guid Id, DateOnly Data);
 
 public sealed record TipoDespesa(Guid Id, string Nome);
 
@@ -25,7 +29,8 @@ public sealed record ResumoCaixa(
     decimal Entradas,
     decimal TotalDespesas,
     decimal SaldoParcial,
-    IReadOnlyList<Despesa> Despesas);
+    IReadOnlyList<Despesa> Despesas,
+    IReadOnlyList<CaixaDiariasPendentes> CaixasComDiariasPendentes);
 
 /// <summary>Presença no fechamento; Valor nulo usa a diária do cadastro.</summary>
 public sealed record DiariaFechamento(Guid FuncionarioId, decimal? Valor);
@@ -37,6 +42,8 @@ public sealed record ResultadoFechamento(
     decimal TotalSaidas,
     decimal SaldoFinal,
     int DiariasLancadas);
+
+public sealed record ResultadoLancamentoDiarias(Guid CaixaId, DateOnly Data, int DiariasLancadas);
 
 /// <summary>SaldoDevedor positivo = deve; Saldo é o inverso (negativo = fiado, positivo = crédito).</summary>
 public sealed record SaldoFiadoCliente(Guid ClienteId, string Nome, decimal SaldoDevedor, decimal Saldo);

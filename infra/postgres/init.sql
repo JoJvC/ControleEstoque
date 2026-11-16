@@ -556,6 +556,20 @@ CREATE TABLE caixas (
     deleted_at      TIMESTAMPTZ
 );
 
+-- Fechamento automático à meia-noite (America/Sao_Paulo): o caixa continua FECHADO (vendas e fiado comparam o texto),
+-- fechado_por fica NULL e as diárias esperam o lançamento posterior.
+ALTER TABLE caixas ADD COLUMN IF NOT EXISTS fechado_pelo_sistema BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE caixas ADD COLUMN IF NOT EXISTS diarias_pendentes BOOLEAN NOT NULL DEFAULT false;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_caixas_pendentes_so_sistema') THEN
+        ALTER TABLE caixas ADD CONSTRAINT ck_caixas_pendentes_so_sistema
+            CHECK (NOT diarias_pendentes OR fechado_pelo_sistema);
+    END IF;
+END
+$$;
+
 -- Tipos de despesa cadastráveis (categorização obrigatória de cada despesa).
 CREATE TABLE tipos_despesa (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

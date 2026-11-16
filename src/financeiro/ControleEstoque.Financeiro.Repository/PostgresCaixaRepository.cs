@@ -148,41 +148,9 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             saldoInicial = reader.GetDecimal(2);
         }
 
-        // Falta = funcionário simplesmente não listado; o valor informado vale só neste fechamento
-        // e, se nulo, vale o do cadastro (que também confirma a existência do funcionário).
-        var valores = new Dictionary<Guid, decimal>();
-        if (funcionarioIds.Count > 0)
-        {
-            await using var command = new NpgsqlCommand(Sql.GetValoresDiaria, connection, transaction);
-            command.Parameters.AddWithValue("ids", funcionarioIds.Select(d => d.FuncionarioId).ToArray());
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                valores[reader.GetGuid(0)] = reader.GetDecimal(1);
-            }
-        }
-
-        var efetivos = new List<(Guid FuncionarioId, decimal Valor)>();
-        foreach (var (funcionarioId, valor) in funcionarioIds)
-        {
-            if (!valores.TryGetValue(funcionarioId, out var cadastro))
-            {
-                throw new EntityNotFoundException(
-                    "FUNCIONARIO_NAO_ENCONTRADO", $"Funcionário {funcionarioId} não encontrado.");
-            }
-
-            efetivos.Add((funcionarioId, valor ?? cadastro));
-        }
-
-        var entradas = await GetEntradasAsync(connection, transaction, data, cancellationToken);
-        decimal totalSaidas; // diária NÃO sai do caixa (regra crítica 7)
-        await using (var command = new NpgsqlCommand(Sql.TotalDespesas, connection, transaction))
-        {
-            command.Parameters.AddWithValue("caixaId", caixaId);
-            totalSaidas = (decimal?)await command.ExecuteScalarAsync(cancellationToken) ?? 0m;
-        }
-
-        var saldoFinal = saldoInicial + entradas - totalSaidas;
+        var efetivos = await ResolverDiariasAsync(connection, transaction, funcionarioIds, cancellationToken);
+        var (entradas, totalSaidas, saldoFinal) =
+            await CalcularTotaisAsync(connection, transaction, caixaId, data, saldoInicial, cancellationToken);
 
         // Diária credita a conta corrente do funcionário — não é saída de caixa.
         // Valor efetivo 0 não gera lançamento: lancamentos_funcionario exige valor > 0.
@@ -220,6 +188,191 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         return new ResultadoFechamento(caixaId, data, entradas, totalSaidas, saldoFinal, diariasLancadas);
     }
 
+    /// <summary>
+    /// Falta = funcionário simplesmente não listado; o valor informado vale só neste lançamento
+    /// e, se nulo, vale o do cadastro (que também confirma a existência do funcionário).
+    /// </summary>
+    private static async Task<List<(Guid FuncionarioId, decimal Valor)>> ResolverDiariasAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction,
+        IReadOnlyList<DiariaFechamento> funcionarioIds, CancellationToken cancellationToken)
+    {
+        var valores = new Dictionary<Guid, decimal>();
+        if (funcionarioIds.Count > 0)
+        {
+            await using var command = new NpgsqlCommand(Sql.GetValoresDiaria, connection, transaction);
+            command.Parameters.AddWithValue("ids", funcionarioIds.Select(d => d.FuncionarioId).ToArray());
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                valores[reader.GetGuid(0)] = reader.GetDecimal(1);
+            }
+        }
+
+        var efetivos = new List<(Guid FuncionarioId, decimal Valor)>();
+        foreach (var (funcionarioId, valor) in funcionarioIds)
+        {
+            if (!valores.TryGetValue(funcionarioId, out var cadastro))
+            {
+                throw new EntityNotFoundException(
+                    "FUNCIONARIO_NAO_ENCONTRADO", $"Funcionário {funcionarioId} não encontrado.");
+            }
+
+            efetivos.Add((funcionarioId, valor ?? cadastro));
+        }
+
+        return efetivos;
+    }
+
+    /// <summary>Consolidados do caixa; diária NÃO sai do caixa (regra crítica 7).</summary>
+    private static async Task<(decimal Entradas, decimal Saidas, decimal SaldoFinal)> CalcularTotaisAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Guid caixaId, DateOnly data,
+        decimal saldoInicial, CancellationToken cancellationToken)
+    {
+        var entradas = await GetEntradasAsync(connection, transaction, data, cancellationToken);
+        decimal totalSaidas;
+        await using (var command = new NpgsqlCommand(Sql.TotalDespesas, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            totalSaidas = (decimal?)await command.ExecuteScalarAsync(cancellationToken) ?? 0m;
+        }
+
+        return (entradas, totalSaidas, saldoInicial + entradas - totalSaidas);
+    }
+
+    public async Task<IReadOnlyList<Caixa>> ListAbertosAntesDeAsync(
+        DateOnly data, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.ListAbertosAntesDe, connection);
+        command.Parameters.Add(new NpgsqlParameter("data", NpgsqlDbType.Date) { Value = data });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var results = new List<Caixa>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(MapCaixa(reader));
+        }
+
+        return results;
+    }
+
+    public async Task<bool> FecharPeloSistemaAsync(
+        Guid caixaId, DateTimeOffset fechadoEm, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        DateOnly data;
+        decimal saldoInicial;
+        await using (var command = new NpgsqlCommand(Sql.TravaCaixaParaFechar, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken)
+                || reader.GetString(0) != nameof(StatusCaixa.ABERTO))
+            {
+                return false; // já fechado (à mão ou por outro ciclo): idempotente
+            }
+
+            data = reader.GetFieldValue<DateOnly>(1);
+            saldoInicial = reader.GetDecimal(2);
+        }
+
+        var (entradas, totalSaidas, saldoFinal) =
+            await CalcularTotaisAsync(connection, transaction, caixaId, data, saldoInicial, cancellationToken);
+
+        int linhas;
+        await using (var command = new NpgsqlCommand(Sql.FecharPeloSistema, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            command.Parameters.AddWithValue("totalEntradas", entradas);
+            command.Parameters.AddWithValue("totalSaidas", totalSaidas);
+            command.Parameters.AddWithValue("saldoFinal", saldoFinal);
+            command.Parameters.Add(ParametroInstante("fechadoEm", fechadoEm));
+            linhas = await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return linhas == 1;
+    }
+
+    public async Task<IReadOnlyList<CaixaDiariasPendentes>> ListComDiariasPendentesAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(Sql.ListComDiariasPendentes, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var results = new List<CaixaDiariasPendentes>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(new CaixaDiariasPendentes(reader.GetGuid(0), reader.GetFieldValue<DateOnly>(1)));
+        }
+
+        return results;
+    }
+
+    public async Task<ResultadoLancamentoDiarias> LancarDiariasPendentesAsync(
+        Guid caixaId, IReadOnlyList<DiariaFechamento> diarias, DateTimeOffset instante,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        DateOnly data;
+        await using (var command = new NpgsqlCommand(Sql.TravaCaixaParaDiarias, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", $"Caixa {caixaId} não encontrado.");
+            }
+
+            data = reader.GetFieldValue<DateOnly>(0);
+            if (!reader.GetBoolean(1))
+            {
+                throw new BusinessRuleException(
+                    "CAIXA_SEM_DIARIAS_PENDENTES",
+                    "O caixa não foi fechado pelo sistema: não há diárias pendentes.");
+            }
+
+            if (!reader.GetBoolean(2))
+            {
+                throw CaixaService.DiariasJaLancadas(data);
+            }
+        }
+
+        var efetivos = await ResolverDiariasAsync(connection, transaction, diarias, cancellationToken);
+
+        // Valor efetivo 0 não gera lançamento: lancamentos_funcionario exige valor > 0.
+        var lancadas = 0;
+        foreach (var (funcionarioId, valor) in efetivos.Where(e => e.Valor > 0))
+        {
+            lancadas++;
+            await using var command = new NpgsqlCommand(Sql.InsertDiariaPendente, connection, transaction);
+            command.Parameters.AddWithValue("funcionarioId", funcionarioId);
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            command.Parameters.AddWithValue("valor", valor);
+            command.Parameters.Add(ParametroInstante("createdAt", instante));
+            try
+            {
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+            catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                throw CaixaService.DiariasJaLancadas(data);
+            }
+        }
+
+        await using (var command = new NpgsqlCommand(Sql.QuitarDiariasPendentes, connection, transaction))
+        {
+            command.Parameters.AddWithValue("caixaId", caixaId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return new ResultadoLancamentoDiarias(caixaId, data, lancadas);
+    }
+
     private static Caixa MapCaixa(NpgsqlDataReader reader) => new(
         reader.GetGuid(0),
         reader.GetFieldValue<DateOnly>(1),
@@ -228,13 +381,19 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
         reader.IsDBNull(4) ? null : reader.GetDecimal(4),
         reader.IsDBNull(5) ? null : reader.GetDecimal(5),
         reader.IsDBNull(6) ? null : reader.GetDecimal(6),
-        reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7));
+        reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7),
+        reader.GetBoolean(8),
+        reader.GetBoolean(9));
+
+    /// <summary>Npgsql só grava timestamptz com Offset 0: todo instante vai em UTC (a meia-noite de SP vira 03:00Z).</summary>
+    public static NpgsqlParameter ParametroInstante(string nome, DateTimeOffset instante) =>
+        new(nome, NpgsqlDbType.TimestampTz) { Value = instante.ToUniversalTime() };
 
     private static class Sql
     {
         private const string SelectCaixa = """
             SELECT id, data, status::text, saldo_inicial, total_entradas, total_saidas,
-                   saldo_final, fechado_em
+                   saldo_final, fechado_em, fechado_pelo_sistema, diarias_pendentes
             FROM caixas
             """;
 
@@ -286,6 +445,39 @@ public sealed class PostgresCaixaRepository : ICaixaRepository
             SET status = 'FECHADO', total_entradas = @totalEntradas, total_saidas = @totalSaidas,
                 saldo_final = @saldoFinal, fechado_em = now(), updated_at = now()
             WHERE id = @caixaId AND status = 'ABERTO' AND deleted_at IS NULL
+            """;
+
+        public const string ListAbertosAntesDe =
+            SelectCaixa + " WHERE data < @data AND status = 'ABERTO' AND deleted_at IS NULL ORDER BY data";
+
+        public const string FecharPeloSistema = """
+            UPDATE caixas
+            SET status = 'FECHADO', total_entradas = @totalEntradas, total_saidas = @totalSaidas,
+                saldo_final = @saldoFinal, fechado_em = @fechadoEm, fechado_pelo_sistema = true,
+                diarias_pendentes = true, updated_at = now()
+            WHERE id = @caixaId AND status = 'ABERTO' AND deleted_at IS NULL
+            """;
+
+        public const string ListComDiariasPendentes = """
+            SELECT id, data FROM caixas
+            WHERE fechado_pelo_sistema AND diarias_pendentes AND deleted_at IS NULL
+            ORDER BY data
+            """;
+
+        public const string TravaCaixaParaDiarias = """
+            SELECT data, fechado_pelo_sistema, diarias_pendentes FROM caixas
+            WHERE id = @caixaId AND deleted_at IS NULL
+            FOR UPDATE
+            """;
+
+        public const string InsertDiariaPendente = """
+            INSERT INTO lancamentos_funcionario (funcionario_id, caixa_id, tipo, valor, created_at)
+            VALUES (@funcionarioId, @caixaId, 'DIARIA', @valor, @createdAt)
+            """;
+
+        public const string QuitarDiariasPendentes = """
+            UPDATE caixas SET diarias_pendentes = false, updated_at = now()
+            WHERE id = @caixaId AND diarias_pendentes
             """;
 
         public const string TravaCaixaPorId =

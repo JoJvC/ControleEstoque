@@ -9,7 +9,10 @@ public sealed class CaixaServiceTests
     private readonly FakeTipoDespesaRepository tipos = new();
     private readonly CaixaService sut;
 
-    public CaixaServiceTests() => sut = new CaixaService(caixas, tipos);
+    // Relógio fixo no dia dos cenários (2026-07-07): nenhum caixa deles está vencido para o fechamento automático.
+    public CaixaServiceTests() =>
+        sut = new CaixaService(
+            caixas, tipos, new RelogioFixo(new DateTimeOffset(2026, 7, 7, 12, 0, 0, TimeSpan.FromHours(-3))));
 
     [Fact]
     public async Task FecharAsync_QuandoCaixaJaFechado_LancaCaixaJaFechado()

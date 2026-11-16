@@ -29,6 +29,28 @@ public interface ICaixaRepository
     /// </summary>
     Task<ResultadoFechamento> FecharAsync(
         Guid caixaId, IReadOnlyList<DiariaFechamento> funcionarioIds, CancellationToken cancellationToken);
+
+    /// <summary>Caixas ABERTO (não apagados) com data anterior a <paramref name="data"/>.</summary>
+    Task<IReadOnlyList<Caixa>> ListAbertosAntesDeAsync(DateOnly data, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Fecha o caixa pelo sistema (FOR UPDATE; consolidados como no fechamento manual; fechado_em informado;
+    /// diárias pendentes; nenhuma diária lançada). Devolve false, sem erro, se o caixa já não estiver ABERTO.
+    /// </summary>
+    Task<bool> FecharPeloSistemaAsync(Guid caixaId, DateTimeOffset fechadoEm, CancellationToken cancellationToken);
+
+    /// <summary>Caixas fechados pelo sistema que ainda esperam o lançamento das diárias, por data.</summary>
+    Task<IReadOnlyList<CaixaDiariasPendentes>> ListComDiariasPendentesAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lança as diárias de um caixa fechado pelo sistema, com created_at = <paramref name="instante"/>, e tira
+    /// a pendência, na mesma transação (caixa travado FOR UPDATE). Não reabre o caixa. Lança
+    /// EntityNotFoundException (caixa ou funcionário), BusinessRuleException CAIXA_SEM_DIARIAS_PENDENTES e
+    /// ConflictException DIARIAS_JA_LANCADAS (inclusive sob corrida).
+    /// </summary>
+    Task<ResultadoLancamentoDiarias> LancarDiariasPendentesAsync(
+        Guid caixaId, IReadOnlyList<DiariaFechamento> diarias, DateTimeOffset instante,
+        CancellationToken cancellationToken);
 }
 
 public interface ITipoDespesaRepository

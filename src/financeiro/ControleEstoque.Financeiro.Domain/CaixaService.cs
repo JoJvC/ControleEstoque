@@ -11,31 +11,44 @@ public interface ICaixaService
         CancellationToken cancellationToken);
     Task<ResultadoFechamento> FecharAsync(
         Guid caixaId, IReadOnlyList<DiariaFechamento> funcionariosPresentes, CancellationToken cancellationToken);
+
+    /// <summary>Fecha pelo sistema os caixas abertos de dia anterior ao de hoje em São Paulo; devolve quantos.</summary>
+    Task<int> FecharVencidosAsync(CancellationToken cancellationToken);
+
+    Task<ResultadoLancamentoDiarias> LancarDiariasPendentesAsync(
+        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionariosPresentes, CancellationToken cancellationToken);
 }
 
 public sealed class CaixaService : ICaixaService
 {
     private readonly ICaixaRepository caixas;
     private readonly ITipoDespesaRepository tiposDespesa;
+    private readonly TimeProvider relogio;
 
-    public CaixaService(ICaixaRepository caixas, ITipoDespesaRepository tiposDespesa)
+    public CaixaService(
+        ICaixaRepository caixas, ITipoDespesaRepository tiposDespesa, TimeProvider? relogio = null)
     {
         this.caixas = caixas;
         this.tiposDespesa = tiposDespesa;
+        this.relogio = relogio ?? TimeProvider.System;
     }
 
-    public Task<Caixa> AbrirAsync(DateOnly? data, decimal saldoInicial, CancellationToken cancellationToken)
+    public async Task<Caixa> AbrirAsync(DateOnly? data, decimal saldoInicial, CancellationToken cancellationToken)
     {
+        await FecharVencidosAsync(cancellationToken);
+
         if (saldoInicial < 0)
         {
             throw new RequestValidationException("SALDO_INVALIDO", "Saldo inicial não pode ser negativo.");
         }
 
-        return caixas.AbrirAsync(data, saldoInicial, cancellationToken);
+        return await caixas.AbrirAsync(data, saldoInicial, cancellationToken);
     }
 
     public async Task<ResumoCaixa> ObterResumoAsync(DateOnly data, CancellationToken cancellationToken)
     {
+        await FecharVencidosAsync(cancellationToken);
+
         var caixa = await caixas.GetByDataAsync(data, cancellationToken)
             ?? throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", $"Não há caixa para {data:yyyy-MM-dd}.");
 
@@ -45,7 +58,8 @@ public sealed class CaixaService : ICaixaService
 
         return new ResumoCaixa(
             caixa, entradas, totalDespesas,
-            caixa.SaldoInicial + entradas - totalDespesas, despesas);
+            caixa.SaldoInicial + entradas - totalDespesas, despesas,
+            await caixas.ListComDiariasPendentesAsync(cancellationToken));
     }
 
     public async Task AdicionarDespesaAsync(
@@ -75,6 +89,55 @@ public sealed class CaixaService : ICaixaService
     public async Task<ResultadoFechamento> FecharAsync(
         Guid caixaId, IReadOnlyList<DiariaFechamento> funcionariosPresentes, CancellationToken cancellationToken)
     {
+        ValidarDiarias(funcionariosPresentes);
+
+        // Estado, diárias, entradas e despesas são lidos pelo repositório, na transação do fechamento.
+        return await caixas.FecharAsync(caixaId, funcionariosPresentes, cancellationToken);
+    }
+
+    public async Task<int> FecharVencidosAsync(CancellationToken cancellationToken)
+    {
+        var hoje = RelogioCaixa.HojeEmSaoPaulo(relogio.GetUtcNow());
+        var fechados = 0;
+        foreach (var caixa in await caixas.ListAbertosAntesDeAsync(hoje, cancellationToken))
+        {
+            if (await caixas.FecharPeloSistemaAsync(
+                    caixa.Id, RelogioCaixa.MeiaNoiteSeguinte(caixa.Data), cancellationToken))
+            {
+                fechados++;
+            }
+        }
+
+        return fechados;
+    }
+
+    public async Task<ResultadoLancamentoDiarias> LancarDiariasPendentesAsync(
+        Guid caixaId, IReadOnlyList<DiariaFechamento> funcionariosPresentes, CancellationToken cancellationToken)
+    {
+        ValidarDiarias(funcionariosPresentes);
+
+        // Pré-checagem; o repositório repete sob a trava FOR UPDATE.
+        var caixa = await ObterCaixaAsync(caixaId, cancellationToken);
+        if (!caixa.FechadoPeloSistema)
+        {
+            throw new BusinessRuleException(
+                "CAIXA_SEM_DIARIAS_PENDENTES", "O caixa não foi fechado pelo sistema: não há diárias pendentes.");
+        }
+
+        if (!caixa.DiariasPendentes)
+        {
+            throw DiariasJaLancadas(caixa.Data);
+        }
+
+        return await caixas.LancarDiariasPendentesAsync(
+            caixaId, funcionariosPresentes, RelogioCaixa.InstanteDaDiaria(caixa.Data), cancellationToken);
+    }
+
+    public static ConflictException DiariasJaLancadas(DateOnly data) =>
+        new("DIARIAS_JA_LANCADAS", $"As diárias do caixa de {data:dd/MM/yyyy} já foram lançadas.");
+
+    private static void ValidarDiarias(IReadOnlyList<DiariaFechamento> funcionariosPresentes)
+    {
         foreach (var diaria in funcionariosPresentes)
         {
             Validacao.IdPreenchido(diaria.FuncionarioId, "FuncionarioId");
@@ -92,9 +155,6 @@ public sealed class CaixaService : ICaixaService
             throw new RequestValidationException(
                 "DIARIA_INVALIDA", "Valor da diária não pode ser negativo.");
         }
-
-        // Estado, diárias, entradas e despesas são lidos pelo repositório, na transação do fechamento.
-        return await caixas.FecharAsync(caixaId, funcionariosPresentes, cancellationToken);
     }
 
     private async Task<Caixa> ObterCaixaAsync(Guid caixaId, CancellationToken cancellationToken)

@@ -39,6 +39,18 @@ public static class FinanceiroEndpoints
                 resultado.TotalSaidas, resultado.SaldoFinal, resultado.DiariasLancadas));
         });
 
+        // Lança depois as diárias de um caixa fechado pelo sistema, com a data do caixa; não o reabre.
+        // Como o fechamento manual, não checa permissão (ver REGRAS_DE_NEGOCIO.md 3.5).
+        app.MapPost("/v1/caixas/{id:guid}/diarias", async (
+            Guid id, LancarDiariasRequest request, ICaixaService caixas, CancellationToken cancellationToken) =>
+        {
+            var funcionarios = Validacao.SemNulos(request.Diarias, "Diarias")
+                .Select(d => new DiariaFechamento(d.FuncionarioId, d.Valor)).ToList();
+            var resultado = await caixas.LancarDiariasPendentesAsync(id, funcionarios, cancellationToken);
+            return Results.Ok(new LancamentoDiariasResponse(
+                resultado.CaixaId, resultado.Data, resultado.DiariasLancadas));
+        });
+
         // ---- Tipos de despesa -------------------------------------------------
         app.MapPost("/v1/tipos-despesa", async (
             CreateTipoDespesaRequest request, ITipoDespesaRepository tipos,

@@ -22,9 +22,15 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
     /// <summary>Leituras avulsas de entradas/despesas: o fechamento deve ler dentro do repositório.</summary>
     public int LeiturasAvulsas { get; private set; }
 
-    public Caixa AddCaixa(DateOnly data, decimal saldoInicial, StatusCaixa status = StatusCaixa.ABERTO)
+    public List<(Guid FuncionarioId, decimal Valor, DateTimeOffset CriadoEm)> DiariasPendentesLancadas { get; } = new();
+
+    public Caixa AddCaixa(
+        DateOnly data, decimal saldoInicial, StatusCaixa status = StatusCaixa.ABERTO,
+        DateTimeOffset? fechadoEm = null, bool fechadoPeloSistema = false, bool diariasPendentes = false)
     {
-        var caixa = new Caixa(Guid.NewGuid(), data, status, saldoInicial, null, null, null, null);
+        var caixa = new Caixa(
+            Guid.NewGuid(), data, status, saldoInicial, null, null, null, fechadoEm,
+            fechadoPeloSistema, diariasPendentes);
         caixas[caixa.Id] = caixa;
         return caixa;
     }
@@ -125,6 +131,76 @@ internal sealed class FakeCaixaRepository : ICaixaRepository
         return Task.FromResult(new ResultadoFechamento(
             caixaId, caixa.Data, Entradas, totalSaidas, saldoFinal, diarias.Count));
     }
+
+    public Task<IReadOnlyList<Caixa>> ListAbertosAntesDeAsync(DateOnly data, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Caixa>>(
+            caixas.Values.Where(c => c.Status == StatusCaixa.ABERTO && c.Data < data).OrderBy(c => c.Data).ToList());
+
+    public Task<bool> FecharPeloSistemaAsync(
+        Guid caixaId, DateTimeOffset fechadoEm, CancellationToken cancellationToken)
+    {
+        var caixa = caixas.GetValueOrDefault(caixaId);
+        if (caixa is null || caixa.Status != StatusCaixa.ABERTO)
+        {
+            return Task.FromResult(false);
+        }
+
+        var totalSaidas = (despesas.GetValueOrDefault(caixaId) ?? []).Sum(d => d.Valor);
+        caixas[caixaId] = caixa with
+        {
+            Status = StatusCaixa.FECHADO,
+            TotalEntradas = Entradas,
+            TotalSaidas = totalSaidas,
+            SaldoFinal = caixa.SaldoInicial + Entradas - totalSaidas,
+            FechadoEm = fechadoEm,
+            FechadoPeloSistema = true,
+            DiariasPendentes = true
+        };
+        return Task.FromResult(true);
+    }
+
+    public Task<IReadOnlyList<CaixaDiariasPendentes>> ListComDiariasPendentesAsync(
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<CaixaDiariasPendentes>>(
+            caixas.Values.Where(c => c.FechadoPeloSistema && c.DiariasPendentes)
+                .OrderBy(c => c.Data).Select(c => new CaixaDiariasPendentes(c.Id, c.Data)).ToList());
+
+    public Task<ResultadoLancamentoDiarias> LancarDiariasPendentesAsync(
+        Guid caixaId, IReadOnlyList<DiariaFechamento> diarias, DateTimeOffset instante,
+        CancellationToken cancellationToken)
+    {
+        var caixa = caixas.GetValueOrDefault(caixaId)
+            ?? throw new EntityNotFoundException("CAIXA_NAO_ENCONTRADO", "Caixa não encontrado.");
+        if (!caixa.FechadoPeloSistema)
+        {
+            throw new BusinessRuleException("CAIXA_SEM_DIARIAS_PENDENTES", "Sem diárias pendentes.");
+        }
+
+        if (!caixa.DiariasPendentes)
+        {
+            throw CaixaService.DiariasJaLancadas(caixa.Data);
+        }
+
+        var lancadas = new List<(Guid FuncionarioId, decimal Valor, DateTimeOffset CriadoEm)>();
+        foreach (var (funcionarioId, informado) in diarias)
+        {
+            if (!ValoresDiaria.TryGetValue(funcionarioId, out var cadastro))
+            {
+                throw new EntityNotFoundException(
+                    "FUNCIONARIO_NAO_ENCONTRADO", $"Funcionário {funcionarioId} não encontrado.");
+            }
+
+            var valor = informado ?? cadastro;
+            if (valor > 0)
+            {
+                lancadas.Add((funcionarioId, valor, instante));
+            }
+        }
+
+        DiariasPendentesLancadas.AddRange(lancadas);
+        caixas[caixaId] = caixa with { DiariasPendentes = false };
+        return Task.FromResult(new ResultadoLancamentoDiarias(caixaId, caixa.Data, lancadas.Count));
+    }
 }
 
 internal sealed class FakeTipoDespesaRepository : ITipoDespesaRepository
@@ -190,4 +266,14 @@ internal sealed class FakeFiadoRepository : IFiadoRepository
     public Task<IReadOnlyList<SaldoFiadoCliente>> ListSaldosDevedoresAsync(
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<SaldoFiadoCliente>>([]);
+}
+
+/// <summary>Relógio dublê: GetUtcNow fixo.</summary>
+internal sealed class RelogioFixo : TimeProvider
+{
+    private readonly DateTimeOffset agora;
+
+    public RelogioFixo(DateTimeOffset agora) => this.agora = agora;
+
+    public override DateTimeOffset GetUtcNow() => agora;
 }

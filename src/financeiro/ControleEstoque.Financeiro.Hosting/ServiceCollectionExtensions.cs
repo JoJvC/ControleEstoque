@@ -2,6 +2,7 @@ using ControleEstoque.Financeiro.Domain;
 using ControleEstoque.Financeiro.Repository;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 
@@ -26,7 +27,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFiadoRepository, PostgresFiadoRepository>();
         services.AddSingleton<IRelatorioCaixaRepository, PostgresRelatorioCaixaRepository>();
 
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ICaixaService, CaixaService>();
+        services.AddHostedService<FechamentoCaixaWorker>();
         services.AddSingleton<IFiadoService, FiadoService>();
         return services;
     }

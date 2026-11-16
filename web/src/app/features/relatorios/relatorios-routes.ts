@@ -46,6 +46,11 @@ export const RELATORIOS_ROUTES: Routes = [
         loadComponent: () => import('./estoque-relatorio-page').then((m) => m.EstoqueRelatorioPage),
       },
       {
+        path: 'lucro',
+        canActivate: [permissaoGuard('estoque.custos')],
+        loadComponent: () => import('./lucro-relatorio-page').then((m) => m.LucroRelatorioPage),
+      },
+      {
         path: 'conta-funcionarios',
         canActivate: [permissaoGuard('relatorios.ver')],
         loadComponent: () =>

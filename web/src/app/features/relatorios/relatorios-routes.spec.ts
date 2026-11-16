@@ -5,7 +5,7 @@ import { PERMISSOES } from '../../core/permissions/permissoes';
 import { rodarGuardDaRota } from '../../core/permissions/testing';
 import { RELATORIOS_ROUTES } from './relatorios-routes';
 
-// O hub é a rota pai ('') e os 9 relatórios são os filhos dela.
+// O hub é a rota pai ('') e os 10 relatórios são os filhos dela.
 const PAI = RELATORIOS_ROUTES[0];
 const TODAS = [PAI, ...(PAI.children ?? [])];
 
@@ -18,6 +18,7 @@ const GUARDADAS: Record<string, string> = {
   cascos: 'relatorios.ver',
   sucata: 'relatorios.ver',
   estoque: 'relatorios.ver',
+  lucro: 'estoque.custos',
   'conta-funcionarios': 'relatorios.ver',
   'vendas-por-periodo': 'relatorios.ver',
 };
@@ -31,12 +32,13 @@ const COMPONENTES: Record<string, string> = {
   cascos: 'CascosPage',
   sucata: 'SucataPage',
   estoque: 'EstoqueRelatorioPage',
+  lucro: 'LucroRelatorioPage',
   'conta-funcionarios': 'ContaFuncionariosPage',
   'vendas-por-periodo': 'VendasPorPeriodoPage',
 };
 
 describe('RELATORIOS_ROUTES', () => {
-  it('o hub é a única rota de topo e tem os 9 relatórios como filhos', () => {
+  it('o hub é a única rota de topo e tem os 10 relatórios como filhos', () => {
     expect(RELATORIOS_ROUTES).toHaveLength(1);
     expect(PAI.path).toBe('');
     expect(PAI.children?.map((r) => r.path)).toEqual(

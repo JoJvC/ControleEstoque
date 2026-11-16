@@ -23,7 +23,8 @@ import {
   TipoCascoResponse,
   TipoProduto,
 } from './models/estoque';
-import { RelatorioEstoque } from './models/relatorios';
+import { RelatorioEstoque, RelatorioLucro } from './models/relatorios';
+import { periodoParams } from './periodo-params';
 
 export interface ProdutoFiltros {
   tipo?: TipoProduto;
@@ -168,6 +169,12 @@ export class EstoqueApi {
 
   criarBaixaCasco(request: CreateBaixaCascoRequest): Observable<CreatedResponse> {
     return this.http.post<CreatedResponse>(`${this.base}/estoque/cascos/baixas`, request);
+  }
+
+  relatorioLucro(inicio: string, fim: string, funcionarioId: string): Observable<RelatorioLucro> {
+    return this.http.get<RelatorioLucro>(`${this.base}/relatorios/lucro`, {
+      params: periodoParams(inicio, fim).set('funcionarioId', funcionarioId),
+    });
   }
 
   relatorioEstoque(): Observable<RelatorioEstoque> {

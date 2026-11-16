@@ -83,6 +83,7 @@ Controles envolvidos:
 - **Custo da unidade** (base do lucro) = custo unitário + frete ÷ total de unidades da carga; o casco vazio conta como unidade no rateio.
 - O custo do abastecimento não é vinculado ao caixa.
 - **Na tela**: o vasilhame vazio entra na mesma lista dos produtos, como 'Vasilhame <tipo de casco>', e só linha com quantidade maior que zero vai na carga. As telas do segundo momento (lançar custos da carga e lista de cargas com custo pendente, com a ação de completar o custo) só existem para quem tem `estoque.custos`; o total exibido é o calculado pelo servidor, nunca somado na tela.
+- **Relatório de lucro** (por produto+marca no período): o custo da unidade é a média ponderada das cargas com custo completo até a data da venda. Linha sem custo disponível fica com **custo pendente**: a receita conta; custo, frete e lucro vêm nulos. O frete é mostrado à parte. Os totais trazem `linhasPendentes` (custo e lucro do total não incluem essas linhas). Exige `estoque.custos` (ou `*`), com `funcionarioId` na query; sem a permissão o servidor responde 403 `PERMISSAO_NEGADA`.
 
 ### 3.8 Conta Corrente de Funcionários
 - Cada diária lançada no fechamento de caixa (ver 3.5) credita a conta corrente do funcionário.

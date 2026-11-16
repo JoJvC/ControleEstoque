@@ -5,6 +5,8 @@ import { Router } from '@angular/router';
 import { vi } from 'vitest';
 
 import { ConfigStore } from '../../core/config/app-config';
+import { FakeStorage } from '../../core/permissions/testing';
+import { StorageService } from '../../core/platform/storage-service';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { periodoPadrao } from './periodo';
 import { VendasPorPeriodoPage } from './vendas-por-periodo-page';
@@ -44,6 +46,7 @@ async function montar(resposta: object = RELATORIO) {
       provideHttpClient(withInterceptors([apiErrorInterceptor])),
       provideHttpClientTesting(),
       { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
+      { provide: StorageService, useValue: new FakeStorage() },
     ],
   });
   const http = TestBed.inject(HttpTestingController);
@@ -93,6 +96,7 @@ describe('VendasPorPeriodoPage', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
+        { provide: StorageService, useValue: new FakeStorage() },
       ],
     });
     const http = TestBed.inject(HttpTestingController);

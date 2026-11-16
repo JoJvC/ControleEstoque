@@ -9,12 +9,14 @@ import {
   RelatorioCaixa,
   RelatorioEstoque,
   RelatorioFaturamento,
+  RelatorioLucro,
   SaldoCascoRelatorio,
   SaldoFiadoCliente,
   SaldoFuncionario,
   SucataEntregueRelatorio,
   VendasPorFuncionario,
 } from '../../core/api/models/relatorios';
+import { OperatorStore } from '../../core/operator/operator-store';
 import { RhApi } from '../../core/api/rh-api';
 import { VendasApi } from '../../core/api/vendas-api';
 import { ApiError } from '../../core/http/api-error';
@@ -42,6 +44,7 @@ export class RelatoriosStore {
   private readonly clientes = inject(ClientesApi);
   private readonly estoqueApi = inject(EstoqueApi);
   private readonly rh = inject(RhApi);
+  private readonly operatorStore = inject(OperatorStore);
 
   private readonly faturamentoInterno = signal(vazio<RelatorioFaturamento>());
   private readonly vendasPorFuncionarioInterno = signal(vazio<VendasPorFuncionario[]>());
@@ -50,6 +53,7 @@ export class RelatoriosStore {
   private readonly cascosInterno = signal(vazio<SaldoCascoRelatorio[]>());
   private readonly sucataInterno = signal(vazio<SucataEntregueRelatorio[]>());
   private readonly estoqueInterno = signal(vazio<RelatorioEstoqueTela>());
+  private readonly lucroInterno = signal(vazio<RelatorioLucro>());
   private readonly contaFuncionariosInterno = signal(vazio<SaldoFuncionario[]>());
 
   readonly faturamento = this.faturamentoInterno.asReadonly();
@@ -59,6 +63,7 @@ export class RelatoriosStore {
   readonly cascos = this.cascosInterno.asReadonly();
   readonly sucata = this.sucataInterno.asReadonly();
   readonly estoque = this.estoqueInterno.asReadonly();
+  readonly lucro = this.lucroInterno.asReadonly();
   readonly contaFuncionarios = this.contaFuncionariosInterno.asReadonly();
 
   carregarFaturamento(inicio: string, fim: string, produtoId?: string): Promise<void> {
@@ -97,6 +102,23 @@ export class RelatoriosStore {
       forkJoin([this.estoqueApi.relatorioEstoque(), this.estoqueApi.listarProdutos()]).pipe(
         map(([relatorio, produtos]) => ({ ...relatorio, produtos })),
       ),
+    );
+  }
+
+  /** O funcionário vai na query `funcionarioId` (o backend exige `estoque.custos`); sem operador não há requisição. */
+  carregarLucro(inicio: string, fim: string): Promise<void> {
+    const funcionarioId = this.operatorStore.operator()?.id;
+    if (!funcionarioId) {
+      this.lucroInterno.set({
+        dados: null,
+        carregando: false,
+        erro: 'Selecione um funcionário para ver o lucro.',
+      });
+      return Promise.resolve();
+    }
+    return this.carregar(
+      this.lucroInterno,
+      this.estoqueApi.relatorioLucro(inicio, fim, funcionarioId),
     );
   }
 

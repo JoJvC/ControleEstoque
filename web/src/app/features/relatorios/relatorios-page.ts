@@ -1,4 +1,5 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
+import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
@@ -11,6 +12,7 @@ import {
 } from '@angular/router';
 import { filter, map } from 'rxjs';
 
+import { CePermissao } from '../../core/permissions/ce-permissao';
 import { Icon, IconeNome } from '../../ui/atoms/icon';
 import { AppHeader } from '../../ui/organisms/app-header';
 
@@ -19,45 +21,74 @@ interface CardRelatorio {
   titulo: string;
   descricao: string;
   icone: IconeNome;
+  permissao?: string;
 }
 
 @Component({
   selector: 'ce-relatorios-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppHeader, Icon, RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [
+    AppHeader,
+    NgTemplateOutlet,
+    CePermissao,
+    Icon,
+    RouterLink,
+    RouterLinkActive,
+    RouterOutlet,
+  ],
   template: `
     @if (!temFilho()) {
       <ce-app-header titulo="Relatórios" />
       <ul class="cards">
         @for (c of cards; track c.rota) {
-          <li>
-            <a class="card" [routerLink]="'/relatorios/' + c.rota">
-              <span class="card__icone"><ce-icon [nome]="c.icone" /></span>
-              <span class="card__texto">
-                <span class="card__titulo">{{ c.titulo }}</span>
-                <span class="card__descricao">{{ c.descricao }}</span>
-              </span>
-            </a>
-          </li>
+          <ng-container *ngTemplateOutlet="cardItem; context: { $implicit: c }" />
         }
       </ul>
     }
+    <ng-template #cardItem let-c>
+      @if (c.permissao) {
+        <li *cePermissao="c.permissao">
+          <ng-container *ngTemplateOutlet="cardLink; context: { $implicit: c }" />
+        </li>
+      } @else {
+        <li><ng-container *ngTemplateOutlet="cardLink; context: { $implicit: c }" /></li>
+      }
+    </ng-template>
+    <ng-template #cardLink let-c>
+      <a class="card" [routerLink]="'/relatorios/' + c.rota">
+        <span class="card__icone"><ce-icon [nome]="c.icone" /></span>
+        <span class="card__texto">
+          <span class="card__titulo">{{ c.titulo }}</span>
+          <span class="card__descricao">{{ c.descricao }}</span>
+        </span>
+      </a>
+    </ng-template>
+    <ng-template #listaItem let-c>
+      @if (c.permissao) {
+        <li *cePermissao="c.permissao">
+          <ng-container *ngTemplateOutlet="listaLink; context: { $implicit: c }" />
+        </li>
+      } @else {
+        <li><ng-container *ngTemplateOutlet="listaLink; context: { $implicit: c }" /></li>
+      }
+    </ng-template>
+    <ng-template #listaLink let-c>
+      <a
+        class="lista__item"
+        [routerLink]="'/relatorios/' + c.rota"
+        routerLinkActive="is-active"
+        ariaCurrentWhenActive="page"
+      >
+        <ce-icon [nome]="c.icone" [tamanho]="20" />
+        <span>{{ c.titulo }}</span>
+      </a>
+    </ng-template>
     <div class="layout" [class.layout--lado]="lado()">
       @if (lado()) {
         <nav class="lista" aria-label="Relatórios">
           <ul>
             @for (c of cards; track c.rota) {
-              <li>
-                <a
-                  class="lista__item"
-                  [routerLink]="'/relatorios/' + c.rota"
-                  routerLinkActive="is-active"
-                  ariaCurrentWhenActive="page"
-                >
-                  <ce-icon [nome]="c.icone" [tamanho]="20" />
-                  <span>{{ c.titulo }}</span>
-                </a>
-              </li>
+              <ng-container *ngTemplateOutlet="listaItem; context: { $implicit: c }" />
             }
           </ul>
         </nav>
@@ -239,6 +270,13 @@ export class RelatoriosPage {
       titulo: 'Estoque',
       descricao: 'Itens em estoque e os abaixo do mínimo.',
       icone: 'galao',
+    },
+    {
+      rota: 'lucro',
+      titulo: 'Lucro por produto',
+      descricao: 'Receita, custo, frete e lucro por produto e marca.',
+      icone: 'grafico',
+      permissao: 'estoque.custos',
     },
     {
       rota: 'conta-funcionarios',

@@ -22,13 +22,34 @@ const ROTAS = [
   'cascos',
   'sucata',
   'estoque',
+  'lucro',
   'conta-funcionarios',
   'vendas-por-periodo',
 ];
 
+function configurar(permissoes: string[] = ['*']): void {
+  TestBed.configureTestingModule({
+    providers: [provideRouter([]), { provide: StorageService, useValue: new FakeStorage() }],
+  });
+  TestBed.inject(OperatorStore).select(operadorValido(permissoes));
+}
+
 describe('RelatoriosPage', () => {
+  it.each([
+    [[], false],
+    [['relatorios.ver'], false],
+    [['estoque.custos'], true],
+    [['*'], true],
+  ])('card de lucro com %j aparece=%s', (permissoes, aparece) => {
+    configurar(permissoes);
+    const fixture = TestBed.createComponent(RelatoriosPage);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(!!el.querySelector('a.card[href="/relatorios/lucro"]')).toBe(aparece);
+  });
+
   it('renderiza um card por relatório com o link da rota filha e sem placeholder', () => {
-    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    configurar();
     const fixture = TestBed.createComponent(RelatoriosPage);
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
@@ -37,12 +58,12 @@ describe('RelatoriosPage', () => {
     expect(el.querySelector('ce-page-placeholder')).toBeNull();
   });
 
-  it('cada um dos 9 cards tem ícone, título e descrição', () => {
-    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+  it('cada um dos 10 cards tem ícone, título e descrição', () => {
+    configurar();
     const fixture = TestBed.createComponent(RelatoriosPage);
     fixture.detectChanges();
     const cards = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('a.card'));
-    expect(cards).toHaveLength(9);
+    expect(cards).toHaveLength(10);
     for (const c of cards) {
       expect(c.querySelector('ce-icon svg')).not.toBeNull();
       expect(c.querySelector('.card__titulo')?.textContent?.trim()).toBeTruthy();
@@ -58,8 +79,12 @@ describe('RelatoriosPage', () => {
     @Component({ template: '' })
     class Dubles {}
     TestBed.configureTestingModule({
-      providers: [provideRouter([{ path: `relatorios/${rota}`, component: Dubles }])],
+      providers: [
+        provideRouter([{ path: `relatorios/${rota}`, component: Dubles }]),
+        { provide: StorageService, useValue: new FakeStorage() },
+      ],
     });
+    TestBed.inject(OperatorStore).select(operadorValido(['*']));
     const fixture = TestBed.createComponent(RelatoriosPage);
     fixture.detectChanges();
     const a = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>(
@@ -126,10 +151,10 @@ describe('RelatoriosPage como layout dos relatórios', () => {
     };
   }
 
-  it('desktop em /relatorios/vendas-por-periodo: lista compacta com 9 links, o ativo com aria-current, e a página ao lado', async () => {
+  it('desktop em /relatorios/vendas-por-periodo: lista compacta com 10 links, o ativo com aria-current, e a página ao lado', async () => {
     const { ir, lista, pagina, cards, el } = await montar(true);
     await ir('/relatorios/vendas-por-periodo');
-    expect(lista()).toHaveLength(9);
+    expect(lista()).toHaveLength(10);
     expect(lista().map((a) => a.getAttribute('href'))).toEqual(
       ROTAS.map((r) => `/relatorios/${r}`),
     );
@@ -161,11 +186,11 @@ describe('RelatoriosPage como layout dos relatórios', () => {
   });
 
   it.each([true, false])(
-    '/relatorios com desktop=%s: 9 cards e nenhum relatório',
+    '/relatorios com desktop=%s: 10 cards e nenhum relatório',
     async (desktop) => {
       const { ir, lista, pagina, cards, el } = await montar(desktop);
       await ir('/relatorios');
-      expect(cards()).toHaveLength(9);
+      expect(cards()).toHaveLength(10);
       expect(lista()).toHaveLength(0);
       expect(pagina()).toBeNull();
       expect(el.querySelector('.layout--lado')).toBeNull();
@@ -183,7 +208,7 @@ describe('RelatoriosPage como layout dos relatórios', () => {
     const ativos = lista().filter((a) => a.getAttribute('aria-current') === 'page');
     expect(ativos.map((a) => a.textContent?.trim())).toEqual(['Fiado']);
     expect(pagina()).toBeNull();
-    expect(lista()).toHaveLength(9);
+    expect(lista()).toHaveLength(10);
   });
 
   it('gesto no celular: clicar no card abre só o relatório e o voltar retorna aos cards', async () => {
@@ -201,7 +226,7 @@ describe('RelatoriosPage como layout dos relatórios', () => {
     el.querySelector<HTMLButtonElement>('button[aria-label="Voltar"]')!.click();
     await assentar();
     expect(router.url).toBe('/relatorios');
-    expect(cards()).toHaveLength(9);
+    expect(cards()).toHaveLength(10);
     expect(el.querySelector('ce-fiado-page')).toBeNull();
   });
 });

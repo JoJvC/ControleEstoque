@@ -3,6 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { ConfigStore } from '../../core/config/app-config';
+import { FakeStorage } from '../../core/permissions/testing';
+import { StorageService } from '../../core/platform/storage-service';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { periodoPadrao } from './periodo';
 import { VendasPorFuncionarioPage } from './vendas-por-funcionario-page';
@@ -27,6 +29,7 @@ async function montar() {
       provideHttpClient(withInterceptors([apiErrorInterceptor])),
       provideHttpClientTesting(),
       { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
+      { provide: StorageService, useValue: new FakeStorage() },
     ],
   });
   const http = TestBed.inject(HttpTestingController);

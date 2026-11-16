@@ -98,6 +98,39 @@ export interface RelatorioEstoque {
   cascos: EstoqueCascoResponse[];
 }
 
+// estoque — EstoqueContracts.cs (relatório de lucro; nulos = custo pendente)
+export interface LinhaLucro {
+  produtoMarcaId: string;
+  produtoId: string;
+  produtoNome: string;
+  marcaId: string;
+  marcaNome: string;
+  quantidadeVendida: number;
+  receita: number;
+  receitaVasilhame: number;
+  custoProdutos: number | null;
+  frete: number | null;
+  lucro: number | null;
+  custoPendente: boolean;
+}
+
+export interface TotaisLucro {
+  quantidadeVendida: number;
+  receita: number;
+  receitaVasilhame: number;
+  custoProdutos: number;
+  frete: number;
+  lucro: number;
+  linhasPendentes: number;
+}
+
+export interface RelatorioLucro {
+  inicio: string | null;
+  fim: string | null;
+  linhas: LinhaLucro[];
+  totais: TotaisLucro;
+}
+
 // rh — RH.Domain/Models.cs
 export interface SaldoFuncionario {
   funcionarioId: string;

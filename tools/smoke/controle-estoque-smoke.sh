@@ -16,7 +16,7 @@ done
 
 echo "=== Smoke: RH — cargo + funcionário ==="
 CARGO_ID=$(curl -fsS -X POST "$RH/v1/cargos" -H "Content-Type: application/json" \
-  -d '{"nome":"Vendedor Smoke '"$RANDOM"'","permissoes":["vendas.registrar"]}' | jq -r .id)
+  -d '{"nome":"Vendedor Smoke '"$RANDOM"'","permissoes":["vendas.registrar","estoque.custos"]}' | jq -r .id)
 FUNC_ID=$(curl -fsS -X POST "$RH/v1/funcionarios" -H "Content-Type: application/json" \
   -d '{"nome":"Funcionário Smoke","cargoId":"'"$CARGO_ID"'","valorDiaria":80}' | jq -r .id)
 echo "OK  funcionario=$FUNC_ID"
@@ -36,16 +36,29 @@ PRODUTO_ID=$(curl -fsS -X POST "$ESTOQUE/v1/produtos" -H "Content-Type: applicat
 PM_ID=$(curl -fsS -X POST "$ESTOQUE/v1/produtos/$PRODUTO_ID/marcas" -H "Content-Type: application/json" \
   -d '{"marcaId":"'"$MARCA_ID"'","precoReferencia":50,"estoqueMinimo":5}' \
   | jq -r --arg marca "$MARCA_ID" '.marcas[] | select(.marcaId == $marca) | .id')
-curl -fsS -X POST "$ESTOQUE/v1/abastecimentos" -H "Content-Type: application/json" \
-  -d '{"tipoFrete":"PROPRIO","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoMarcaId":"'"$PM_ID"'","quantidade":20}],"cascos":[{"tipoCascoId":"'"$CASCO_ID"'","quantidade":10}]}' > /dev/null
+ABAST_ID=$(curl -fsS -X POST "$ESTOQUE/v1/abastecimentos" -H "Content-Type: application/json" \
+  -d '{"tipoFrete":"PROPRIO","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoMarcaId":"'"$PM_ID"'","quantidade":20}],"cascos":[{"tipoCascoId":"'"$CASCO_ID"'","quantidade":10}]}' | jq -r .id)
 echo "OK  produto=$PRODUTO_ID marca=$MARCA_ID (associação $PM_ID) abastecido (20 un) + 10 cascos vazios do tipo $CASCO_ID"
+
+echo "=== Smoke: Abastecimento momento 1 fica pendente; momento 2 aceita custo 0 e frete 0 ==="
+curl -fsS "$ESTOQUE/v1/abastecimentos/custos-pendentes?funcionarioId=$FUNC_ID" \
+  | jq -e --arg id "$ABAST_ID" 'map(select(.id == $id)) | length == 1' > /dev/null
+DETALHE=$(curl -fsS "$ESTOQUE/v1/abastecimentos/$ABAST_ID?funcionarioId=$FUNC_ID")
+echo "$DETALHE" | jq -e '.custoPendente == true and .frete == null' > /dev/null
+CUSTOS_BODY=$(echo "$DETALHE" | jq -c --arg func "$FUNC_ID" \
+  '{funcionarioId: $func, frete: 0, itens: [.itens[] | {id, custoUnitario: 0}], cascos: [.cascos[] | {id, custoUnitario: 0}]}')
+curl -fsS -X PUT "$ESTOQUE/v1/abastecimentos/$ABAST_ID/custos" -H "Content-Type: application/json" -d "$CUSTOS_BODY" \
+  | jq -e '.custoPendente == false and .custoTotal == 0' > /dev/null
+curl -fsS "$ESTOQUE/v1/abastecimentos/custos-pendentes?funcionarioId=$FUNC_ID" \
+  | jq -e --arg id "$ABAST_ID" 'map(select(.id == $id)) | length == 0' > /dev/null
+echo "OK  carga $ABAST_ID saiu dos pendentes com custo 0"
 
 echo "=== Smoke: Financeiro — abrir caixa ==="
 CAIXA_ID=$(curl -fsS -X POST "$FINANCEIRO/v1/caixas" -H "Content-Type: application/json" \
   -d '{"saldoInicial":100}' | jq -r .id)
 echo "OK  caixa=$CAIXA_ID"
 
-echo "=== Smoke: Venda 4.1 — 5 águas (troca), devolve 3 cascos, entrega 1 sucata, pix 200 ==="
+echo "=== Smoke: Venda 4.1 — 5 un. (troca), devolve 3 cascos, entrega 1 sucata, pix 200 ==="
 VENDA_BODY='{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":5,"precoUnitario":50,"pagouVasilhame":false}],"pagamentos":[{"forma":"PIX","valor":200}],"cascosDevolvidos":[{"tipoCascoId":"'"$CASCO_ID"'","quantidade":3}],"sucataEntregue":[{"tipoCascoId":"'"$CASCO_ID"'","quantidade":1}]}'
 VENDA=$(curl -fsS -X POST "$VENDAS/v1/vendas" -H "Content-Type: application/json" -d "$VENDA_BODY")
 VENDA_ID=$(echo "$VENDA" | jq -r .id)
@@ -82,17 +95,37 @@ curl -fsS -X POST "$VENDAS/v1/vendas/$VENDA_ID/cupom-fiscal" | jq -e '.numero' >
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$VENDAS/v1/vendas/$VENDA_ID" \
   -H "Content-Type: application/json" \
   -d '{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":1,"precoUnitario":50,"pagouVasilhame":false}],"pagamentos":[],"cascosDevolvidos":[],"sucataEntregue":[]}')
-[ "$CODE" = "422" ] && echo "OK  edição pós-cupom bloqueada (422)"
+[ "$CODE" = "422" ] || { echo "FALHOU: edição pós-cupom devia dar 422, veio $CODE"; exit 1; }
+echo "OK  edição pós-cupom bloqueada (422)"
 
-echo "=== Smoke: fechamento de caixa com diária ==="
+echo "=== Smoke: crédito do cliente — pagamento acima do devido vira crédito (saldo -50 + 150 = 100) ==="
+curl -fsS -X POST "$FINANCEIRO/v1/clientes/$CLI_ID/fiado/pagamentos" -H "Content-Type: application/json" \
+  -d '{"valor":150,"forma":"PIX"}' > /dev/null
+curl -fsS "$CLIENTES/v1/clientes/$CLI_ID/saldos" | jq -e '.saldo == 100 and .creditoDisponivel == 100' > /dev/null
+echo "OK  crédito disponível 100"
+
+echo "=== Smoke: Venda 2 — pagou o vasilhame (2 x (50 + 30) = 160), crédito 100 + pix 60 ==="
+VENDA2=$(curl -fsS -X POST "$VENDAS/v1/vendas" -H "Content-Type: application/json" \
+  -d '{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":2,"precoUnitario":50,"pagouVasilhame":true}],"pagamentos":[{"forma":"CREDITO_CLIENTE","valor":100},{"forma":"PIX","valor":60}],"cascosDevolvidos":[],"sucataEntregue":[]}')
+echo "$VENDA2" | jq -e '.totalLiquido == 160 and .statusPagamento == "PAGA" and .saldoFiadoGerado == 0 and .saldoCascoCliente == 2' > /dev/null
+curl -fsS "$CLIENTES/v1/clientes/$CLI_ID/saldos" | jq -e '.saldo == 0 and .creditoDisponivel == 0 and .saldoCascos == 2' > /dev/null
+echo "OK  venda paga com crédito; linha com vasilhame pago não empresta casco (saldo de casco segue 2)"
+
+echo "=== Smoke: crédito acima do disponível é recusado (CREDITO_INSUFICIENTE) ==="
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$VENDAS/v1/vendas" -H "Content-Type: application/json" \
+  -d '{"clienteId":"'"$CLI_ID"'","funcionarioId":"'"$FUNC_ID"'","itens":[{"produtoId":"'"$PRODUTO_ID"'","marcaId":"'"$MARCA_ID"'","quantidade":1,"precoUnitario":50,"pagouVasilhame":false}],"pagamentos":[{"forma":"CREDITO_CLIENTE","valor":50}],"cascosDevolvidos":[],"sucataEntregue":[]}')
+[ "$CODE" = "422" ] || { echo "FALHOU: crédito sem saldo devia dar 422, veio $CODE"; exit 1; }
+echo "OK  crédito sem saldo recusado (422)"
+
+echo "=== Smoke: fechamento de caixa com diária editada (100 em vez dos 80 cadastrados) ==="
 FECHAMENTO=$(curl -fsS -X POST "$FINANCEIRO/v1/caixas/$CAIXA_ID/fechamento" \
-  -H "Content-Type: application/json" -d '{"diarias":[{"funcionarioId":"'"$FUNC_ID"'"}]}')
+  -H "Content-Type: application/json" -d '{"diarias":[{"funcionarioId":"'"$FUNC_ID"'","valor":100}]}')
 echo "$FECHAMENTO" | jq -e '.diariasLancadas == 1' > /dev/null
 echo "OK  caixa fechado: $(echo "$FECHAMENTO" | jq -c .)"
 
-echo "=== Smoke: conta corrente do funcionário (diária 80 creditada) ==="
-curl -fsS "$RH/v1/funcionarios/$FUNC_ID/conta-corrente" | jq -e '.saldoAPagar == 80' > /dev/null
-echo "OK  saldo do funcionário = 80"
+echo "=== Smoke: conta corrente do funcionário (diária editada 100 creditada) ==="
+curl -fsS "$RH/v1/funcionarios/$FUNC_ID/conta-corrente" | jq -e '.saldoAPagar == 100' > /dev/null
+echo "OK  saldo do funcionário = 100"
 
 echo ""
 echo "=== Smoke: PASSED ==="

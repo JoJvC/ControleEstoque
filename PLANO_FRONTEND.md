@@ -201,7 +201,7 @@ web/
 ### 6.2 Telas por feature (todas lazy)
 
 - **Vendas**: `nova` (PDV), `lista` (filtros cliente/período, paginada), `detalhe/:id` (itens, pagamentos, saldos gerados, ações: editar, adicionar pagamento, emitir cupom), `editar/:id` (mesmo form do PDV pré-carregado; bloqueado com aviso se cupom já emitido — `VENDA_JA_FATURADA`).
-- **Clientes**: lista com busca; detalhe com **3 saldos independentes** (`GET /saldos`: cascos, sucata entregue, fiado) como `ce-saldo-chip`s distintos; endereços (N, um principal; a gestão — adicionar, editar, remover, marcar principal — fica no formulário de cadastro/edição, e o detalhe continua só permitindo adicionar); ações: **Pagar Casco** (sheet com 2 modos: devolução física / conversão em valor), **Entregar Sucata** (com conversão em crédito opcional), **Receber Fiado** (pagamento de dívida via API Financeiro).
+- **Clientes**: lista com busca; detalhe com saldos distintos (`GET /saldos`: cascos por tipo, sucata entregue e o **saldo único em dinheiro**, negativo = fiado e positivo = crédito, ver regras 12 e 13 da Seção 8) como `ce-saldo-chip`s; endereços (N, um principal; a gestão — adicionar, editar, remover, marcar principal — fica no formulário de cadastro/edição, e o detalhe continua só permitindo adicionar); ações: **Pagar Casco** (sheet com 2 modos: devolução física / conversão em valor), **Entregar Sucata** (com conversão em crédito opcional), **Receber Fiado** (pagamento de dívida via API Financeiro).
 - **Estoque**: saldo por produto+marca (GET `/v1/produtos`; o produto mostra o `estoqueGeral` do servidor e, ao tocar, expande as marcas, com alerta pelo `abaixoMinimo`), lista à parte de vasilhames por tipo de casco (GET `/v1/estoque/cascos`, só tipos com vazios ou sucata diferentes de zero, com estado vazio), abastecimento em dois momentos (form de quantidades por produto+marca e vasilhame por tipo de casco, com tipo de frete e sem custo; depois, só com `estoque.custos`, custo unitário por linha e frete, com o total do servidor, e a lista de cargas com custo pendente), ajuste manual, **baixa de casco por quebra** (quantidade, motivo, ≥1 responsável obrigatório).
 - **Cadastros**: tipos de casco (nome, preço do vasilhame, aceita sucata; genérico sem marca ou específico com marca), produtos (tipo Retornável/Descartável; casco genérico quando Retornável; categoria e tamanho livres; lista de marcas, cada uma com preço de referência, estoque mínimo, foto e casco específico opcional, que vence o genérico; a opção 'Sem marca' grava na marca 'Genérica', criada pelo front se faltar, e aparece como 'sem marca' na lista e na edição), marcas.
 - **Financeiro**: caixa do dia (abrir com saldo inicial; 409 = já aberto → carregar existente), lançar despesa (tipo obrigatório), **fechamento** (checklist de funcionários que trabalharam → diárias; resumo entradas/saídas/saldo), tipos de despesa.
@@ -216,11 +216,11 @@ web/
                 → ao tocar: sheet com quantidade (stepper), preço unitário
                   (PRÉ-PREENCHIDO com referência, LIVREMENTE editável),
                   desconto opcional (valor|percentual + MOTIVO obrigatório)
-[3. Cascos]     visível apenas se houver item de ÁGUA no carrinho:
+[3. Cascos]     visível apenas se houver item retornável no carrinho (um bloco por tipo de casco):
                 ┌──────────────────────────────────────────────┐
-                │ Cascos devolvidos agora:  [toggle "todos na   │
-                │ hora"] → preenche devolvidos = qtd de água,   │
-                │ campo continua EDITÁVEL                       │
+                │ Cascos devolvidos agora, por tipo: [toggle    │
+                │ "todos na hora"] → TRAVA o devolvido do tipo  │
+                │ = qtd vendida em troca; desmarcar libera      │
                 │ Sucata entregue: [stepper]  ⓘ "não abate o    │
                 │ débito de casco"                              │
                 └──────────────────────────────────────────────┘
@@ -342,11 +342,30 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 - [ ] Entregas, caderneta do fiado e consumo médio: fora de escopo (`web/DESIGN.md` §6)
 - **Critério de aceite:** `npm run e2e` verde no host contra o compose, com os 10 testes; vitest de contraste verde nos 4 temas e no Automático.
 
+### Fase 5 — Produto+marca, casco por tipo, saldo único, custos e lucro
+Entrou (REGRAS_DE_NEGOCIO.md descreve só isto):
+- [x] Produto com N marcas (`produto_marcas`), tipo RETORNAVEL/DESCARTAVEL, 'Sem marca' gravando na 'Genérica'
+- [x] Tipos de casco genérico/específico (o específico vence) e as 3 gestões do retornável: produto por marca, vasilhame vazio por tipo, sucata por tipo
+- [x] Venda com 'Pagou o vasilhame' por linha, devolução e sucata por tipo, 'Devolveu todos na hora' travando o campo
+- [x] Saldo único do cliente (fiado/crédito) e forma `CREDITO_CLIENTE` só no registro da venda
+- [x] Abastecimento em dois momentos, sem caixa, com custo 0 aceito e cargas pendentes
+- [x] Relatório de lucro por produto+marca com frete rateado e vasilhame à parte
+- [x] Diária editável no fechamento do caixa
+- [x] Endereços com um principal (regra no serviço)
+- [x] Tela Hoje, relatório de estoque e relatório de lucro
+- [x] Smoke Playwright (`web/e2e/fase5.spec.ts`, `fechamento.spec.ts`, rodando por último via projeto `fechamento` com `dependencies`) e `tools/smoke/controle-estoque-smoke.sh` com os seis fluxos novos (escritos; execução no host)
+Pendente:
+- [ ] Rodar o smoke Playwright e o `tools/smoke` contra o compose — motivo: a caixa de desenvolvimento não tem compose/docker; conferência no aceite, no host (`cd web && npm run e2e`; `tools/smoke/controle-estoque-smoke.sh`)
+- [ ] Limite de devolução de casco ao saldo do cliente no backend — motivo: hoje o backend aceita e o saldo negativo vira 'a favor do cliente'; mudança de regra, fatia própria
+- [ ] Índice único parcial de endereço principal (`cliente_enderecos(cliente_id) WHERE principal AND ativo`) — motivo: hoje a regra existe só no `ClienteService`/repositório; exige DDL, fatia própria
+- [ ] `web/e2e` no `ng lint` e no `format:check` — motivo: fora do escopo desta fatia
+- [ ] Pedidos de mudança da Fase 6 — motivo: não entram na Fase 5
+
 ---
 
 ## 8. Regras Críticas de UI
 
-**As 16 regras que modelos executores mais erram construindo estas telas. Em dúvida, esta seção vence.**
+**As 17 regras que modelos executores mais erram construindo estas telas. Em dúvida, esta seção vence.**
 
 1. **Casco normal ≠ sucata — nunca no mesmo campo, nunca somados.** São dois inputs, dois chips de saldo, duas cores. Toda tela que registra sucata exibe o aviso de que **não abate** o débito de casco. *Erro típico: um campo único "vasilhames devolvidos".*
 

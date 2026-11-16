@@ -1,7 +1,7 @@
-# Sistema de Controle de Estoque e Vendas de Galões de Água
+# Sistema de Controle de Estoque e Vendas de Produtos Retornáveis e Descartáveis
 
 ## 1. Visão Geral do Sistema
-Descrição do propósito do sistema, que controla o estoque de galões de água, descartáveis, cascos, vendas e custos, com gestão de funcionários e permissões.
+Descrição do propósito do sistema, que controla o estoque de produtos por marca (retornáveis, com vasilhame, e descartáveis), cascos por tipo, vendas, abastecimento e custos, com gestão de funcionários e permissões.
 
 ## 2. Entidades Principais
 - **Clientes**: Cadastro de clientes.
@@ -9,7 +9,7 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 - **Marcas**: Cadastro próprio de marcas, associadas aos produtos (N por produto). Toda associação tem marca; produto sem marca própria usa uma marca cadastrada (ex: 'Genérica').
 - **Tipos de casco**: Cadastro próprio de vasilhames, com **nome**, **preço do vasilhame** e se **aceita sucata**. Casco **genérico** não tem marca; casco **específico** é de uma marca. Cada tipo tem estoque próprio de **vazios** e de **sucata** (sucata só nos tipos que aceitam).
 - **Estoque**: Quantidades por produto+marca (razão de lançamentos) e, separado, o estoque de cascos por tipo de casco (vazios e sucata). O estoque geral do produto é a soma das marcas.
-- **Vendas**: Registro de cada venda, podendo conter N itens (produtos diferentes e/ou marcas diferentes de galão na mesma venda), vinculada a cliente, funcionário responsável, formas de pagamento e entrega. Pode ser editada após o registro (itens, pagamentos, desconto, devolução) e permite emissão de cupom fiscal.
+- **Vendas**: Registro de cada venda, podendo conter N itens (produtos diferentes e/ou marcas diferentes na mesma venda), vinculada a cliente, funcionário responsável, formas de pagamento e entrega. Pode ser editada após o registro (itens, pagamentos, desconto, devolução) e permite emissão de cupom fiscal.
 - **Pagamentos**: Uma venda pode ter N formas de pagamento simultâneas (pix, cartão de crédito, cartão de débito, dinheiro, etc.), cada uma com valor próprio lançado. A soma dos valores define quanto da venda já foi pago; o que faltar compõe o fiado do cliente. Uma das formas é o **crédito do cliente** (saldo positivo na conta corrente), limitado ao crédito disponível.
 - **Caixa**: Controle de entradas e saídas (despesas do dia categorizadas por tipo) e lançamento da diária de funcionários no fechamento diário; a diária credita a conta corrente do funcionário e não sai do caixa.
 - **Funcionários**: Cadastro dos funcionários, vinculação às vendas, diária fixa.
@@ -47,8 +47,8 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 - **Crédito do cliente como forma de pagamento**: a forma "Crédito do cliente" conta como valor pago da venda, mas **não é dinheiro recebido**: não entra nas entradas do caixa, no recebido do dia nem no recebido do faturamento. A soma dessa forma não pode passar do **crédito disponível** do cliente (o saldo, quando positivo); acima disso a venda é recusada (`CREDITO_INSUFICIENTE`) e nada é gravado. O uso gera um lançamento de débito (`DEBITO_USO_CREDITO`) na conta do cliente. Na edição da venda, o uso de crédito da própria venda não conta contra o limite. Com a venda já registrada, o pagamento posterior não aceita essa forma (`FORMA_NAO_PERMITIDA`): o crédito já abate o fiado no saldo. Na tela de venda, a forma "Crédito do cliente" só é oferecida quando o cliente tem crédito disponível maior que zero (sem crédito, não aparece), e o valor digitado nela fica limitado ao crédito disponível (digitar 80 com crédito 30 deixa 30; o que faltar vai para outra forma ou para o fiado). Se o servidor ainda recusar com `CREDITO_INSUFICIENTE`, a tela mostra "Crédito do cliente insuficiente" e recarrega os saldos. Ao pagar fiado de venda lançada ou receber fiado, a forma não existe.
 - **Desconto**: pode ser inserido no ato da venda ou em uma edição posterior, sempre com um motivo. O desconto é aplicado por item (produto), digitado manualmente (valor ou percentual); o sistema recalcula o total da venda automaticamente.
 - **Casco do item**: o tipo de casco de cada linha retornável é resolvido pelo sistema (o específico da associação vence o genérico do produto); descartável não tem casco e não movimenta casco. A linha retornável é, por padrão, uma **troca**: a quantidade vendida é emprestada no tipo da linha e gera débito de casco do cliente nesse tipo.
-- **Pagou o vasilhame**: a linha retornável pode ser marcada como "pagou o vasilhame" (em descartável, a venda é recusada). O valor bruto do item passa a ser quantidade × preço unitário + quantidade × preço do vasilhame do tipo de casco resolvido; o preço do vasilhame vem do cadastro do tipo (relido a cada edição), nunca da requisição, e fica gravado no item. Desconto e total do item seguem a regra normal, aplicados sobre esse bruto. A linha não gera débito de casco.
-- **Devolução e sucata na venda**: no registro (ou edição) da venda, a devolução de cascos e a entrega de sucata são informadas por tipo de casco e só valem para o tipo resolvido de alguma linha retornável da venda (troca ou vasilhame pago); outro tipo é recusado. A devolução abate o débito de casco do cliente naquele tipo e dá entrada no estoque de vazios do tipo; se for maior que o emprestado, vira crédito (saldo negativo do tipo). A sucata é apenas registro (por cliente e tipo, mais a entrada no estoque de sucata do tipo, ver 3.6), só em tipo que aceita sucata (senão a venda é recusada), e não abate o débito de casco. Venda recusada não grava nada.
+- **Pagou o vasilhame**: a linha retornável pode ser marcada como "pagou o vasilhame" (em descartável, a venda é recusada com `VASILHAME_EM_DESCARTAVEL`). O valor bruto do item passa a ser quantidade × preço unitário + quantidade × preço do vasilhame do tipo de casco resolvido; o preço do vasilhame vem do cadastro do tipo (relido a cada edição), nunca da requisição, e fica gravado no item. Desconto e total do item seguem a regra normal, aplicados sobre esse bruto. A linha não gera débito de casco.
+- **Devolução e sucata na venda**: no registro (ou edição) da venda, a devolução de cascos e a entrega de sucata são informadas por tipo de casco e só valem para o tipo resolvido de alguma linha retornável da venda (troca ou vasilhame pago); outro tipo é recusado (`TIPO_CASCO_FORA_DA_VENDA`) e quantidade não positiva também (`QUANTIDADE_INVALIDA`). A devolução abate o débito de casco do cliente naquele tipo e dá entrada no estoque de vazios do tipo; se for maior que o emprestado, vira crédito (saldo negativo do tipo). A sucata é apenas registro (por cliente e tipo, mais a entrada no estoque de sucata do tipo, ver 3.6), só em tipo que aceita sucata (senão a venda é recusada com `SUCATA_NAO_ACEITA`), e não abate o débito de casco. Venda recusada não grava nada.
 - **Status de pagamento**: a venda só é considerada **paga** quando a soma dos pagamentos lançados cobre integralmente o valor total da venda (já com desconto aplicado). Enquanto isso, permanece parcial/pendente, e a diferença compõe o saldo de fiado do cliente.
 
 ### 3.5 Controle de Caixa
@@ -58,7 +58,7 @@ Descrição do propósito do sistema, que controla o estoque de galões de água
 - Cada despesa lançada no caixa deve ter um **tipo de despesa** associado, para permitir análise por categoria.
 - Fechamento do caixa no final do dia com saldo consolidado.
 
-### 3.6 Gestão de Cascos e Sucata (Galão Quebrado)
+### 3.6 Gestão de Cascos e Sucata
 O vasilhame é controlado por **tipo de casco** (nome, preço do vasilhame, aceita sucata). Cada tipo tem estoque físico de **vazios** e de **sucata**, separados. O casco do item é o específico da associação produto+marca, se houver; senão, o genérico do produto (o específico vence). **Produto descartável não tem casco e não gera retorno.** A venda só empresta e cobra débito de casco de produto retornável — nunca de sucata. **Sucata** (vasilhame quebrado) tem estoque físico por tipo e registro por cliente próprios, alimentados por entregas do cliente (avulsas ou no ato de uma venda) e por baixas de casco quebrado; essas entregas são **independentes** do saldo de casco e **não abatem** o débito de casco do cliente.
 
 - **Venda de produto retornável**: o casco do item usado para entregar o produto continua sendo da loja (emprestado). **Gera débito de casco** para o cliente, a menos que ele devolva vazio(s) no ato ou depois.
@@ -77,7 +77,7 @@ Controles envolvidos:
 
 ### 3.7 Abastecimento
 - Registro de abastecimento do estoque da loja, que pode ser feito via frete terceirizado ou com caminhão/funcionário próprio da loja.
-- O abastecimento pode trazer galão completo (casco + água) e/ou casco vazio separadamente, cada um dando entrada no respectivo estoque (produto+marca e vazios por tipo de casco).
+- O abastecimento pode trazer produto retornável (cheio) por produto+marca e/ou vasilhame vazio por tipo de casco, cada um dando entrada no respectivo estoque (produto+marca e vazios por tipo de casco).
 - **Dois momentos**: (1) a carga é lançada só com quantidades, por produto+marca e cascos vazios por tipo, sem valor; (2) quem tem a permissão `estoque.custos` lança o custo unitário de cada linha (produtos e cascos; zero é válido: digitar 0 no custo ou no frete é enviado como 0) e o frete da carga. Ao salvar, a tela confirma com o total do servidor ou com o que ainda falta. Não há campo de custo total: o servidor calcula total = soma(quantidade × custo unitário) + frete.
 - **Custo pendente**: a carga com frete ou algum custo unitário faltando fica pendente e aparece na listagem de cargas pendentes, até o custo ser completado. Carga anterior a esta regra aparece pendente até o frete ser informado.
 - **Custo da unidade** (base do lucro) = custo unitário + frete ÷ total de unidades da carga; o casco vazio conta como unidade no rateio.
@@ -112,13 +112,13 @@ Controles envolvidos:
 - Na própria venda o cliente pode devolver cascos vazios e entregar sucata, sempre por tipo de casco e só de tipo resolvido de alguma linha retornável da venda (troca ou vasilhame pago); outro tipo é recusado. Devolução: abate o saldo do cliente no tipo (acima do emprestado vira crédito) e dá entrada no estoque de vazios do tipo. Sucata: só em tipo que aceita sucata (senão recusa); registra a entrega do cliente no tipo e dá entrada no estoque de sucata do tipo, sem abater o saldo de casco. O casco vazio não é mais um item vendável: o débito de casco se quita por devolução física ou conversão em valor (4.6 e 4.8).
 
 ### 4.4 Fluxo de Venda de Descartáveis
-- Registro de venda de descartáveis, vinculado ao caixa.
+- Registro de venda de descartáveis (sem casco): o valor pago entra nas entradas do caixa do dia, exceto o pago com crédito do cliente.
 
 ### 4.5 Venda com Múltiplos Itens
 - Uma única venda combina, por exemplo, produtos retornáveis de marcas (e tipos de casco) diferentes, em troca ou com o vasilhame pago, e descartáveis, cada item com seu produto+marca e valor. Devolução e sucata são informadas por tipo de casco, uma vez para a venda toda.
 
 ### 4.6 Pagar Casco (Devolução Física)
-- Cliente devolve casco(s) normal(is) vazio(s) de um tipo — no ato de uma venda de água ou avulso, sem compra associada — abatendo seu débito de casco normal daquele tipo e dando entrada no estoque físico de vazios do tipo.
+- Cliente devolve casco(s) normal(is) vazio(s) de um tipo — no ato de uma venda de produto retornável ou avulso, sem compra associada — abatendo seu débito de casco normal daquele tipo e dando entrada no estoque físico de vazios do tipo.
 
 ### 4.7 Baixa de Casco por Quebra
 - Registro de perda (quebra) de casco de um tipo, atribuída a um ou mais funcionários responsáveis; o casco sai do estoque de vazios do tipo e, se o tipo aceita sucata, passa a compor a sucata do mesmo tipo (se não aceita, só sai do vazio). Sem vazio suficiente no tipo, a baixa é recusada.
@@ -158,7 +158,7 @@ Controles envolvidos:
 
 ## 5. Regras de Negócio
 - **Preço**: cada produto+marca possui um preço de referência (na associação), mas o preço efetivo é sempre definido no momento da venda. Não existe tabela fixa de preço por categoria de cliente (atacado/varejo) — os valores variam conforme acordos individuais feitos com cada cliente.
-- **Venda com múltiplos itens**: uma venda pode conter N produtos, incluindo múltiplas marcas de galão na mesma venda.
+- **Venda com múltiplos itens**: uma venda pode conter N produtos, incluindo múltiplas marcas na mesma venda.
 - **Edição de venda**: a venda pode ser editada após o registro (itens, pagamentos, desconto, devoluções de casco/sucata).
 - **Cupom fiscal**: o sistema permite emitir cupom fiscal referente à venda.
 - **Pagamento**: uma venda pode ter N formas de pagamento simultâneas (pix, cartão de crédito, cartão de débito, dinheiro, etc.), cada uma com valor lançado individualmente.

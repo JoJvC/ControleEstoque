@@ -20,6 +20,10 @@ describe('Icon', () => {
     'gelo',
     'carvao',
     'copo',
+    'pacote',
+    'etiqueta',
+    'paleta',
+    'frasco',
   ];
 
   for (const nome of novos) {

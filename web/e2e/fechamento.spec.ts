@@ -9,10 +9,7 @@ test('fechamento de caixa com a diária editada e confirmada', async ({ page, re
   await selecionarOperador(page, operador.nome);
 
   await page.goto('/financeiro/caixa');
-  await page
-    .getByRole('region', { name: 'Ações do caixa' })
-    .getByRole('button', { name: 'Fechar caixa' })
-    .click();
+  await page.getByRole('button', { name: 'Fechar caixa' }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByRole('heading', { name: 'Fechar o caixa' })).toBeVisible();
   const diaria = sheet.getByLabel(`Diária de ${operador.nome}`);

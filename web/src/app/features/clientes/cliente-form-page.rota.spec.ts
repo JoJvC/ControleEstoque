@@ -49,7 +49,7 @@ describe('ClienteFormPage com a rota (withComponentInputBinding)', () => {
     campo.value = 'Maria';
     campo.dispatchEvent(new Event('input'));
     await t.harness.fixture.whenStable();
-    t.el.querySelector<HTMLButtonElement>('ce-barra-acao button')!.click();
+    t.el.querySelector<HTMLButtonElement>('ce-app-header .cabecalho__acoes button')!.click();
 
     const req = t.http.expectOne(URL);
     expect(req.request.method).toBe('POST');
@@ -67,7 +67,7 @@ describe('ClienteFormPage com a rota (withComponentInputBinding)', () => {
     t.harness.detectChanges();
     expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Editar cliente');
 
-    t.el.querySelector<HTMLButtonElement>('ce-barra-acao button')!.click();
+    t.el.querySelector<HTMLButtonElement>('ce-app-header .cabecalho__acoes button')!.click();
     const req = t.http.expectOne(`${URL}/c7`);
     expect(req.request.method).toBe('PUT');
     req.flush({ id: 'c7', nome: 'João' });

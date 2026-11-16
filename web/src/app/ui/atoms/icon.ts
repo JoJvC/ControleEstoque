@@ -16,6 +16,7 @@ export const ICONES = {
   vale: ['M12 20V8M7 13l5-5 5 5M5 4h14'],
   menu: ['M4 7h16', 'M4 12h16', 'M4 17h16'],
   mais: ['M12 5v14', 'M5 12h14'],
+  'mais-opcoes': ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'],
   menos: ['M5 12h14'],
   fechar: ['M6 6l12 12', 'M18 6 6 18'],
   confirmar: ['M5 13l4 4L19 7'],

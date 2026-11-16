@@ -1,3 +1,4 @@
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { BASE, detalhe, montarRotas, pendente } from './abastecimento-testing';
 
 const COMPLETAR = 'Completar custo';
@@ -32,7 +33,7 @@ describe('AbastecimentoPendentesPage', () => {
     await t.digitar(campos[0], '800');
     await t.digitar(campos[1], '900');
     await t.digitar(campos[3], '1000');
-    await t.clicar('Salvar custos');
+    await t.clicar('Salvar');
     const put = t.http.expectOne(`${BASE}/abastecimentos/ab2/custos`);
     expect(put.request.method).toBe('PUT');
     put.flush(detalhe({ id: 'ab2', frete: 10, custoPendente: false, custoTotal: 190 }));
@@ -47,6 +48,19 @@ describe('AbastecimentoPendentesPage', () => {
     await t.assentar();
     expect(botoes(t.el())).toHaveLength(1);
     t.http.verify();
+  });
+
+  it('padrão de página: voltar, sem ação no cabeçalho, sem barra nem Cancelar', async () => {
+    const t = await montarRotas(['*'], '/estoque/abastecimento/pendentes');
+    t.http.expectOne((r) => r.url === `${BASE}/abastecimentos/custos-pendentes`).flush([]);
+    await t.assentar();
+    expect(lerPadraoPagina(t.el())).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: [],
+      barras: 0,
+      cancelar: 0,
+    });
   });
 
   it('sem pendentes mostra o vazio', async () => {

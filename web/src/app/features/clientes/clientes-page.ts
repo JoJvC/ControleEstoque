@@ -18,7 +18,6 @@ import { CePermissao } from '../../core/permissions/ce-permissao';
 import { Avatar } from '../../ui/atoms/avatar';
 import { Button } from '../../ui/atoms/button';
 import { Chip } from '../../ui/atoms/chip';
-import { Icon } from '../../ui/atoms/icon';
 import { ListItem } from '../../ui/molecules/list-item';
 import { SearchBox } from '../../ui/molecules/search-box';
 import { AppHeader } from '../../ui/organisms/app-header';
@@ -37,7 +36,6 @@ import { classificarSaldo, rotuloSaldo } from './saldo-cliente';
     Avatar,
     Button,
     Chip,
-    Icon,
     ListItem,
     SearchBox,
     DataList,
@@ -46,9 +44,9 @@ import { classificarSaldo, rotuloSaldo } from './saldo-cliente';
   ],
   template: `
     <ng-template #lista>
-      <ce-app-header titulo="Clientes" [onda]="true">
-        <ce-button *cePermissao="'clientes.cadastrar'" variante="ghost" (click)="novo()">
-          <ce-icon nome="mais" [tamanho]="18" /> Novo
+      <ce-app-header titulo="Clientes">
+        <ce-button *cePermissao="'clientes.cadastrar'" rotulo="Novo cliente" (click)="novo()">
+          + Novo
         </ce-button>
       </ce-app-header>
 
@@ -214,6 +212,9 @@ import { classificarSaldo, rotuloSaldo } from './saldo-cliente';
 
     .mestre,
     .detalhe {
+      // rolagem própria: o cabeçalho gruda no topo da coluna, não da janela
+      --ce-cabecalho-topo: 0px;
+
       overflow-y: auto;
     }
 

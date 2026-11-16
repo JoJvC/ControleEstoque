@@ -4,6 +4,7 @@ import { Router, UrlTree } from '@angular/router';
 
 import { rodarGuardDaRota } from '../../core/permissions/testing';
 import { diariaValida } from './funcionario-form';
+import { lerPadraoPagina, reenviarForm } from '../../ui/organisms/padrao-pagina.testing';
 import { FuncionariosPage } from './funcionarios-page';
 import { RH_ROUTES } from './rh-routes';
 import { acoes, assentar, configurar } from './testing';
@@ -42,7 +43,7 @@ async function montar(permissoes: string[], lista = [ANA, DONO]) {
 }
 
 async function abrirForm(t: Awaited<ReturnType<typeof montar>>) {
-  t.botao('Novo funcionário')!.click();
+  t.botao('+ Novo')!.click();
   await assentar(t.fixture);
   t.http.expectOne(CARGOS).flush([CARGO]);
   await assentar(t.fixture);
@@ -72,9 +73,36 @@ describe('FuncionariosPage', () => {
     expect(linhas[1].textContent).toContain('Inativo');
   });
 
-  it('ce-app-header mostra o título Funcionários', async () => {
+  it('padrão de página: título Funcionários, voltar e + Novo com aria-label, sem barra nem Cancelar', async () => {
     const t = await montar(['rh.gerir']);
     expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Funcionários');
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['+ Novo'],
+      barras: 0,
+      cancelar: 0,
+    });
+    expect(t.botao('+ Novo')!.getAttribute('aria-label')).toBe('Novo funcionário');
+  });
+
+  it('+ Novo abre o formulário com título Novo funcionário; voltar fecha sem chamar store.criar', async () => {
+    const t = await montar(['rh.gerir']);
+    await abrirForm(t);
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Novo funcionário');
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['Salvar'],
+      barras: 0,
+      cancelar: 0,
+    });
+    await t.nome('Ana');
+    t.el.querySelector<HTMLButtonElement>('button[aria-label="Voltar"]')!.click();
+    await assentar(t.fixture);
+    expect(t.el.querySelector('form')).toBeNull();
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Funcionários');
+    t.http.expectNone(URL);
   });
 
   it('a linha mostra as iniciais do nome, o nome e o cargo', async () => {
@@ -96,7 +124,10 @@ describe('FuncionariosPage', () => {
     http.expectOne(URL).flush([ANA, DONO]);
     await assentar(fixture);
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('ce-app-header')).toBeNull();
+    expect(el.querySelector('ce-app-header h2')!.textContent).toContain('Funcionários');
+    expect(el.querySelector('ce-app-header h1')).toBeNull();
+    expect(el.querySelector('ce-app-header .topo--onda')).toBeNull();
+    expect(lerPadraoPagina(el).voltar).toBe(false);
     const itens = Array.from(el.querySelectorAll('ce-list-item'));
     expect(itens.map((i) => i.getAttribute('aria-current'))).toEqual([null, 'true']);
   });
@@ -108,10 +139,10 @@ describe('FuncionariosPage', () => {
     expect(navegar).toHaveBeenCalledWith('/rh/funcionarios/f1');
   });
 
-  it('ação da ce-barra-acao abre o formulário de criação', async () => {
+  it('a ação do cabeçalho abre o formulário de criação', async () => {
     const t = await montar(['rh.gerir']);
-    const botao = t.el.querySelector<HTMLButtonElement>('ce-barra-acao button')!;
-    expect(botao.textContent).toContain('Novo funcionário');
+    const botao = t.el.querySelector<HTMLButtonElement>('ce-app-header .cabecalho__acoes button')!;
+    expect(botao.textContent).toContain('+ Novo');
     botao.click();
     await assentar(t.fixture);
     t.http.expectOne(CARGOS).flush([CARGO]);
@@ -142,6 +173,27 @@ describe('FuncionariosPage', () => {
     expect(t.el.querySelector('form')).toBeNull();
     expect(t.el.querySelector('li')!.textContent).toContain('Ana');
     expect(t.el.querySelector('li')!.textContent).toContain('Caixa');
+  });
+
+  it('envio duplo: com o POST pendente, Enter e Salvar do cabeçalho não enviam de novo', async () => {
+    const t = await montar(['rh.gerir'], []);
+    await abrirForm(t);
+    await t.nome('Ana');
+    await t.cargo('c1');
+    await t.diaria('10000');
+    t.botao('Salvar')!.click();
+    const req = t.http.expectOne(URL);
+    const submitter = reenviarForm(t.el);
+    t.botao('Salvar')!.click();
+    await assentar(t.fixture);
+    t.http.expectNone(URL); // um só POST
+    t.fixture.detectChanges();
+    expect(submitter.hidden).toBe(true);
+    expect(submitter.disabled).toBe(true);
+    req.flush({}, { status: 500, statusText: 'Erro' });
+    await assentar(t.fixture);
+    t.fixture.detectChanges();
+    expect(submitter.disabled).toBe(false);
   });
 
   it('Sem diária: campo em 0,00 desabilitado e POST com valorDiaria 0', async () => {
@@ -243,16 +295,16 @@ describe('FuncionariosPage', () => {
 
   it('falha ao listar cargos: alerta no formulário', async () => {
     const t = await montar(['rh.gerir'], []);
-    t.botao('Novo funcionário')!.click();
+    t.botao('+ Novo')!.click();
     await assentar(t.fixture);
     t.http.expectOne(CARGOS).flush({}, { status: 500, statusText: 'x' });
     await assentar(t.fixture);
     expect(t.el.querySelector('[role="alert"]')!.textContent).toContain('cargos');
   });
 
-  it('sem rh.gerir: sem Novo funcionário', async () => {
+  it('sem rh.gerir: sem + Novo', async () => {
     const t = await montar([]);
-    expect(t.botao('Novo funcionário')).toBeUndefined();
+    expect(t.botao('+ Novo')).toBeUndefined();
   });
 });
 

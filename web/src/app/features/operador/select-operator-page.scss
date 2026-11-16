@@ -7,12 +7,8 @@
   display: flex;
   flex-direction: column;
 
-  // a área segura do topo fica pintada com a cor do topo
-  ce-app-header {
-    @include mixins.safe-area-top;
-
-    background: var(--ce-topo);
-  }
+  // fora do shell não há barra acima: o cabeçalho pinta a área segura do topo com a cor do topo
+  --ce-cabecalho-respiro: env(safe-area-inset-top, 0px);
 }
 
 .operador__corpo {

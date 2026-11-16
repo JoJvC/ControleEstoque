@@ -1,3 +1,4 @@
+import { lerPadraoPagina, reenviarForm } from '../../ui/organisms/padrao-pagina.testing';
 import { marcaResp, produtoResp } from '../../core/api/testing';
 import { BASE, detalhe, montarRotas } from './abastecimento-testing';
 
@@ -19,7 +20,7 @@ describe('AbastecimentoCustosPage — momento 2', () => {
     await t.digitar(custoA, '800'); // R$ 8,00; o vasilhame fica vazio
     await t.digitar(custoG, '9000'); // R$ 90,00
     await t.digitar(frete, '1800'); // R$ 18,00
-    await t.clicar('Salvar custos');
+    await t.clicar('Salvar');
 
     const req = t.http.expectOne(`${BASE}/abastecimentos/ab1/custos`);
     expect(req.request.method).toBe('PUT');
@@ -82,7 +83,7 @@ describe('AbastecimentoCustosPage — momento 2', () => {
     expect(total(t.el())).toBe('R$ 100,00');
 
     await t.digitar(campos(t.el())[2], '350');
-    await t.clicar('Salvar custos');
+    await t.clicar('Salvar');
     const req = t.http.expectOne(`${BASE}/abastecimentos/ab1/custos`);
     expect(req.request.body).toEqual({
       funcionarioId: 'f1',
@@ -141,7 +142,7 @@ describe('AbastecimentoCustosPage — momento 2', () => {
     await t.digitar(frete, '0'); // retirada nossa
     expect(vasilhame.value).toBe('0,00');
     expect(frete.value).toBe('0,00');
-    await t.clicar('Salvar custos');
+    await t.clicar('Salvar');
 
     const req = t.http.expectOne(`${BASE}/abastecimentos/ab1/custos`);
     expect(req.request.body).toEqual({
@@ -163,10 +164,22 @@ describe('AbastecimentoCustosPage — momento 2', () => {
     expect(aviso?.detail?.replace(/\s/g, ' ')).toBe('Total da carga: R$ 530,00');
   });
 
+  it('padrão de página: voltar e Salvar no cabeçalho, sem barra nem Cancelar', async () => {
+    const t = await montarRotas(['estoque.custos'], '/estoque/abastecimento/ab1/custos');
+    await t.responderCustos('ab1', detalhe());
+    expect(lerPadraoPagina(t.el())).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['Salvar'],
+      barras: 0,
+      cancelar: 0,
+    });
+  });
+
   it('salvar com falta de custo avisa o que falta', async () => {
     const t = await montarRotas(['estoque.custos'], '/estoque/abastecimento/ab1/custos');
     await t.responderCustos('ab1', detalhe());
-    await t.clicar('Salvar custos');
+    await t.clicar('Salvar');
     t.http.expectOne(`${BASE}/abastecimentos/ab1/custos`).flush(detalhe());
     await t.assentar();
     await t.assentar();
@@ -175,10 +188,27 @@ describe('AbastecimentoCustosPage — momento 2', () => {
     expect(aviso?.detail).toBe('Ainda pendente: custo de 3 linhas e frete.');
   });
 
+  it('envio duplo: com o PUT pendente, Enter e Salvar do cabeçalho não enviam de novo', async () => {
+    const t = await montarRotas(['estoque.custos'], '/estoque/abastecimento/ab1/custos');
+    await t.responderCustos('ab1', detalhe());
+    await t.clicar('Salvar');
+    const req = t.http.expectOne(`${BASE}/abastecimentos/ab1/custos`);
+    const submitter = reenviarForm(t.el());
+    await t.clicar('Salvar');
+    t.http.expectNone(`${BASE}/abastecimentos/ab1/custos`); // um só PUT
+    await t.assentar();
+    expect(submitter.hidden).toBe(true);
+    expect(submitter.disabled).toBe(true);
+    req.flush(detalhe());
+    await t.assentar();
+    await t.assentar();
+    expect(submitter.disabled).toBe(false);
+  });
+
   it('frete vazio vai como null', async () => {
     const t = await montarRotas(['estoque.custos'], '/estoque/abastecimento/ab1/custos');
     await t.responderCustos('ab1', detalhe());
-    await t.clicar('Salvar custos');
+    await t.clicar('Salvar');
     const req = t.http.expectOne(`${BASE}/abastecimentos/ab1/custos`);
     expect(req.request.body).toEqual({ funcionarioId: 'f1', frete: null, itens: [], cascos: [] });
     req.flush(detalhe());
@@ -187,7 +217,7 @@ describe('AbastecimentoCustosPage — momento 2', () => {
   it('erro do servidor aparece inline', async () => {
     const t = await montarRotas(['estoque.custos'], '/estoque/abastecimento/ab1/custos');
     await t.responderCustos('ab1', detalhe());
-    await t.clicar('Salvar custos');
+    await t.clicar('Salvar');
     t.http
       .expectOne(`${BASE}/abastecimentos/ab1/custos`)
       .flush(

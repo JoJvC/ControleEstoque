@@ -1,9 +1,10 @@
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 import { vi } from 'vitest';
 
 import { marcaResp, produtoResp } from '../../core/api/testing';
@@ -15,6 +16,7 @@ import { FakeStorage, operadorValido } from '../../core/permissions/testing';
 import { StorageService } from '../../core/platform/storage-service';
 import { AjusteSheet } from './ajuste-sheet';
 import { BaixaCascoSheet } from './baixa-casco-sheet';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { EstoquePage } from './estoque-page';
 import { EstoqueStore } from './estoque-store';
 
@@ -64,11 +66,16 @@ async function montar(
   permissoes: string[],
   produtos: object[] = [AGUA, COPO],
   cascos: object[] = CASCOS,
+  desktop = false,
 ) {
   const abrir = vi.fn().mockReturnValue({ closed: of(false) });
   TestBed.configureTestingModule({
     providers: [
       { provide: SheetService, useValue: { abrir } },
+      {
+        provide: BreakpointObserver,
+        useValue: { observe: () => new BehaviorSubject({ matches: desktop }) },
+      },
       provideHttpClient(),
       provideHttpClientTesting(),
       { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
@@ -113,6 +120,40 @@ const textoVasilhames = (el: HTMLElement) =>
       .join(' | '),
   );
 
+describe('EstoquePage — ações secundárias no cabeçalho', () => {
+  const cabecalho = (el: HTMLElement) => el.querySelector('ce-app-header')!;
+
+  it('celular: "Baixa de casco" e "Custos pendentes" ficam no menu ⋯ do cabeçalho, fechado até tocar', async () => {
+    const t = await montar(['*']);
+    const gatilho = cabecalho(t.el).querySelector<HTMLButtonElement>(
+      'button[aria-label="Mais ações"]',
+    )!;
+    expect(gatilho).not.toBeNull();
+    const menu = cabecalho(t.el).querySelector('.acoes--menu')!;
+    expect(menu.textContent).toContain('Baixa de casco');
+    expect(menu.textContent).toContain('Custos pendentes');
+    expect(menu.classList).not.toContain('acoes--aberto');
+    gatilho.click();
+    t.fixture.detectChanges();
+    expect(menu.classList).toContain('acoes--aberto');
+    t.botao('Baixa de casco')!.click();
+    t.fixture.detectChanges();
+    expect(menu.classList).not.toContain('acoes--aberto');
+    expect(t.abrir).toHaveBeenCalledWith(BaixaCascoSheet);
+  });
+
+  it('desktop: os dois ficam em linha no cabeçalho, sem ⋯, e nada solto no conteúdo', async () => {
+    const t = await montar(['*'], [AGUA, COPO], CASCOS, true);
+    expect(cabecalho(t.el).querySelector('button[aria-label="Mais ações"]')).toBeNull();
+    expect(cabecalho(t.el).querySelector('.acoes--menu')).toBeNull();
+    const textos = Array.from(cabecalho(t.el).querySelectorAll('button')).map((b) =>
+      b.textContent?.trim(),
+    );
+    expect(textos).toEqual(['Baixa de casco', 'Custos pendentes', 'Chegou mercadoria']);
+    expect(t.el.querySelector('.conteudo')!.textContent).not.toContain('Custos pendentes');
+  });
+});
+
 describe('EstoquePage — permissão estoque.custos', () => {
   it('sem a chave: o botão "Custos pendentes" não aparece', async () => {
     const t = await montar(['estoque.editar']);
@@ -136,6 +177,18 @@ describe('EstoquePage — permissão estoque.editar', () => {
     await t.atualizar();
     t.marcas()[0].click();
     expect(t.abrir).not.toHaveBeenCalled();
+  });
+
+  it('padrão de página: raiz do menu sem voltar, Chegou mercadoria no cabeçalho', async () => {
+    const t = await montar(['estoque.editar']);
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: false,
+      // gatilho ⋯ (só ícone), a secundária no menu e a principal
+      acoes: ['', 'Baixa de casco', 'Chegou mercadoria'],
+      barras: 0,
+      cancelar: 0,
+    });
   });
 
   it('com estoque.editar: botões abrem as sheets e a marca abre o ajuste com produtoMarcaId', async () => {

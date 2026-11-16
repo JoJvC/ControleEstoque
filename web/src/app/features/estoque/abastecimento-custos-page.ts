@@ -42,7 +42,11 @@ interface LinhaCusto {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ReactiveFormsModule, AppHeader, Button, DataList, FormField, MoneyInput, PrecoPipe],
   template: `
-    <ce-app-header titulo="Custos da carga" [mostrarVoltar]="true" (voltar)="voltar()" />
+    <ce-app-header titulo="Custos da carga" [mostrarVoltar]="true" (voltar)="voltar()">
+      @if (store.detalhe()) {
+        <ce-button [loading]="salvando()" (click)="salvar()">Salvar</ce-button>
+      }
+    </ce-app-header>
 
     <div class="conteudo">
       <ce-data-list
@@ -53,6 +57,13 @@ interface LinhaCusto {
       >
         <ng-template>
           <form class="form" (submit)="$event.preventDefault(); salvar()">
+            <button
+              type="submit"
+              hidden
+              aria-hidden="true"
+              tabindex="-1"
+              [disabled]="salvando()"
+            ></button>
             <section class="linhas">
               <h2 class="linhas__titulo">Custo unitário</h2>
               @for (l of linhas(); track l.id) {
@@ -93,10 +104,6 @@ interface LinhaCusto {
               @if (erroForm(); as erro) {
                 <p class="form__erro" role="alert">{{ erro }}</p>
               }
-
-              <ce-button tipo="submit" [block]="true" [loading]="salvando()">
-                Salvar custos
-              </ce-button>
             </div>
           </form>
         </ng-template>
@@ -251,6 +258,9 @@ export class AbastecimentoCustosPage {
   }
 
   protected async salvar(): Promise<void> {
+    // o submitter oculto (Enter) não fica desabilitado: barra o envio duplo
+    if (this.salvando()) return;
+
     const d = this.store.detalhe();
     if (d === null) return;
     this.erroForm.set(null);

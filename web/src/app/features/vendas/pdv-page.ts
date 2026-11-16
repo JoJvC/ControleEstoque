@@ -111,7 +111,7 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
     SearchBox,
   ],
   template: `
-    <ce-app-header [titulo]="id() ? 'Editar venda' : 'Nova venda'" [onda]="true" />
+    <ce-app-header [titulo]="id() ? 'Editar venda' : 'Nova venda'" [fixo]="false" />
 
     <div class="conteudo">
       @if (venda(); as v) {

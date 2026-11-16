@@ -14,7 +14,6 @@ import { FormField } from '../../ui/molecules/form-field';
 import { ListItem } from '../../ui/molecules/list-item';
 import { MoneyInput } from '../../ui/molecules/money-input';
 import { AppHeader } from '../../ui/organisms/app-header';
-import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { DataList } from '../../ui/organisms/data-list';
 import { MarcasStore } from './marcas-store';
 import { TiposCascoStore } from './tipos-casco-store';
@@ -26,7 +25,6 @@ import { TiposCascoStore } from './tipos-casco-store';
     ReactiveFormsModule,
     CurrencyPipe,
     AppHeader,
-    BarraAcao,
     Button,
     Checkbox,
     Icon,
@@ -38,7 +36,13 @@ import { TiposCascoStore } from './tipos-casco-store';
     DataList,
   ],
   template: `
-    <ce-app-header titulo="Tipos de casco" [mostrarVoltar]="true" (voltar)="voltar()" />
+    <ce-app-header [titulo]="tituloPagina()" [mostrarVoltar]="true" (voltar)="voltar()">
+      @if (formAberto()) {
+        <ce-button [loading]="salvando()" (click)="salvar()">Salvar</ce-button>
+      } @else {
+        <ce-button rotulo="Novo tipo de casco" (click)="novo()">+ Novo</ce-button>
+      }
+    </ce-app-header>
     <div class="pagina">
       @if (!formAberto()) {
         <section class="cartao">
@@ -70,11 +74,15 @@ import { TiposCascoStore } from './tipos-casco-store';
             </ng-template>
           </ce-data-list>
         </section>
-        <ce-barra-acao rotulo="Novo tipo de casco">
-          <ce-button (click)="novo()">Novo tipo de casco</ce-button>
-        </ce-barra-acao>
       } @else {
         <form [formGroup]="form" (ngSubmit)="salvar()">
+          <button
+            type="submit"
+            hidden
+            aria-hidden="true"
+            tabindex="-1"
+            [disabled]="salvando()"
+          ></button>
           <ce-form-field rotulo="Nome" [obrigatorio]="true" [erro]="erroNome()">
             <ce-input formControlName="nome" />
           </ce-form-field>
@@ -92,10 +100,6 @@ import { TiposCascoStore } from './tipos-casco-store';
           @if (erro(); as msg) {
             <p class="erro" role="alert">{{ msg }}</p>
           }
-          <ce-barra-acao rotulo="Salvar tipo de casco">
-            <ce-button variante="ghost" (click)="cancelar()">Cancelar</ce-button>
-            <ce-button tipo="submit" [loading]="salvando()">Salvar</ce-button>
-          </ce-barra-acao>
         </form>
       }
     </div>
@@ -104,13 +108,8 @@ import { TiposCascoStore } from './tipos-casco-store';
     @use 'mixins';
 
     .pagina {
-      padding: 0 var(--ce-space-4)
-        calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
+      padding: 0 var(--ce-space-4) var(--ce-space-6);
       max-width: 560px;
-
-      @include mixins.from-desktop {
-        padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
-      }
     }
 
     form {
@@ -254,11 +253,24 @@ export class TiposCascoPage {
     this.formAberto.set(false);
   }
 
+  /** Com o formulário aberto, voltar fecha sem salvar; senão sai para o Mais. */
   protected voltar(): void {
+    if (this.formAberto()) {
+      this.cancelar();
+      return;
+    }
     this.router.navigateByUrl('/mais');
   }
 
+  protected tituloPagina(): string {
+    if (!this.formAberto()) return 'Tipos de casco';
+    return this.editandoId ? 'Editar tipo de casco' : 'Novo tipo de casco';
+  }
+
   protected async salvar(): Promise<void> {
+    // o submitter oculto (Enter) não fica desabilitado: barra o envio duplo
+    if (this.salvando()) return;
+
     const v = this.form.getRawValue();
     const nome = v.nome.trim();
     if (!nome) {

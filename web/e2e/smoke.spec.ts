@@ -292,7 +292,7 @@ test('reposição: Repor na Home → abastecimento com o produto → entrada', a
   await page.getByRole('textbox', { name: 'Quantidade' }).first().fill('12');
   await page.getByRole('button', { name: 'Retirada nossa' }).click();
   await expect(page.getByLabel('Custo total da carga (R$)')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Chegou mercadoria' }).click();
+  await page.getByRole('button', { name: 'Salvar' }).click();
   await expect(page).toHaveURL(/\/estoque$/);
 
   const estoque = (await (await request.get('/api/estoque/v1/estoque')).json()) as {
@@ -316,9 +316,8 @@ test('Caixa: Home → estado e ações; fechamento abre e é cancelado', async (
   await expect(page.getByText(/Aberto/).first()).toBeVisible();
 
   // Não fecha o caixa de verdade: o smoke tem de rodar de novo no mesmo dia.
-  const acoes = page.getByRole('region', { name: 'Ações do caixa' });
-  await expect(acoes.getByRole('button', { name: 'Lançar despesa' })).toBeVisible();
-  await acoes.getByRole('button', { name: 'Fechar caixa' }).click();
+  await expect(page.getByRole('button', { name: 'Lançar despesa' })).toBeVisible();
+  await page.getByRole('button', { name: 'Fechar caixa' }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByRole('heading', { name: 'Fechar o caixa' })).toBeVisible();
   await sheet.getByRole('button', { name: 'Fechar', exact: true }).click();

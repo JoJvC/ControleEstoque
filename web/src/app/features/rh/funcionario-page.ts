@@ -8,6 +8,7 @@ import {
   input,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
@@ -22,6 +23,7 @@ import { ApiError } from '../../core/http/api-error';
 import { SheetService } from '../../core/overlay/sheet-service';
 import { CePermissao } from '../../core/permissions/ce-permissao';
 import { ToastService } from '../../core/toast/toast-service';
+import { Button } from '../../ui/atoms/button';
 import { Icon } from '../../ui/atoms/icon';
 import { Skeleton } from '../../ui/atoms/skeleton';
 import { EmptyState } from '../../ui/molecules/empty-state';
@@ -44,6 +46,7 @@ const ROTULOS: Record<TipoLancamentoFuncionario, string> = {
   selector: 'ce-funcionario-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    Button,
     DatePipe,
     NgTemplateOutlet,
     CePermissao,
@@ -60,11 +63,19 @@ const ROTULOS: Record<TipoLancamentoFuncionario, string> = {
     <ng-template #conteudo>
       <ce-app-header
         [titulo]="funcionario()?.nome ?? 'Funcionário'"
-        [onda]="true"
         [folgado]="true"
         [mostrarVoltar]="!desktop()"
         (voltar)="voltar()"
       >
+        @if (funcionario()) {
+          <ce-button
+            *cePermissao="'rh.gerir'"
+            [disabled]="!formulario()?.valido()"
+            [loading]="salvando()"
+            (click)="formulario()?.enviar()"
+            >Salvar</ce-button
+          >
+        }
         <div ce-destaque>
           @if (funcionario(); as f) {
             <p class="destaque__linha">
@@ -159,8 +170,8 @@ const ROTULOS: Record<TipoLancamentoFuncionario, string> = {
             <h2 class="secao">Dados do funcionário</h2>
             <ce-funcionario-form
               [inicial]="f"
-              [salvando]="salvando()"
               [erro]="erro()"
+              [salvando]="salvando()"
               (salvar)="salvar($event)"
             />
           </section>
@@ -346,6 +357,7 @@ export class FuncionarioPage {
 
   protected readonly funcionario = signal<FuncionarioResponse | null>(null);
   protected readonly erroCarga = signal(false);
+  protected readonly formulario = viewChild(FuncionarioForm);
   protected readonly salvando = signal(false);
   protected readonly erro = signal<string | null>(null);
   protected readonly rotulo = (t: TipoLancamentoFuncionario) => ROTULOS[t];
@@ -373,6 +385,9 @@ export class FuncionarioPage {
   }
 
   protected async salvar(req: CreateFuncionarioRequest): Promise<void> {
+    // o submitter oculto (Enter) não fica desabilitado: barra o envio duplo
+    if (this.salvando()) return;
+
     this.erro.set(null);
     this.salvando.set(true);
     try {

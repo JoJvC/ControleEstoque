@@ -14,6 +14,7 @@ import { StorageService } from '../../core/platform/storage-service';
 import { SheetService } from '../../core/overlay/sheet-service';
 import { ToastService } from '../../core/toast/toast-service';
 import { ClienteDetalhePage } from './cliente-detalhe-page';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { EntregarSucataSheet } from './entregar-sucata-sheet';
 import { PagarCascoSheet } from './pagar-casco-sheet';
 import { ReceberFiadoSheet } from './receber-fiado-sheet';
@@ -370,26 +371,39 @@ describe('ClienteDetalhePage — design Depósito', () => {
     expect(sem.botao('Vender')).toBeUndefined();
   });
 
-  it('celular: a barra tem Vender e Repetir; Repetir navega com cliente e repetirUltima', async () => {
+  it('celular: o cabeçalho tem Editar, Repetir e Vender, sem barra; Repetir navega com cliente e repetirUltima', async () => {
     const t = await montar();
-    const barra = t.el.querySelector('ce-barra-acao')!;
-    expect(barra.textContent).toContain('Vender');
-    barra.querySelector<HTMLButtonElement>('button[aria-label="Repetir última venda"]')!.click();
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['Editar', '', 'Vender'],
+      barras: 0,
+      cancelar: 0,
+    });
+    t.el
+      .querySelector('ce-app-header')!
+      .querySelector<HTMLButtonElement>('button[aria-label="Repetir última venda"]')!
+      .click();
     expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/vendas/nova'], {
       queryParams: { cliente: 'c-1', repetirUltima: '1' },
     });
     expect(t.el.querySelector('button[aria-label="Voltar"]')).not.toBeNull();
   });
 
-  it('celular sem vendas.registrar: a barra não tem Vender nem Repetir', async () => {
+  it('celular sem vendas.registrar: o cabeçalho não tem Vender nem Repetir', async () => {
     const t = await montar(['clientes.cadastrar']);
     expect(t.el.querySelector('button[aria-label="Repetir última venda"]')).toBeNull();
   });
 
-  it('desktop: sem barra e sem Voltar; Vender no cabeçalho, sem Repetir', async () => {
+  it('desktop: sem barra e sem Voltar; Editar e Vender no cabeçalho, sem Repetir', async () => {
     const t = await montar(['*'], [VENDA], { desktop: true });
-    expect(t.el.querySelector('ce-barra-acao')).toBeNull();
-    expect(t.el.querySelector('button[aria-label="Voltar"]')).toBeNull();
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: false,
+      acoes: ['Editar', 'Vender'],
+      barras: 0,
+      cancelar: 0,
+    });
     expect(t.el.querySelector('button[aria-label="Repetir última venda"]')).toBeNull();
     expect(t.el.querySelector('ce-app-header')!.textContent).toContain('Vender');
     t.botao('Vender').click();

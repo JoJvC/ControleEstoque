@@ -13,6 +13,7 @@ import { OperatorStore } from '../../core/operator/operator-store';
 import { FakeStorage, operadorValido } from '../../core/permissions/testing';
 import { PrintService } from '../../core/platform/print-service';
 import { StorageService } from '../../core/platform/storage-service';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { VendaStore } from './venda-store';
 import { VendaDetalhePage } from './venda-detalhe-page';
 
@@ -140,10 +141,18 @@ describe('VendaDetalhePage', () => {
     t.http.expectOne(`${URL_CLIENTES}/c-1`).flush({ id: 'c-1', nome: 'Maria' });
     t.http.expectOne(`${URL_PRODUTOS}/p-agua`).flush({ id: 'p-agua', nome: 'Água 20L' });
     await assentar(t.fixture);
-    const voltar = Array.from(t.el.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Voltar'),
-    )!;
-    voltar.click();
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['', 'Adicionar pagamento', 'Emitir cupom fiscal', 'Editar'],
+      barras: 0,
+      cancelar: 0,
+    });
+    const botoesVoltar = Array.from(t.el.querySelectorAll('button')).filter((b) =>
+      (b.getAttribute('aria-label') ?? b.textContent ?? '').includes('Voltar'),
+    );
+    expect(botoesVoltar).toHaveLength(1); // só o do cabeçalho: sem "Voltar" inline
+    botoesVoltar[0].click();
     expect(t.navegar).toHaveBeenCalledWith('/vendas');
   });
 
@@ -163,21 +172,23 @@ describe('VendaDetalhePage', () => {
     }
   });
 
-  it('área de ações tem Editar (navega), Adicionar pagamento e Emitir cupom fiscal', async () => {
+  it('Editar no cabeçalho navega; as ações da venda ficam no cabeçalho (Adicionar pagamento e Emitir cupom fiscal no menu ⋯)', async () => {
     const t = await montar();
     t.http.expectOne(`${URL_VENDAS}/v-1`).flush(VENDA);
     t.http.expectOne(`${URL_CLIENTES}/c-1`).flush({ id: 'c-1', nome: 'Maria' });
     t.http.expectOne(`${URL_PRODUTOS}/p-agua`).flush({ id: 'p-agua', nome: 'Água 20L' });
     await assentar(t.fixture);
-    const acoes = t.el.querySelector('[data-testid="venda-acoes"]');
-    expect(acoes).not.toBeNull();
-    const botoes = acoes!.querySelectorAll('button');
+    expect(t.el.querySelector('[data-testid="venda-acoes"]')).toBeNull();
+    const botoes = t.el.querySelectorAll<HTMLButtonElement>(
+      'ce-app-header .cabecalho__acoes button',
+    );
     expect(Array.from(botoes).map((b) => b.textContent?.trim())).toEqual([
-      'Editar',
+      '',
       'Adicionar pagamento',
       'Emitir cupom fiscal',
+      'Editar',
     ]);
-    botoes[0].click();
+    botoes[3].click();
     expect(t.navegar).toHaveBeenCalledWith('/vendas/editar/v-1');
   });
 

@@ -13,7 +13,6 @@ import { Icon } from '../../ui/atoms/icon';
 import { TextInput } from '../../ui/atoms/text-input';
 import { FormField } from '../../ui/molecules/form-field';
 import { AppHeader } from '../../ui/organisms/app-header';
-import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { ClientesStore } from './clientes-store';
 import { EnderecoSheet, EnderecoSheetDados } from './endereco-sheet';
 import {
@@ -28,15 +27,24 @@ import {
 @Component({
   selector: 'ce-cliente-form-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, AppHeader, BarraAcao, Button, Icon, TextInput, FormField],
+  imports: [ReactiveFormsModule, AppHeader, Button, Icon, TextInput, FormField],
   template: `
     <ce-app-header
       [titulo]="id() === null ? 'Novo cliente' : 'Editar cliente'"
       [mostrarVoltar]="true"
       (voltar)="voltar()"
-    />
+    >
+      <ce-button [loading]="salvando()" (click)="salvar()">Salvar</ce-button>
+    </ce-app-header>
 
     <form class="form" (submit)="$event.preventDefault(); salvar()">
+      <button
+        type="submit"
+        hidden
+        aria-hidden="true"
+        tabindex="-1"
+        [disabled]="salvando()"
+      ></button>
       <ce-form-field rotulo="Nome" [obrigatorio]="true">
         <ce-input placeholder="Ex.: Maria Silva" [formControl]="nome" autocomplete="name" />
       </ce-form-field>
@@ -123,12 +131,6 @@ import {
       @if (erro(); as mensagem) {
         <p class="form__erro" role="alert">{{ mensagem }}</p>
       }
-
-      <ce-barra-acao rotulo="Salvar cliente">
-        <ce-button tipo="submit" [block]="true" [loading]="salvando()">
-          {{ id() === null ? 'Cadastrar cliente' : 'Salvar alterações' }}
-        </ce-button>
-      </ce-barra-acao>
     </form>
   `,
   styles: `
@@ -139,16 +141,12 @@ import {
       flex-direction: column;
       gap: var(--ce-space-4);
       padding-inline: var(--ce-space-4);
-      padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
+      padding-bottom: var(--ce-space-6);
       max-width: 560px;
 
       @include mixins.from-tablet {
         margin-inline: auto;
         width: 100%;
-      }
-
-      @include mixins.from-desktop {
-        padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
       }
     }
 
@@ -301,6 +299,9 @@ export class ClienteFormPage {
   }
 
   protected async salvar(): Promise<void> {
+    // o submitter oculto (Enter) não fica desabilitado: barra o envio duplo
+    if (this.salvando()) return;
+
     this.erro.set(null);
     if (this.nome.invalid) {
       this.erro.set('Informe o nome do cliente.');

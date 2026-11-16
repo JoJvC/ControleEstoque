@@ -2,9 +2,12 @@
   [titulo]="id() === null ? 'Novo produto' : 'Editar produto'"
   [mostrarVoltar]="true"
   (voltar)="voltar()"
-/>
+>
+  <ce-button [loading]="salvando()" (click)="salvar()">Salvar</ce-button>
+</ce-app-header>
 
 <form class="form" ngNoForm (submit)="$event.preventDefault(); salvar()">
+  <button type="submit" hidden aria-hidden="true" tabindex="-1" [disabled]="salvando()"></button>
   <ce-form-field rotulo="Nome" [obrigatorio]="true" [erro]="erros()?.nome ?? null">
     <ce-input
       placeholder="Ex.: Água Mineral 20L"
@@ -139,10 +142,4 @@
   @if (erroForm(); as erro) {
     <p class="form__erro" role="alert">{{ erro }}</p>
   }
-
-  <ce-barra-acao rotulo="Salvar produto">
-    <ce-button tipo="submit" [block]="true" [loading]="salvando()">
-      {{ id() === null ? 'Cadastrar produto' : 'Salvar alterações' }}
-    </ce-button>
-  </ce-barra-acao>
 </form>

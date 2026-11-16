@@ -6,11 +6,13 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { of } from 'rxjs';
+import { vi } from 'vitest';
 
 import { ConfigStore } from '../../core/config/app-config';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { FakeStorage, operadorValido } from '../../core/permissions/testing';
 import { StorageService } from '../../core/platform/storage-service';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { RelatoriosPage } from './relatorios-page';
 import { RELATORIOS_ROUTES } from './relatorios-routes';
 
@@ -209,6 +211,21 @@ describe('RelatoriosPage como layout dos relatórios', () => {
     expect(ativos.map((a) => a.textContent?.trim())).toEqual(['Fiado']);
     expect(pagina()).toBeNull();
     expect(lista()).toHaveLength(10);
+  });
+
+  it('hub: voltar para /mais e sem ação nem barra no cabeçalho', async () => {
+    const { ir, router, el } = await montar(false);
+    await ir('/relatorios');
+    expect(lerPadraoPagina(el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: [],
+      barras: 0,
+      cancelar: 0,
+    });
+    const navegar = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+    el.querySelector<HTMLButtonElement>('button[aria-label="Voltar"]')!.click();
+    expect(navegar).toHaveBeenCalledWith('/mais');
   });
 
   it('gesto no celular: clicar no card abre só o relatório e o voltar retorna aos cards', async () => {

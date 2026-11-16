@@ -10,6 +10,7 @@ import { ConfigStore } from '../../core/config/app-config';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { FakeStorage, operadorValido } from '../../core/permissions/testing';
 import { StorageService } from '../../core/platform/storage-service';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { ClientesPage } from './clientes-page';
 
 const CLIENTES = '/api/clientes/v1/clientes';
@@ -121,6 +122,28 @@ describe('ClientesPage — permissão clientes.cadastrar', () => {
 
   it('sem a chave: Novo some', async () => {
     expect((await montar({ permissoes: [] })).novo()).toBeUndefined();
+  });
+
+  it('padrão de página: raiz sem voltar, + Novo com aria-label no cabeçalho, sem barra', async () => {
+    const t = await montar({ permissoes: ['clientes.cadastrar'] });
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: false,
+      acoes: ['+ Novo'],
+      barras: 0,
+      cancelar: 0,
+    });
+    expect(t.novo()!.getAttribute('aria-label')).toBe('Novo cliente');
+  });
+
+  it('desktop: cada coluna tem o seu cabeçalho e o detalhe não tem voltar', async () => {
+    const t = await montar({ desktop: true, permissoes: ['*'] });
+    const [lista, detalhe] = Array.from(t.el.querySelectorAll<HTMLElement>('ce-app-header'));
+    expect(t.el.querySelectorAll('ce-app-header').length).toBe(2);
+    expect(lerPadraoPagina(t.el, lista).voltar).toBe(false);
+    expect(lerPadraoPagina(t.el, lista).acoes).toEqual(['+ Novo']);
+    expect(lerPadraoPagina(t.el, detalhe).voltar).toBe(false);
+    expect(lerPadraoPagina(t.el, detalhe).barras).toBe(0);
   });
 
   it('com clientes.cadastrar: Novo navega para /clientes/novo', async () => {

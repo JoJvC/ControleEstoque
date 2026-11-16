@@ -8,6 +8,7 @@ import { ColorSchemeService } from '../../core/platform/color-scheme-service';
 import { StorageService } from '../../core/platform/storage-service';
 import { FakeColorScheme } from '../../core/theme/testing';
 import { ThemeStore } from '../../core/theme/theme-store';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { AparenciaPage } from './aparencia-page';
 
 describe('AparenciaPage', () => {
@@ -161,12 +162,20 @@ describe('AparenciaPage', () => {
     expect(el.querySelector('ce-page-placeholder')).toBeNull();
   });
 
-  it.each([
-    [false, true],
-    [true, false],
-  ])('desktop=%s: voltar visível=%s', async (ehDesktop, visivel) => {
-    desktop = ehDesktop;
-    const { el } = await montar();
-    expect(!!el.querySelector('[aria-label="Voltar"]')).toBe(visivel);
-  });
+  it.each([[false], [true]])(
+    'desktop=%s: voltar visível, sem ação, sem barra e voltar navega para /mais',
+    async (ehDesktop) => {
+      desktop = ehDesktop;
+      const { el } = await montar();
+      expect(lerPadraoPagina(el)).toEqual({
+        cabecalhos: 1,
+        voltar: true,
+        acoes: [],
+        barras: 0,
+        cancelar: 0,
+      });
+      el.querySelector<HTMLElement>('[aria-label="Voltar"]')!.click();
+      expect(navigate).toHaveBeenCalledWith(['/mais']);
+    },
+  );
 });

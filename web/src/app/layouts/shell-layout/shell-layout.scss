@@ -32,6 +32,9 @@ $sidebar-width: 220px;
 }
 
 .shell__content {
+  // ce-app-header gruda logo abaixo da barra do shell (DESIGN.md §5, Padrão de página)
+  --ce-cabecalho-topo: calc(#{$header-height} + env(safe-area-inset-top, 0px));
+
   padding-top: calc(#{$header-height} + env(safe-area-inset-top, 0px));
   padding-bottom: calc(var(--ce-nav-height) + env(safe-area-inset-bottom, 0px));
   min-height: 100dvh;

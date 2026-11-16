@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { MarcasPage } from './marcas-page';
 
 const BASE = '/api/estoque/v1/marcas';
@@ -30,7 +31,17 @@ async function montar() {
     fixture,
     el,
     http,
-    adicionar: () => el.querySelector<HTMLButtonElement>('ce-barra-acao button')!,
+    adicionar: () => el.querySelector<HTMLButtonElement>('ce-app-header .cabecalho__acoes button')!,
+    abrir: async () => {
+      el.querySelector<HTMLButtonElement>('ce-app-header .cabecalho__acoes button')!.click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    },
+    voltar: async () => {
+      el.querySelector<HTMLButtonElement>('button[aria-label="Voltar"]')!.click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    },
     digitar: async (nome: string) => {
       const campo = el.querySelector('ce-input input') as HTMLInputElement;
       campo.value = nome;
@@ -43,14 +54,35 @@ async function montar() {
 describe('MarcasPage', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
-  it('renderiza a lista de marcas e o botão Adicionar na barra de ação fixa', async () => {
+  it('renderiza a lista de marcas com + Nova no cabeçalho, sem barra nem Cancelar', async () => {
     const t = await montar();
     expect(t.el.textContent).toContain('Indaiá');
-    expect(t.adicionar().textContent).toContain('Adicionar');
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['+ Nova'],
+      barras: 0,
+      cancelar: 0,
+    });
+    expect(t.adicionar().getAttribute('aria-label')).toBe('Nova marca');
+    expect(t.el.querySelector('ce-input')).toBeNull();
   });
 
-  it('clique em Adicionar envia { nome } à API e fica desabilitado até responder', async () => {
+  it('+ Nova abre o formulário com título Nova marca; voltar fecha sem chamar a API', async () => {
     const t = await montar();
+    await t.abrir();
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Nova marca');
+    expect(lerPadraoPagina(t.el).acoes).toEqual(['Salvar']);
+    await t.digitar('Crystal');
+    await t.voltar();
+    expect(t.el.querySelector('ce-input')).toBeNull();
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Marcas');
+    t.http.expectNone(BASE);
+  });
+
+  it('Salvar envia { nome } à API e fica desabilitado até responder', async () => {
+    const t = await montar();
+    await t.abrir();
     await t.digitar('  Crystal ');
 
     t.adicionar().click();
@@ -66,12 +98,12 @@ describe('MarcasPage', () => {
     await t.fixture.whenStable();
     t.fixture.detectChanges();
     expect(t.el.textContent).toContain('Crystal');
-    expect((t.el.querySelector('ce-input input') as HTMLInputElement).value).toBe('');
-    expect(t.adicionar().disabled).toBe(true); // campo limpo: inválido de novo
+    expect(t.el.querySelector('ce-input')).toBeNull(); // salvou: formulário fechado
   });
 
-  it('nome vazio: botão desabilitado e clique não chama a API', async () => {
+  it('nome vazio: Salvar desabilitado e clique não chama a API', async () => {
     const t = await montar();
+    await t.abrir();
     expect(t.adicionar().disabled).toBe(true);
 
     t.adicionar().click();
@@ -80,8 +112,9 @@ describe('MarcasPage', () => {
     t.http.expectNone(BASE);
   });
 
-  it('habilita o botão quando há nome digitado', async () => {
+  it('habilita o Salvar quando há nome digitado', async () => {
     const t = await montar();
+    await t.abrir();
     await t.digitar('Crystal');
     t.fixture.detectChanges();
 

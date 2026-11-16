@@ -8,6 +8,7 @@ import { OperatorStore } from '../../core/operator/operator-store';
 import { FakeStorage, operadorValido } from '../../core/permissions/testing';
 import { StorageService } from '../../core/platform/storage-service';
 import { ICONES } from '../../ui/atoms/icon';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { MaisPage } from './mais-page';
 
 describe('MaisPage', () => {
@@ -38,6 +39,19 @@ describe('MaisPage', () => {
     store.select(operadorValido(['relatorios.ver']));
     await fixture.whenStable();
     expect(rotulos(el).some((t) => t.includes('Relatórios'))).toBe(true);
+  });
+
+  it('padrão de página: raiz do menu sem voltar, sem ação, sem barra', async () => {
+    TestBed.inject(OperatorStore).select(operadorValido([]));
+    const fixture = TestBed.createComponent(MaisPage);
+    await fixture.whenStable();
+    expect(lerPadraoPagina(fixture.nativeElement as HTMLElement)).toEqual({
+      cabecalhos: 1,
+      voltar: false,
+      acoes: [],
+      barras: 0,
+      cancelar: 0,
+    });
   });
 
   it('link Funcionários e cargos só aparece com rh.gerir', async () => {

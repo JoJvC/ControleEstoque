@@ -3,8 +3,9 @@ import { devices, expect, test } from '@playwright/test';
 // Pixel 7 (412x839, isMobile, hasTouch): o cenário em que o botão apareceu coberto.
 test.use({ ...devices['Pixel 7'] });
 
-// Layout real (a spec vitest roda em jsdom, sem layout): a barra fixa não cobre o fim do formulário.
-test('produto novo: com várias marcas, "Adicionar marca" recebe o clique ao rolar até o fim', async ({
+// Layout real (a spec vitest roda em jsdom, sem layout): o Salvar do cabeçalho segue visível ao
+// rolar e o menu inferior não cobre o fim do formulário.
+test('produto novo: com várias marcas, o Salvar do cabeçalho fica visível e o fim do formulário não fica sob o menu', async ({
   page,
 }) => {
   await page.addInitScript(() =>
@@ -43,6 +44,15 @@ test('produto novo: com várias marcas, "Adicionar marca" recebe o clique ao rol
     )
     .toBe(true);
 
+  const salvar = page.getByRole('button', { name: 'Salvar' });
+  await expect(salvar).toBeVisible();
+  const caixaSalvar = (await salvar.boundingBox())!;
+  const salvarNoPonto = await page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.closest('ce-button')?.textContent?.trim(),
+    { x: caixaSalvar.x + caixaSalvar.width / 2, y: caixaSalvar.y + caixaSalvar.height / 2 },
+  );
+  expect(salvarNoPonto).toContain('Salvar');
+
   const caixa = (await adicionar.boundingBox())!;
   const noPonto = await page.evaluate(
     ({ x, y }) => document.elementFromPoint(x, y)?.closest('ce-button')?.textContent?.trim(),
@@ -50,12 +60,12 @@ test('produto novo: com várias marcas, "Adicionar marca" recebe o clique ao rol
   );
   expect(noPonto).toContain('Adicionar marca');
 
-  // sem estouro horizontal (mudaria o layout viewport e a posição dos fixos) e com folga acima da barra
+  // sem estouro horizontal e com folga acima do menu inferior
   const medidas = await page.evaluate(() => ({
     largura: document.documentElement.scrollWidth,
     janela: window.innerWidth,
-    topoDaBarra: document.querySelector('ce-barra-acao')!.getBoundingClientRect().top,
+    topoDoMenu: document.querySelector('ce-bottom-nav')!.getBoundingClientRect().top,
   }));
   expect(medidas.largura).toBeLessThanOrEqual(medidas.janela);
-  expect(caixa.y + caixa.height).toBeLessThanOrEqual(medidas.topoDaBarra);
+  expect(caixa.y + caixa.height).toBeLessThanOrEqual(medidas.topoDoMenu);
 });

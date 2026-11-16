@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 /**
- * Barra de ação fixa (DESIGN.md §1): ação principal ao alcance do polegar.
+ * Barra de ação fixa: exceção da Venda (DESIGN.md §5, Padrão de página); as demais telas
+ * levam a ação principal no ce-app-header.
  * No celular fica acima da bottom-nav; em ≥960px encosta no menu lateral.
  */
 @Component({

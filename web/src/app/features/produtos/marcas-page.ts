@@ -9,37 +9,36 @@ import { FormField } from '../../ui/molecules/form-field';
 import { ListItem } from '../../ui/molecules/list-item';
 import { TextInput } from '../../ui/atoms/text-input';
 import { AppHeader } from '../../ui/organisms/app-header';
-import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { DataList } from '../../ui/organisms/data-list';
 import { MarcasStore } from './marcas-store';
 
 @Component({
   selector: 'ce-marcas-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    ReactiveFormsModule,
-    AppHeader,
-    BarraAcao,
-    Button,
-    FormField,
-    TextInput,
-    ListItem,
-    DataList,
-  ],
+  imports: [ReactiveFormsModule, AppHeader, Button, FormField, TextInput, ListItem, DataList],
   template: `
-    <ce-app-header titulo="Marcas" [mostrarVoltar]="true" (voltar)="voltar()" />
+    <ce-app-header
+      [titulo]="formAberto() ? 'Nova marca' : 'Marcas'"
+      [mostrarVoltar]="true"
+      (voltar)="voltar()"
+    >
+      @if (formAberto()) {
+        <ce-button [disabled]="nome.invalid" [loading]="criando()" (click)="criar()"
+          >Salvar</ce-button
+        >
+      } @else {
+        <ce-button rotulo="Nova marca" (click)="formAberto.set(true)">+ Nova</ce-button>
+      }
+    </ce-app-header>
 
     <div class="conteudo">
-      <form class="nova" (submit)="$event.preventDefault(); criar()">
-        <ce-form-field rotulo="Nova marca" [erro]="erro()">
-          <ce-input placeholder="Ex.: Indaiá" [formControl]="nome" />
-        </ce-form-field>
-        <ce-barra-acao rotulo="Adicionar marca">
-          <ce-button tipo="submit" [disabled]="nome.invalid" [loading]="criando()"
-            >Adicionar</ce-button
-          >
-        </ce-barra-acao>
-      </form>
+      @if (formAberto()) {
+        <form class="nova" (submit)="$event.preventDefault(); criar()">
+          <ce-form-field rotulo="Nova marca" [erro]="erro()">
+            <ce-input placeholder="Ex.: Indaiá" [formControl]="nome" />
+          </ce-form-field>
+        </form>
+      }
 
       <ce-data-list
         [itens]="store.marcas()"
@@ -55,19 +54,12 @@ import { MarcasStore } from './marcas-store';
     </div>
   `,
   styles: `
-    @use 'mixins';
-
     .conteudo {
       display: flex;
       flex-direction: column;
       gap: var(--ce-space-5);
-      padding: 0 var(--ce-space-4)
-        calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
+      padding: 0 var(--ce-space-4) var(--ce-space-6);
       max-width: 560px;
-
-      @include mixins.from-desktop {
-        padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
-      }
     }
 
     .nova {
@@ -90,6 +82,7 @@ export class MarcasPage {
     nonNullable: true,
     validators: [Validators.required],
   });
+  protected readonly formAberto = signal(false);
   protected readonly criando = signal(false);
   protected readonly erro = signal<string | null>(null);
 
@@ -98,6 +91,9 @@ export class MarcasPage {
   }
 
   protected async criar(): Promise<void> {
+    // o submitter oculto (Enter) não fica desabilitado: barra o envio duplo
+    if (this.criando()) return;
+
     this.erro.set(null);
     const nome = this.nome.value.trim();
     if (!nome) {
@@ -108,7 +104,7 @@ export class MarcasPage {
     this.criando.set(true);
     try {
       await this.store.criar(nome);
-      this.nome.setValue('');
+      this.fecharForm();
       this.toast.success('Marca adicionada!');
     } catch (erro: unknown) {
       this.erro.set(
@@ -121,7 +117,18 @@ export class MarcasPage {
     }
   }
 
+  /** Com o formulário aberto, voltar fecha sem salvar; senão sai para o Mais. */
   protected voltar(): void {
+    if (this.formAberto()) {
+      this.fecharForm();
+      return;
+    }
     this.router.navigateByUrl('/mais');
+  }
+
+  private fecharForm(): void {
+    this.nome.setValue('');
+    this.erro.set(null);
+    this.formAberto.set(false);
   }
 }

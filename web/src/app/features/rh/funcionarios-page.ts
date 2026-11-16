@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  input,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { Router } from '@angular/router';
 
 import { CreateFuncionarioRequest } from '../../core/api/models/rh';
@@ -9,7 +16,6 @@ import { Button } from '../../ui/atoms/button';
 import { Icon } from '../../ui/atoms/icon';
 import { ListItem } from '../../ui/molecules/list-item';
 import { AppHeader } from '../../ui/organisms/app-header';
-import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { DataList } from '../../ui/organisms/data-list';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { iniciais } from '../operador/iniciais';
@@ -23,7 +29,6 @@ import { FuncionariosStore } from './funcionarios-store';
     CePermissao,
     AppHeader,
     Badge,
-    BarraAcao,
     Button,
     Icon,
     ListItem,
@@ -32,9 +37,26 @@ import { FuncionariosStore } from './funcionarios-store';
     PrecoPipe,
   ],
   template: `
-    @if (!embutido()) {
-      <ce-app-header titulo="Funcionários" />
-    }
+    <ce-app-header
+      [titulo]="formAberto() ? 'Novo funcionário' : 'Funcionários'"
+      [secao]="embutido()"
+      [mostrarVoltar]="!embutido() || formAberto()"
+      (voltar)="voltar()"
+    >
+      @if (formAberto()) {
+        <ce-button
+          *cePermissao="'rh.gerir'"
+          [disabled]="!formulario()?.valido()"
+          [loading]="salvando()"
+          (click)="formulario()?.enviar()"
+          >Salvar</ce-button
+        >
+      } @else {
+        <ce-button *cePermissao="'rh.gerir'" rotulo="Novo funcionário" (click)="novo()"
+          >+ Novo</ce-button
+        >
+      }
+    </ce-app-header>
     <div class="pagina">
       @if (!formAberto()) {
         <ce-data-list
@@ -65,17 +87,8 @@ import { FuncionariosStore } from './funcionarios-store';
             </ce-list-item>
           </ng-template>
         </ce-data-list>
-        <ce-barra-acao
-          *cePermissao="'rh.gerir'"
-          rotulo="Novo funcionário"
-          [class.na-grade]="embutido()"
-        >
-          <ce-button (click)="novo()">Novo funcionário</ce-button>
-        </ce-barra-acao>
       } @else {
-        <ce-funcionario-form [salvando]="salvando()" [erro]="erro()" (salvar)="salvar($event)">
-          <ce-button variante="ghost" (click)="formAberto.set(false)">Cancelar</ce-button>
-        </ce-funcionario-form>
+        <ce-funcionario-form [erro]="erro()" [salvando]="salvando()" (salvar)="salvar($event)" />
       }
     </div>
   `,
@@ -84,23 +97,12 @@ import { FuncionariosStore } from './funcionarios-store';
 
     .pagina {
       padding: var(--ce-space-4);
-      padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
+      padding-bottom: var(--ce-space-6);
       max-width: 560px;
 
       @include mixins.from-tablet {
         margin-inline: auto;
         width: 100%;
-      }
-
-      @include mixins.from-desktop {
-        padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
-      }
-    }
-
-    // no mestre-detalhe (desktop) a barra fica só na coluna do mestre: 220px de menu + 440px de mestre
-    ce-barra-acao.na-grade {
-      @include mixins.from-desktop {
-        --ce-barra-acao-fim: calc(100% - 660px);
       }
     }
 
@@ -141,13 +143,14 @@ import { FuncionariosStore } from './funcionarios-store';
   `,
 })
 export class FuncionariosPage {
-  /** Dentro de /rh ou do detalhe: sem cabeçalho próprio (quem embute mostra o título). */
+  /** Dentro de /rh ou do detalhe: cabeçalho de seção (h2, sem topo, sem voltar). */
   readonly embutido = input(false);
   /** Funcionário aberto no detalhe (desktop): a linha leva aria-current. */
   readonly selecionadoId = input<string | null>(null);
 
   protected readonly iniciais = iniciais;
   protected readonly store = inject(FuncionariosStore);
+  protected readonly formulario = viewChild(FuncionarioForm);
   protected readonly formAberto = signal(false);
   protected readonly salvando = signal(false);
   protected readonly erro = signal<string | null>(null);
@@ -161,12 +164,24 @@ export class FuncionariosPage {
     this.router.navigateByUrl(`/rh/funcionarios/${id}`);
   }
 
+  /** Com o formulário aberto, voltar fecha sem salvar; senão sobe para /rh. */
+  protected voltar(): void {
+    if (this.formAberto()) {
+      this.formAberto.set(false);
+      return;
+    }
+    this.router.navigateByUrl('/rh');
+  }
+
   protected novo(): void {
     this.erro.set(null);
     this.formAberto.set(true);
   }
 
   protected async salvar(req: CreateFuncionarioRequest): Promise<void> {
+    // o submitter oculto (Enter) não fica desabilitado: barra o envio duplo
+    if (this.salvando()) return;
+
     this.erro.set(null);
     this.salvando.set(true);
     try {

@@ -11,6 +11,7 @@ import { CePermissao } from '../../core/permissions/ce-permissao';
 import { hojeLocal } from '../../core/util/data-local';
 import { Button } from '../../ui/atoms/button';
 import { Icon } from '../../ui/atoms/icon';
+import { AppHeader } from '../../ui/organisms/app-header';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { CaixaStore } from '../financeiro/caixa-store';
 import { AcabandoLinha, HojeAcabando, modeloAcabando, rotaRepor } from './hoje-acabando';
@@ -22,8 +23,23 @@ import { HojeUltimas, modeloUltimas, rotaVenda, UltimaVenda } from './hoje-ultim
 @Component({
   selector: 'ce-home-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Button, CePermissao, HojeAcabando, HojeCartao, HojeHero, HojeUltimas, Icon, PrecoPipe],
+  imports: [
+    AppHeader,
+    Button,
+    CePermissao,
+    HojeAcabando,
+    HojeCartao,
+    HojeHero,
+    HojeUltimas,
+    Icon,
+    PrecoPipe,
+  ],
   template: `
+    <ce-app-header titulo="Hoje">
+      <ce-button *cePermissao="'vendas.registrar'" (click)="ir('/vendas/nova')"
+        >Nova venda</ce-button
+      >
+    </ce-app-header>
     <section class="home">
       <ce-hoje-hero
         class="home__hero"
@@ -32,13 +48,6 @@ import { HojeUltimas, modeloUltimas, rotaVenda, UltimaVenda } from './hoje-ultim
         [data]="data"
         [saudacao]="primeiroNome() + ', ' + saudacao"
       >
-        <ce-button
-          *cePermissao="'vendas.registrar'"
-          class="home__nova"
-          [block]="true"
-          (click)="ir('/vendas/nova')"
-          >Nova venda</ce-button
-        >
         <button
           type="button"
           class="home__caixa"
@@ -95,12 +104,6 @@ import { HojeUltimas, modeloUltimas, rotaVenda, UltimaVenda } from './hoje-ultim
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: var(--ce-space-3);
-    }
-
-    .home__nova {
-      flex: 1;
-      min-width: 0;
-      min-height: 44px;
     }
 
     .home__caixa {

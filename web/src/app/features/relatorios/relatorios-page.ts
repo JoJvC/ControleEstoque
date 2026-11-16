@@ -38,7 +38,7 @@ interface CardRelatorio {
   ],
   template: `
     @if (!temFilho()) {
-      <ce-app-header titulo="Relatórios" />
+      <ce-app-header titulo="Relatórios" [mostrarVoltar]="true" (voltar)="voltarParaMais()" />
       <ul class="cards">
         @for (c of cards; track c.rota) {
           <ng-container *ngTemplateOutlet="cardItem; context: { $implicit: c }" />
@@ -227,6 +227,10 @@ export class RelatoriosPage {
   );
 
   protected readonly lado = computed(() => this.temFilho() && this.desktop());
+
+  protected voltarParaMais(): void {
+    void this.router.navigateByUrl('/mais');
+  }
 
   protected readonly cards: readonly CardRelatorio[] = [
     {

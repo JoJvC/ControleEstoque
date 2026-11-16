@@ -13,8 +13,6 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 
 import { CreateFuncionarioRequest, FuncionarioResponse } from '../../core/api/models/rh';
 import { RhApi } from '../../core/api/rh-api';
-import { CePermissao } from '../../core/permissions/ce-permissao';
-import { Button } from '../../ui/atoms/button';
 import { Checkbox } from '../../ui/atoms/checkbox';
 import { Select, SelectOpcao } from '../../ui/atoms/select';
 import { TextInput } from '../../ui/atoms/text-input';
@@ -26,22 +24,23 @@ export function diariaValida(v: number | null): boolean {
   return v !== null && v >= 0;
 }
 
-/** Formulário de funcionário, compartilhado pela criação (lista) e pela edição. */
+/**
+ * Formulário de funcionário, compartilhado pela criação (lista) e pela edição.
+ * Sem botão próprio: o Salvar mora no cabeçalho da página, que chama `enviar()`.
+ */
 @Component({
   selector: 'ce-funcionario-form',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    ReactiveFormsModule,
-    CePermissao,
-    Button,
-    Checkbox,
-    Select,
-    TextInput,
-    FormField,
-    MoneyInput,
-  ],
+  imports: [ReactiveFormsModule, Checkbox, Select, TextInput, FormField, MoneyInput],
   template: `
     <form [formGroup]="form" (ngSubmit)="enviar()">
+      <button
+        type="submit"
+        hidden
+        aria-hidden="true"
+        tabindex="-1"
+        [disabled]="salvando()"
+      ></button>
       <ce-form-field rotulo="Nome" [obrigatorio]="true">
         <ce-input formControlName="nome" />
       </ce-form-field>
@@ -62,17 +61,6 @@ export function diariaValida(v: number | null): boolean {
       @if (erro(); as msg) {
         <p class="erro" role="alert">{{ msg }}</p>
       }
-      <div class="acoes">
-        <ce-button
-          *cePermissao="'rh.gerir'"
-          tipo="submit"
-          [disabled]="!valido()"
-          [loading]="salvando()"
-        >
-          Salvar
-        </ce-button>
-        <ng-content />
-      </div>
     </form>
   `,
   styles: `
@@ -80,11 +68,6 @@ export function diariaValida(v: number | null): boolean {
       display: flex;
       flex-direction: column;
       gap: var(--ce-space-4);
-    }
-
-    .acoes {
-      display: flex;
-      gap: var(--ce-space-3);
     }
 
     .erro {
@@ -101,8 +84,9 @@ export class FuncionarioForm {
 
   /** Funcionário a editar; null/ausente é criação. */
   readonly inicial = input<FuncionarioResponse | null>(null);
-  readonly salvando = input(false);
   readonly erro = input<string | null>(null);
+  /** Envio em andamento: desabilita o submitter oculto (Enter repetido). */
+  readonly salvando = input(false);
   readonly salvar = output<CreateFuncionarioRequest>();
 
   protected readonly cargos = signal<SelectOpcao[]>([]);
@@ -117,7 +101,7 @@ export class FuncionarioForm {
     ativo: new FormControl(true, { nonNullable: true }),
   });
 
-  protected readonly valido = signal(false);
+  readonly valido = signal(false);
 
   constructor() {
     this.api
@@ -147,7 +131,7 @@ export class FuncionarioForm {
     });
   }
 
-  protected enviar(): void {
+  enviar(): void {
     if (!this.valido()) {
       return;
     }

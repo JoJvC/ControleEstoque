@@ -10,6 +10,7 @@ import { OperatorStore } from '../../core/operator/operator-store';
 import { FakeStorage, operadorValido } from '../../core/permissions/testing';
 import { StorageService } from '../../core/platform/storage-service';
 import { ToastService } from '../../core/toast/toast-service';
+import { lerPadraoPagina, reenviarForm } from '../../ui/organisms/padrao-pagina.testing';
 import { AbastecimentoPage } from './abastecimento-page';
 
 const BASE = '/api/estoque/v1';
@@ -115,7 +116,7 @@ async function montar(
     await assentar();
   };
   const enviar = async () => {
-    (el.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+    (el.querySelector('ce-app-header .cabecalho__acoes button') as HTMLButtonElement).click();
     await assentar();
   };
   return {
@@ -172,6 +173,25 @@ describe('AbastecimentoPage — momento 1', () => {
     await t.assentar();
     await t.carregarEstoque(); // saldos recarregados do servidor
     t.http.verify();
+  });
+
+  it('Enter (submitter oculto) com o envio pendente não registra a carga de novo', async () => {
+    const t = await montar(['estoque.editar']);
+    await t.digitar(t.quantidade('Água 20L — Marca A'), '2');
+    await t.clicar('Fornecedor entrega');
+    await t.enviar(); // Salvar do cabeçalho: POST pendente
+    const req = t.http.expectOne(`${BASE}/abastecimentos`);
+    const submitter = reenviarForm(t.el); // Enter repetido
+    await t.enviar(); // e o Salvar do cabeçalho de novo
+    await t.assentar();
+    t.http.expectNone(`${BASE}/abastecimentos`); // um só POST
+    t.fixture.detectChanges();
+    expect(submitter.hidden).toBe(true);
+    expect(submitter.disabled).toBe(true);
+    req.flush({}, { status: 500, statusText: 'Erro' });
+    await t.assentar();
+    t.fixture.detectChanges();
+    expect(submitter.disabled).toBe(false);
   });
 
   it('sem estoque.custos: ao criar volta a /estoque e não há "Lançar custos"', async () => {
@@ -279,6 +299,17 @@ describe('AbastecimentoPage — momento 1', () => {
     await t.assentar();
     expect(t.el.querySelector('[role="alert"]')?.textContent).toContain('Erro ao registrar');
     expect(t.navegar).not.toHaveBeenCalled();
+  });
+
+  it('padrão de página: voltar e Salvar no cabeçalho, sem barra nem Cancelar', async () => {
+    const t = await montar(['estoque.editar']);
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['Salvar'],
+      barras: 0,
+      cancelar: 0,
+    });
   });
 
   it('voltar navega a /estoque', async () => {

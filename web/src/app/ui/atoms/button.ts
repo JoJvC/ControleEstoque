@@ -15,6 +15,7 @@ export type BotaoVariante = 'primary' | 'ghost' | 'danger';
       [class.botao--block]="block()"
       [type]="tipo()"
       [disabled]="disabled() || loading()"
+      [attr.aria-label]="rotulo()"
     >
       @if (loading()) {
         <ce-spinner [tamanho]="18" />
@@ -84,4 +85,6 @@ export class Button {
   readonly disabled = input(false);
   readonly loading = input(false);
   readonly block = input(false);
+  /** Nome acessível quando o texto visível é curto (ex.: "+ Novo" → "Novo cliente"). */
+  readonly rotulo = input<string | null>(null);
 }

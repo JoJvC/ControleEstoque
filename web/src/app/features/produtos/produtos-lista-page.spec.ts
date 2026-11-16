@@ -8,6 +8,7 @@ import { ConfigStore } from '../../core/config/app-config';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { FakeStorage, operadorValido } from '../../core/permissions/testing';
 import { StorageService } from '../../core/platform/storage-service';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { ProdutosListaPage } from './produtos-lista-page';
 
 const PRODUTO = {
@@ -93,6 +94,18 @@ describe('ProdutosListaPage — permissão estoque.editar', () => {
     expect(t.el.textContent).toContain('Água 20L');
     t.card().click();
     expect(t.navegar).not.toHaveBeenCalled();
+  });
+
+  it('padrão de página: voltar e + Novo com aria-label no cabeçalho, sem barra nem Cancelar', async () => {
+    const t = await montar(['estoque.editar']);
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['+ Novo'],
+      barras: 0,
+      cancelar: 0,
+    });
+    expect(t.novo()!.getAttribute('aria-label')).toBe('Novo produto');
   });
 
   it('com estoque.editar: Novo navega para /produtos/novo e o card para a edição', async () => {

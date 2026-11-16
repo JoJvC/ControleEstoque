@@ -2,35 +2,43 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 
 import { Icon } from '../atoms/icon';
 
-/** Cabeçalho de página: voltar (opcional) + título + slot de ações à direita. */
+/**
+ * Cabeçalho de página (DESIGN.md §5, "Padrão de página"): voltar (opcional) + título + ações
+ * à direita. A linha é sticky logo abaixo da barra do shell; o `[ce-destaque]` e a onda rolam
+ * com a página, por isso o host é `display: contents` (o sticky vale na altura do pai da página).
+ */
 @Component({
   selector: 'ce-app-header',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
   host: { '[class.app-header--onda]': 'onda()' },
   template: `
-    <div class="topo" [class.topo--onda]="onda()" [class.topo--folgado]="folgado()">
-      <header class="cabecalho">
-        @if (mostrarVoltar()) {
-          <button
-            type="button"
-            class="cabecalho__voltar"
-            aria-label="Voltar"
-            (click)="voltar.emit()"
-          >
-            <ce-icon nome="seta-esquerda" />
-          </button>
+    <header
+      class="cabecalho"
+      [class.cabecalho--topo]="!secao()"
+      [class.cabecalho--fixo]="fixo() && !secao()"
+      [class.cabecalho--folgado]="folgado()"
+    >
+      @if (mostrarVoltar()) {
+        <button type="button" class="cabecalho__voltar" aria-label="Voltar" (click)="voltar.emit()">
+          <ce-icon nome="seta-esquerda" />
+        </button>
+      }
+      <div class="cabecalho__texto">
+        @if (rotulo(); as r) {
+          <p class="cabecalho__rotulo">{{ r }}</p>
         }
-        <div class="cabecalho__texto">
-          @if (rotulo(); as r) {
-            <p class="cabecalho__rotulo">{{ r }}</p>
-          }
+        @if (secao()) {
+          <h2 class="cabecalho__titulo">{{ titulo() }}</h2>
+        } @else {
           <h1 class="cabecalho__titulo">{{ titulo() }}</h1>
-        </div>
-        <span class="cabecalho__acoes"><ng-content /></span>
-      </header>
+        }
+      </div>
+      <span class="cabecalho__acoes"><ng-content /></span>
+    </header>
+    <div class="topo" [class.topo--onda]="onda() && !secao()" [class.topo--folgado]="folgado()">
       <div class="destaque"><ng-content select="[ce-destaque]" /></div>
-      @if (onda()) {
+      @if (onda() && !secao()) {
         <svg class="topo__onda" viewBox="0 0 360 24" preserveAspectRatio="none" aria-hidden="true">
           <path d="M0 24V10C60 24 120 0 180 10S300 24 360 8V24Z" />
         </svg>
@@ -41,10 +49,23 @@ import { Icon } from '../atoms/icon';
     @use 'mixins';
 
     :host {
-      display: block;
+      display: contents;
     }
 
-    // topo das telas principais: fundo topo do tema e onda para o chao (DESIGN.md §5)
+    // linha do cabeçalho: fundo topo do tema, texto claro (DESIGN.md §5)
+    .cabecalho--topo {
+      background: var(--ce-topo);
+      color: var(--ce-texto-sobre-topo);
+    }
+
+    // sticky logo abaixo da barra do shell; fora do shell o padrão é 0px
+    .cabecalho--fixo {
+      position: sticky;
+      top: var(--ce-cabecalho-topo, 0px);
+      z-index: var(--ce-z-header);
+    }
+
+    // destaque e onda: fundo topo do tema e onda para o chao
     // as 2 últimas linhas já são --ce-bg: a última linha do svg, com antialiasing, mistura com o
     // fundo atrás dela e deixava uma costura cinza abaixo da onda
     .topo--onda {
@@ -53,7 +74,7 @@ import { Icon } from '../atoms/icon';
     }
 
     // botões slotados leem as cores do topo, não as da superfície
-    .topo--onda .cabecalho__acoes {
+    .cabecalho--topo .cabecalho__acoes {
       --ce-primary: var(--ce-texto-sobre-topo);
       --ce-text-on-primary: var(--ce-topo);
       --ce-border: var(--ce-texto-sobre-topo);
@@ -71,6 +92,8 @@ import { Icon } from '../atoms/icon';
       align-items: center;
       gap: var(--ce-space-2);
       padding: var(--ce-space-4);
+      // a página fora do shell (operador) reserva a área segura do topo aqui
+      padding-top: calc(var(--ce-space-4) + var(--ce-cabecalho-respiro, 0px));
     }
 
     .cabecalho__voltar {
@@ -85,7 +108,7 @@ import { Icon } from '../atoms/icon';
 
     // desktop folgado (Caixa do dia): padding do protótipo, 28px 32px 56px
     @include mixins.from-desktop {
-      .topo--folgado .cabecalho {
+      .cabecalho--folgado {
         padding: 28px 32px 0;
       }
 
@@ -126,7 +149,12 @@ import { Icon } from '../atoms/icon';
 export class AppHeader {
   readonly titulo = input.required<string>();
   readonly mostrarVoltar = input(false);
-  readonly onda = input(false);
+  /** Onda para o chão sob o topo (padrão do app). */
+  readonly onda = input(true);
+  /** Linha voltar + título + ações presa abaixo da barra do shell. Só o PDV desliga. */
+  readonly fixo = input(true);
+  /** Lista embutida (RH): título h2, sem topo escuro, sem onda e sem sticky. */
+  readonly secao = input(false);
   /** Em ≥960px usa o padding amplo do protótipo (28px 32px 56px). */
   readonly folgado = input(false);
   /** Linha pequena acima do título (ex.: a data). */

@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
+import { lerPadraoPagina, reenviarForm } from '../../ui/organisms/padrao-pagina.testing';
 import { TiposCascoPage } from './tipos-casco-page';
 
 const URL = '/api/estoque/v1/tipos-casco';
@@ -109,9 +110,48 @@ describe('TiposCascoPage', () => {
     expect(t.el.textContent).toContain('Nenhum tipo de casco');
   });
 
+  it('padrão de página: voltar e + Novo no cabeçalho, sem barra nem Cancelar', async () => {
+    const t = await montar();
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['+ Novo'],
+      barras: 0,
+      cancelar: 0,
+    });
+    expect(t.botao('+ Novo').getAttribute('aria-label')).toBe('Novo tipo de casco');
+  });
+
+  it('+ Novo abre o formulário com título Novo tipo de casco; voltar fecha sem criar', async () => {
+    const t = await montar();
+    t.botao('+ Novo').click();
+    await t.assentar();
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Novo tipo de casco');
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['Salvar'],
+      barras: 0,
+      cancelar: 0,
+    });
+    await t.nome('Galão 3L');
+    (t.el.querySelector('button[aria-label="Voltar"]') as HTMLButtonElement).click();
+    await t.assentar();
+    expect(t.el.querySelector('form')).toBeNull();
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Tipos de casco');
+    t.http.expectNone(URL);
+  });
+
+  it('editar abre o formulário com título Editar tipo de casco', async () => {
+    const t = await montar();
+    t.item('Galão 20L').click();
+    await t.assentar();
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Editar tipo de casco');
+  });
+
   it('Novo → nome, preço e checkbox → Salvar envia POST', async () => {
     const t = await montar();
-    t.botao('Novo tipo de casco').click();
+    t.botao('+ Novo').click();
     await t.assentar();
     expect(t.select().value).toBe('');
     await t.nome('  Galão 10L ');
@@ -135,7 +175,7 @@ describe('TiposCascoPage', () => {
 
   it('Novo lista as marcas e criar com marca envia o marcaId', async () => {
     const t = await montar();
-    t.botao('Novo tipo de casco').click();
+    t.botao('+ Novo').click();
     await t.assentar();
     const opcoes = Array.from(t.select().options).map((o) => o.textContent?.trim());
     expect(opcoes).toEqual(['Nenhuma — casco genérico', 'Cascataí', 'Indaiá']);
@@ -196,12 +236,35 @@ describe('TiposCascoPage', () => {
     await t.assentar();
   });
 
-  it('teclado: submit do form (Enter) salva', async () => {
+  it('envio duplo: com o POST pendente, Enter e Salvar do cabeçalho não enviam de novo', async () => {
     const t = await montar();
-    t.botao('Novo tipo de casco').click();
+    t.botao('+ Novo').click();
     await t.assentar();
     await t.nome('Galão 5L');
-    t.form().dispatchEvent(new Event('submit'));
+    t.botao('Salvar').click();
+    const req = t.http.expectOne(URL);
+    const submitter = reenviarForm(t.el);
+    t.botao('Salvar').click();
+    await t.assentar();
+    t.http.expectNone(URL); // um só POST
+    t.fixture.detectChanges();
+    expect(submitter.hidden).toBe(true);
+    expect(submitter.disabled).toBe(true);
+    req.flush({}, { status: 500, statusText: 'Erro' });
+    await new Promise((r) => setTimeout(r)); // o erro da API vira ApiError no interceptor
+    await t.assentar();
+    t.fixture.detectChanges();
+    expect(submitter.disabled).toBe(false);
+  });
+
+  it('teclado: o form tem um submitter oculto e acioná-lo (como o Enter) salva', async () => {
+    const t = await montar();
+    t.botao('+ Novo').click();
+    await t.assentar();
+    await t.nome('Galão 5L');
+    const submitter = t.form().querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(submitter.hidden).toBe(true);
+    submitter.click();
     const req = t.http.expectOne(URL);
     expect(req.request.method).toBe('POST');
     req.flush({ ...GENERICO, id: 't5', nome: 'Galão 5L', precoVasilhame: 0 });
@@ -210,7 +273,7 @@ describe('TiposCascoPage', () => {
 
   it('nome vazio: nenhuma requisição e mostra a mensagem', async () => {
     const t = await montar();
-    t.botao('Novo tipo de casco').click();
+    t.botao('+ Novo').click();
     await t.assentar();
     t.botao('Salvar').click();
     await t.assentar();

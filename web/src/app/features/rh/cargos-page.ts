@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 
 import { CargoResponse } from '../../core/api/models/rh';
@@ -14,7 +15,6 @@ import { TextInput } from '../../ui/atoms/text-input';
 import { FormField } from '../../ui/molecules/form-field';
 import { ListItem } from '../../ui/molecules/list-item';
 import { AppHeader } from '../../ui/organisms/app-header';
-import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { DataList } from '../../ui/organisms/data-list';
 import { CargosStore } from './cargos-store';
 
@@ -26,7 +26,6 @@ import { CargosStore } from './cargos-store';
     CePermissao,
     AppHeader,
     Badge,
-    BarraAcao,
     Button,
     Checkbox,
     Icon,
@@ -36,13 +35,23 @@ import { CargosStore } from './cargos-store';
     DataList,
   ],
   template: `
-    @if (!embutido()) {
-      <ce-app-header titulo="Cargos" />
-    }
+    <ce-app-header
+      [titulo]="tituloPagina()"
+      [secao]="embutido()"
+      [mostrarVoltar]="!embutido() || formAberto()"
+      (voltar)="voltar()"
+    >
+      @if (formAberto()) {
+        <ce-button *cePermissao="'rh.gerir'" [loading]="salvando()" (click)="salvar()"
+          >Salvar</ce-button
+        >
+      } @else {
+        <ce-button *cePermissao="'rh.gerir'" rotulo="Novo cargo" (click)="novo()">+ Novo</ce-button>
+      }
+    </ce-app-header>
     <div class="pagina">
       @if (!formAberto()) {
         <section class="cartao">
-          <h2 class="secao">Cargos</h2>
           <ce-data-list
             [itens]="store.cargos()"
             [status]="store.status()"
@@ -67,11 +76,15 @@ import { CargosStore } from './cargos-store';
             </ng-template>
           </ce-data-list>
         </section>
-        <ce-barra-acao *cePermissao="'rh.gerir'" rotulo="Novo cargo">
-          <ce-button (click)="novo()">Novo cargo</ce-button>
-        </ce-barra-acao>
       } @else {
         <form [formGroup]="form" (ngSubmit)="salvar()">
+          <button
+            type="submit"
+            hidden
+            aria-hidden="true"
+            tabindex="-1"
+            [disabled]="salvando()"
+          ></button>
           <ce-form-field rotulo="Nome" [obrigatorio]="true" [erro]="erroNome()">
             <ce-input formControlName="nome" />
           </ce-form-field>
@@ -83,10 +96,6 @@ import { CargosStore } from './cargos-store';
           @if (erro(); as msg) {
             <p class="erro" role="alert">{{ msg }}</p>
           }
-          <div class="acoes">
-            <ce-button tipo="submit" [loading]="salvando()">Salvar</ce-button>
-            <ce-button variante="ghost" (click)="cancelar()">Cancelar</ce-button>
-          </div>
         </form>
       }
     </div>
@@ -96,16 +105,12 @@ import { CargosStore } from './cargos-store';
 
     .pagina {
       padding: var(--ce-space-4);
-      padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
+      padding-bottom: var(--ce-space-6);
       max-width: 560px;
 
       @include mixins.from-tablet {
         margin-inline: auto;
         width: 100%;
-      }
-
-      @include mixins.from-desktop {
-        padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
       }
     }
 
@@ -115,11 +120,6 @@ import { CargosStore } from './cargos-store';
       gap: var(--ce-space-4);
     }
 
-    .acoes {
-      display: flex;
-      gap: var(--ce-space-3);
-    }
-
     // Seção "Cargos" num cartão só (protótipo): as linhas viram .li separadas por filete,
     // sem o cartão próprio do ce-list-item (compartilhado, o ajuste vale só aqui).
     .cartao {
@@ -127,12 +127,6 @@ import { CargosStore } from './cargos-store';
       border: 1px solid var(--ce-border);
       border-radius: 20px;
       padding: var(--ce-space-4);
-    }
-
-    .secao {
-      margin: 0 0 var(--ce-space-2);
-      font-family: var(--ce-font-family-titulo);
-      font-size: var(--ce-font-lg);
     }
 
     :host ::ng-deep .item {
@@ -192,11 +186,12 @@ import { CargosStore } from './cargos-store';
   `,
 })
 export class CargosPage {
-  /** Dentro de /rh: sem cabeçalho próprio. */
+  /** Dentro de /rh: cabeçalho de seção (h2, sem topo, sem voltar). */
   readonly embutido = input(false);
 
   protected readonly store = inject(CargosStore);
   private readonly permissions = inject(PermissionService);
+  private readonly router = inject(Router);
   protected readonly pode = () => this.permissions.has('rh.gerir');
   protected readonly permissoes = PERMISSOES;
   protected readonly formAberto = signal(false);
@@ -245,7 +240,24 @@ export class CargosPage {
     this.formAberto.set(false);
   }
 
+  /** Com o formulário aberto, voltar fecha sem salvar; senão sobe para /rh. */
+  protected voltar(): void {
+    if (this.formAberto()) {
+      this.cancelar();
+      return;
+    }
+    this.router.navigateByUrl('/rh');
+  }
+
+  protected tituloPagina(): string {
+    if (!this.formAberto()) return 'Cargos';
+    return this.editandoId ? 'Editar cargo' : 'Novo cargo';
+  }
+
   protected async salvar(): Promise<void> {
+    // o submitter oculto (Enter) não fica desabilitado: barra o envio duplo
+    if (this.salvando()) return;
+
     const marcadas = this.form.controls.marcadas.getRawValue();
     if (!this.form.controls.nome.value.trim()) {
       this.erroNome.set('Informe o nome do cargo.');

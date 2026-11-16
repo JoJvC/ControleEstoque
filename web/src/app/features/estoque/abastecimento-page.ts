@@ -53,7 +53,11 @@ import { EstoqueStore } from './estoque-store';
     SearchBox,
   ],
   template: `
-    <ce-app-header titulo="Chegou mercadoria" [mostrarVoltar]="true" (voltar)="voltar()" />
+    <ce-app-header titulo="Chegou mercadoria" [mostrarVoltar]="true" (voltar)="voltar()">
+      @if (!criadoId()) {
+        <ce-button [loading]="salvando()" (click)="salvar()">Salvar</ce-button>
+      }
+    </ce-app-header>
 
     @if (criadoId(); as id) {
       <section class="criado">
@@ -65,6 +69,13 @@ import { EstoqueStore } from './estoque-store';
       </section>
     } @else {
       <form class="form" (submit)="$event.preventDefault(); salvar()">
+        <button
+          type="submit"
+          hidden
+          aria-hidden="true"
+          tabindex="-1"
+          [disabled]="salvando()"
+        ></button>
         <section class="itens">
           <h2 class="itens__titulo">Itens recebidos</h2>
           <p class="itens__dica">Informe a quantidade do que chegou.</p>
@@ -187,9 +198,6 @@ import { EstoqueStore } from './estoque-store';
             <span>{{ totalLinhas() }} {{ totalLinhas() === 1 ? 'item' : 'itens' }}</span>
             <b>{{ totalUnidades() }} un</b>
           </div>
-          <ce-button tipo="submit" [block]="true" [loading]="salvando()">
-            Chegou mercadoria
-          </ce-button>
         </div>
       </form>
     }
@@ -494,6 +502,9 @@ export class AbastecimentoPage {
   }
 
   protected async salvar(): Promise<void> {
+    // o submitter oculto (Enter) não fica desabilitado: barra o envio duplo
+    if (this.salvando()) return;
+
     this.erroForm.set(null);
 
     const { itens, cascos } = corpoDaCarga(this.selecionadas());

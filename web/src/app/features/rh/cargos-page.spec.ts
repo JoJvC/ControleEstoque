@@ -14,6 +14,7 @@ import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { OperatorStore } from '../../core/operator/operator-store';
 import { StorageService } from '../../core/platform/storage-service';
 import { ICONES } from '../../ui/atoms/icon';
+import { lerPadraoPagina, reenviarForm } from '../../ui/organisms/padrao-pagina.testing';
 import { CargosPage } from './cargos-page';
 import { RH_ROUTES } from './rh-routes';
 
@@ -91,9 +92,9 @@ async function montar(permissoes: string[]) {
 describe('CargosPage', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
-  it('criar: Novo cargo, nome, checkbox e Salvar enviam o POST', async () => {
+  it('criar: + Novo, nome, checkbox e Salvar do cabeçalho enviam o POST', async () => {
     const t = await montar(['rh.gerir']);
-    t.botao('Novo cargo')!.click();
+    t.botao('+ Novo')!.click();
     await assentar(t.fixture);
     await t.nome('Caixa');
     await t.marcar('Registrar vendas');
@@ -145,16 +146,44 @@ describe('CargosPage', () => {
     expect(adm.textContent).toContain('Todas as permissões');
     // seção "Cargos" num único cartão, com as linhas dentro
     const cartao = t.el.querySelector('section.cartao')!;
-    expect(cartao.querySelector('h2')!.textContent).toBe('Cargos');
     expect(cartao.querySelectorAll('li')).toHaveLength(2);
   });
 
-  it('ce-app-header mostra o título Cargos', async () => {
+  it('padrão de página: título Cargos, voltar e + Novo com aria-label, sem barra nem Cancelar', async () => {
     const t = await montar(['rh.gerir']);
     expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Cargos');
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['+ Novo'],
+      barras: 0,
+      cancelar: 0,
+    });
+    expect(t.botao('+ Novo')!.getAttribute('aria-label')).toBe('Novo cargo');
   });
 
-  it('embutido: sem ce-app-header', async () => {
+  it('+ Novo abre o formulário com título Novo cargo; voltar fecha sem chamar a API', async () => {
+    const t = await montar(['rh.gerir']);
+    t.botao('+ Novo')!.click();
+    await assentar(t.fixture);
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Novo cargo');
+    expect(lerPadraoPagina(t.el).acoes).toEqual(['Salvar']);
+    await t.nome('X');
+    t.el.querySelector<HTMLButtonElement>('button[aria-label="Voltar"]')!.click();
+    await assentar(t.fixture);
+    expect(t.el.querySelector('form')).toBeNull();
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Cargos');
+    t.http.expectNone(URL);
+  });
+
+  it('editar abre o formulário com título Editar cargo', async () => {
+    const t = await montar(['rh.gerir']);
+    t.botao('Editar')!.click();
+    await assentar(t.fixture);
+    expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Editar cargo');
+  });
+
+  it('embutido: cabeçalho de seção (h2, sem topo, sem onda e sem voltar)', async () => {
     configurar(['rh.gerir']);
     const http = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(CargosPage);
@@ -163,21 +192,56 @@ describe('CargosPage', () => {
     await assentar(fixture);
     http.expectOne(URL).flush([ADM]);
     await assentar(fixture);
-    expect((fixture.nativeElement as HTMLElement).querySelector('ce-app-header')).toBeNull();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('ce-app-header h2')!.textContent).toContain('Cargos');
+    expect(el.querySelector('ce-app-header h1')).toBeNull();
+    expect(el.querySelector('ce-app-header .topo--onda')).toBeNull();
+    expect(lerPadraoPagina(el).voltar).toBe(false);
+    expect(lerPadraoPagina(el).acoes).toEqual(['+ Novo']);
   });
 
-  it('ação da ce-barra-acao abre o formulário de criação', async () => {
+  it('a ação do cabeçalho abre o formulário de criação', async () => {
     const t = await montar(['rh.gerir']);
-    const botao = t.el.querySelector<HTMLButtonElement>('ce-barra-acao button')!;
-    expect(botao.textContent).toContain('Novo cargo');
+    const botao = t.el.querySelector<HTMLButtonElement>('ce-app-header .cabecalho__acoes button')!;
+    expect(botao.textContent).toContain('+ Novo');
     botao.click();
     await assentar(t.fixture);
     expect(t.el.querySelector('form')).not.toBeNull();
   });
 
+  it('Enter: o form tem submitter oculto e acioná-lo envia o POST', async () => {
+    const t = await montar(['rh.gerir']);
+    t.botao('+ Novo')!.click();
+    await assentar(t.fixture);
+    await t.nome('Caixa');
+    const submitter = t.el.querySelector<HTMLButtonElement>('form button[type="submit"]')!;
+    expect(submitter.hidden).toBe(true);
+    submitter.click();
+    expect(t.http.expectOne(URL).request.method).toBe('POST');
+  });
+
+  it('Enter com o envio pendente não cria o cargo de novo', async () => {
+    const t = await montar(['rh.gerir']);
+    t.botao('+ Novo')!.click();
+    await assentar(t.fixture);
+    await t.nome('Caixa');
+    t.botao('Salvar')!.click();
+    const req = t.http.expectOne(URL);
+    const submitter = reenviarForm(t.el);
+    t.botao('Salvar')!.click(); // Salvar do cabeçalho de novo
+    await assentar(t.fixture);
+    t.http.expectNone(URL); // um só POST
+    t.fixture.detectChanges();
+    expect(submitter.disabled).toBe(true);
+    req.flush({}, { status: 500, statusText: 'Erro' });
+    await assentar(t.fixture);
+    t.fixture.detectChanges();
+    expect(submitter.disabled).toBe(false);
+  });
+
   it('erro da API aparece em role=alert e o formulário continua aberto', async () => {
     const t = await montar(['rh.gerir']);
-    t.botao('Novo cargo')!.click();
+    t.botao('+ Novo')!.click();
     await assentar(t.fixture);
     await t.nome('X');
     t.botao('Salvar')!.click();
@@ -194,7 +258,7 @@ describe('CargosPage', () => {
 
   it('nome com rótulo associado e erro inline sem requisição quando vazio', async () => {
     const t = await montar(['rh.gerir']);
-    t.botao('Novo cargo')!.click();
+    t.botao('+ Novo')!.click();
     await assentar(t.fixture);
     expect(t.el.querySelector('label')?.textContent).toContain('Nome');
     expect(t.el.querySelector('label input')).not.toBeNull();
@@ -204,9 +268,9 @@ describe('CargosPage', () => {
     t.http.verify();
   });
 
-  it('sem rh.gerir: sem Novo cargo nem Editar', async () => {
+  it('sem rh.gerir: sem + Novo nem Editar', async () => {
     const t = await montar([]);
-    expect(t.botao('Novo cargo')).toBeUndefined();
+    expect(t.botao('+ Novo')).toBeUndefined();
     expect(t.botao('Editar')).toBeUndefined();
   });
 

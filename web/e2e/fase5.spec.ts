@@ -135,7 +135,7 @@ test('Chegou mercadoria em dois momentos: só quantidade, depois custo 0 sai dos
   // um campo por linha da carga (o rótulo traz o nome do produto + marca e o '*')
   await page.locator('.linha ce-money-input input').first().fill('0');
   await page.locator('ce-form-field', { hasText: 'Frete (R$)' }).locator('input').fill('0');
-  await page.getByRole('button', { name: 'Salvar custos' }).click();
+  await page.getByRole('button', { name: 'Salvar' }).click();
   await expect(page.getByText('Custos salvos')).toBeVisible();
 
   const detalhe = await (
@@ -155,7 +155,7 @@ test('cadastro de produto com "Sem marca" grava na marca Genérica', async ({ pa
   const nome = `Carvão E2E ${suf}`;
   await page.getByRole('textbox', { name: 'Nome' }).fill(nome);
   await page.getByLabel('Preço de referência').fill('10,00'); // preço é obrigatório; mínimo já vem 0
-  await page.getByRole('button', { name: 'Cadastrar produto' }).click();
+  await page.getByRole('button', { name: 'Salvar' }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page).not.toHaveURL(/\/produtos\/novo$/);
 

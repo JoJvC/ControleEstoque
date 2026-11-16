@@ -1,9 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { BreakpointObserver } from '@angular/cdk/layout';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
-import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { firstValueFrom, map } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 
 import { FechamentoResponse } from '../../core/api/models/financeiro';
 import { ApiError } from '../../core/http/api-error';
@@ -18,7 +16,6 @@ import { FormField } from '../../ui/molecules/form-field';
 import { ListItem } from '../../ui/molecules/list-item';
 import { MoneyInput } from '../../ui/molecules/money-input';
 import { AppHeader } from '../../ui/organisms/app-header';
-import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { dataExtenso } from '../home/hoje-hero';
 import { CaixaStore } from './caixa-store';
@@ -32,7 +29,6 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
     CePermissao,
     ReactiveFormsModule,
     AppHeader,
-    BarraAcao,
     Button,
     EmptyState,
     FormField,
@@ -46,11 +42,13 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
     <ce-app-header
       titulo="Caixa do dia"
       [rotulo]="hoje"
-      [onda]="true"
       [folgado]="true"
-      [mostrarVoltar]="!desktop()"
+      [mostrarVoltar]="true"
       (voltar)="voltar()"
     >
+      @if (store.status() === 'ok' && !fechado()) {
+        <ce-button *cePermissao="'caixa.fechar'" (click)="fechar()">Fechar caixa</ce-button>
+      }
       <div ce-destaque>
         @if (store.status() === 'ok' && store.resumo(); as resumo) {
           <p class="destaque__status">
@@ -67,6 +65,11 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
             <span class="chip-topo">Entradas {{ totalEntradas() | cePreco }}</span>
             <span class="chip-topo">Saídas {{ totalSaidas() | cePreco }}</span>
           </p>
+          @if (!fechado()) {
+            <ce-button class="destaque__acao" variante="ghost" (click)="lancarDespesa()">
+              <ce-icon nome="vale" [tamanho]="18" /> Lançar despesa
+            </ce-button>
+          }
         } @else if (store.status() === 'nao-aberto') {
           <p class="destaque__rotulo">O caixa de hoje ainda não foi aberto.</p>
         } @else if (store.status() !== 'error') {
@@ -139,14 +142,6 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
                 </div>
               </section>
             </div>
-            @if (!fechado()) {
-              <ce-barra-acao rotulo="Ações do caixa" [alinharDireita]="true">
-                <ce-button variante="ghost" (click)="lancarDespesa()">
-                  <ce-icon nome="vale" [tamanho]="18" /> Lançar despesa
-                </ce-button>
-                <ce-button *cePermissao="'caixa.fechar'" (click)="fechar()">Fechar caixa</ce-button>
-              </ce-barra-acao>
-            }
           }
         }
         @default {
@@ -173,11 +168,9 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
       @include mixins.safe-area-bottom(var(--ce-space-6));
 
       padding: var(--ce-space-4);
-      padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-nav-height) + var(--ce-space-6));
 
       @include mixins.from-desktop {
         padding: 24px 32px 32px;
-        padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-6));
         max-width: 1180px;
       }
     }
@@ -211,6 +204,16 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
       flex-wrap: wrap;
       gap: var(--ce-space-2);
       margin-block: var(--ce-space-2);
+    }
+
+    // botão no destaque lê as cores do topo, como os do cabeçalho
+    .destaque__acao {
+      --ce-primary: var(--ce-texto-sobre-topo);
+      --ce-text-on-primary: var(--ce-topo);
+      --ce-border: var(--ce-texto-sobre-topo);
+
+      display: block;
+      margin-top: var(--ce-space-2);
     }
 
     .chip-topo {
@@ -308,12 +311,6 @@ export class CaixaPage {
   });
   protected readonly hoje = dataExtenso(new Date());
   private readonly router = inject(Router);
-  protected readonly desktop = toSignal(
-    inject(BreakpointObserver)
-      .observe('(min-width: 960px)')
-      .pipe(map((r) => r.matches)),
-    { initialValue: false },
-  );
 
   constructor() {
     this.carregar();

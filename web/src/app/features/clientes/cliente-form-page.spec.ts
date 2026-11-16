@@ -8,6 +8,7 @@ import { vi } from 'vitest';
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { SheetService } from '../../core/overlay/sheet-service';
+import { lerPadraoPagina, reenviarForm } from '../../ui/organisms/padrao-pagina.testing';
 import { ClienteFormPage } from './cliente-form-page';
 import { ClientesStore } from './clientes-store';
 
@@ -58,7 +59,7 @@ async function montar(
         l.textContent?.replace(/\s+/g, ' ').trim(),
       ),
     http: TestBed.inject(HttpTestingController),
-    salvar: () => el.querySelector<HTMLButtonElement>('ce-barra-acao button')!,
+    salvar: () => el.querySelector<HTMLButtonElement>('ce-app-header .cabecalho__acoes button')!,
     nome: async (v: string) => {
       const campo = el.querySelector('ce-input input') as HTMLInputElement;
       campo.value = v;
@@ -71,13 +72,47 @@ async function montar(
 describe('ClienteFormPage', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
-  it('renderiza o formulário com o botão salvar na barra de ação fixa', async () => {
+  it('renderiza o formulário com voltar e Salvar no cabeçalho, sem barra nem Cancelar', async () => {
     const t = await montar();
     expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Novo cliente');
-    expect(t.salvar().textContent).toContain('Cadastrar cliente');
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['Salvar'],
+      barras: 0,
+      cancelar: 0,
+    });
   });
 
-  it('clique no salvar da barra envia o payload e navega para o detalhe', async () => {
+  it('Enter: o form tem submitter oculto e acioná-lo envia o payload', async () => {
+    const t = await montar();
+    await t.nome('Maria');
+    const submitter = t.el.querySelector<HTMLButtonElement>('form button[type="submit"]')!;
+    expect(submitter.hidden).toBe(true);
+    submitter.click();
+    expect(t.http.expectOne((r) => r.method === 'POST').request.body).toMatchObject({
+      nome: 'Maria',
+    });
+  });
+
+  it('Enter com o envio pendente não cadastra o cliente de novo', async () => {
+    const t = await montar();
+    await t.nome('Maria');
+    t.salvar().click();
+    const req = t.http.expectOne(URL);
+    const submitter = reenviarForm(t.el);
+    t.salvar().click(); // Salvar do cabeçalho de novo
+    t.http.expectNone(URL); // um só POST
+    t.fixture.detectChanges();
+    expect(submitter.disabled).toBe(true);
+    req.flush({}, { status: 500, statusText: 'Erro' });
+    await new Promise((r) => setTimeout(r)); // o erro da API vira ApiError no interceptor
+    await t.fixture.whenStable();
+    t.fixture.detectChanges();
+    expect(submitter.disabled).toBe(false);
+  });
+
+  it('clique no Salvar do cabeçalho envia o payload e navega para o detalhe', async () => {
     const t = await montar();
     await t.nome(' Maria ');
 

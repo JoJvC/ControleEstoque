@@ -64,7 +64,7 @@ describe('ProdutoFormPage com a rota (withComponentInputBinding)', () => {
     preencher(t.el, 'Copo 200ml');
     await t.harness.fixture.whenStable();
     t.harness.detectChanges();
-    t.el.querySelector<HTMLButtonElement>('ce-barra-acao button')!.click();
+    t.el.querySelector<HTMLButtonElement>('ce-app-header .cabecalho__acoes button')!.click();
 
     // sem a Genérica na lista, a store a cria antes do produto
     t.http.expectOne(`${BASE}/marcas`).flush({ id: 'g1', nome: 'Genérica' });
@@ -86,7 +86,7 @@ describe('ProdutoFormPage com a rota (withComponentInputBinding)', () => {
     t.harness.detectChanges();
     expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Editar produto');
 
-    t.el.querySelector<HTMLButtonElement>('ce-barra-acao button')!.click();
+    t.el.querySelector<HTMLButtonElement>('ce-app-header .cabecalho__acoes button')!.click();
     await new Promise((r) => setTimeout(r));
     const req = t.http.expectOne(`${BASE}/produtos/p7`);
     expect(req.request.method).toBe('PUT');

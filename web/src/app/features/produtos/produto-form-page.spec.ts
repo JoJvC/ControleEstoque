@@ -12,6 +12,7 @@ import { marcaResp, produtoResp } from '../../core/api/testing';
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
 import { MediaService } from '../../core/platform/media-service';
+import { lerPadraoPagina, reenviarForm } from '../../ui/organisms/padrao-pagina.testing';
 import { ProdutoFormPage } from './produto-form-page';
 
 const BASE = '/api/estoque/v1';
@@ -79,7 +80,7 @@ async function montar(opcoes: { marcas?: unknown[]; id?: string } = {}) {
     botao: (texto: string) =>
       Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes(texto)),
     linhas: () => Array.from(el.querySelectorAll<HTMLElement>('section.marca')),
-    salvar: () => el.querySelector<HTMLButtonElement>('ce-barra-acao button')!,
+    salvar: () => el.querySelector<HTMLButtonElement>('ce-app-header .cabecalho__acoes button')!,
     /** Próxima requisição aberta pela store (espera as promessas encadeadas). */
     proxima: async (): Promise<TestRequest> => {
       for (let i = 0; i < 100; i++) {
@@ -132,10 +133,16 @@ describe('ProdutoFormPage', () => {
   });
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
-  it('renderiza o formulário com Salvar na barra de ação fixa e sem placeholder', async () => {
+  it('renderiza o formulário com voltar e Salvar no cabeçalho, sem barra e sem placeholder', async () => {
     const t = await montar();
     expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Novo produto');
-    expect(t.salvar().textContent).toContain('Cadastrar produto');
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['Salvar'],
+      barras: 0,
+      cancelar: 0,
+    });
     expect(t.el.querySelector('ce-page-placeholder')).toBeNull();
   });
 
@@ -212,18 +219,43 @@ describe('ProdutoFormPage', () => {
     }
   });
 
-  it('com várias marcas, o fim da página reserva espaço para a barra fixa + bottom-nav + safe-area', async () => {
+  it('com várias marcas, o Salvar segue no cabeçalho e o fim da página não reserva espaço de barra', async () => {
     const t = await montar();
     for (let i = 0; i < 4; i++) {
       t.botao('Adicionar marca')!.click();
       await t.assentar();
     }
     expect(t.linhas()).toHaveLength(5);
-    // jsdom não calcula layout (nem elementFromPoint): confere a regra que reserva o espaço
+    // jsdom não calcula layout (nem elementFromPoint): confere o cabeçalho e a regra do espaço
+    expect(t.el.querySelector('ce-barra-acao')).toBeNull();
+    expect(t.salvar().textContent).toContain('Salvar');
     const reserva = getComputedStyle(t.el.querySelector('form.form')!).paddingBottom;
-    expect(reserva).toContain('--ce-barra-acao-height');
-    expect(reserva).toContain('--ce-nav-height');
-    expect(reserva).toContain('safe-area-inset-bottom');
+    expect(reserva).not.toContain('--ce-barra-acao-height');
+  });
+
+  it('envio duplo: com o POST pendente, Enter e Salvar do cabeçalho não enviam de novo', async () => {
+    const t = await montar();
+    await t.nome('Gelo 5kg');
+    await t.escolher(t.selectDaLinha(0), '__sem-marca__');
+    await t.digitar(
+      t.linhas()[0].querySelector('ce-money-input input') as HTMLInputElement,
+      '1000',
+    );
+    t.salvar().click();
+    const req = await t.proxima();
+    expect(req.request.method).toBe('POST');
+    const submitter = reenviarForm(t.el);
+    t.salvar().click();
+    await t.assentar();
+    t.http.expectNone(() => true); // um só POST
+    t.fixture.detectChanges();
+    expect(submitter.hidden).toBe(true);
+    expect(submitter.disabled).toBe(true);
+    req.flush({}, { status: 500, statusText: 'Erro' });
+    await new Promise((r) => setTimeout(r)); // o erro da API vira ApiError no interceptor
+    await t.assentar();
+    t.fixture.detectChanges();
+    expect(submitter.disabled).toBe(false);
   });
 
   it('Salvar sem tocar no estoque mínimo envia 0', async () => {

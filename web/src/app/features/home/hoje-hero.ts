@@ -50,7 +50,7 @@ export function dataExtenso(d: Date): string {
   template: `
     <section class="hero" aria-label="Vendido hoje">
       <p class="hero__data">{{ data() }}</p>
-      <h1 class="hero__saudacao">{{ saudacao() }}</h1>
+      <h2 class="hero__saudacao">{{ saudacao() }}</h2>
       <p class="hero__rotulo">Vendido hoje</p>
       @switch (status()) {
         @case ('ok') {

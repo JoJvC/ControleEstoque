@@ -13,6 +13,7 @@ import { StorageService } from '../../core/platform/storage-service';
 import { SheetService } from '../../core/overlay/sheet-service';
 import { ToastService } from '../../core/toast/toast-service';
 import { hojeLocal } from '../../core/util/data-local';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { CaixaPage } from './caixa-page';
 import { DespesaSheet } from './despesa-sheet';
 import { FechamentoSheet } from './fechamento-sheet';
@@ -181,12 +182,19 @@ describe('CaixaPage', () => {
     expect(el.querySelector('ce-page-placeholder')).toBeNull();
   });
 
-  it('ABERTO: ce-barra-acao com os dois botões', async () => {
+  it('ABERTO: Fechar caixa no cabeçalho, Lançar despesa no destaque, sem barra de ação', async () => {
     const { el, botao } = await montar(RESUMO_ABERTO);
-    const barra = el.querySelector('ce-barra-acao');
-    expect(barra?.querySelector('[aria-label="Ações do caixa"]')).toBeTruthy();
-    expect(barra?.contains(botao('Lançar despesa')!)).toBe(true);
-    expect(barra?.contains(botao('Fechar caixa')!)).toBe(true);
+    expect(lerPadraoPagina(el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['Fechar caixa'],
+      barras: 0,
+      cancelar: 0,
+    });
+    expect(el.querySelector('ce-app-header .destaque')?.contains(botao('Lançar despesa')!)).toBe(
+      true,
+    );
+    expect(el.querySelector('header.cabecalho')?.contains(botao('Lançar despesa')!)).toBe(false);
   });
 
   it('carregando: mostra o skeleton', async () => {
@@ -239,17 +247,17 @@ describe('CaixaPage', () => {
     expect(el.querySelector('[aria-label="Voltar"]')).toBeTruthy();
   });
 
-  it('desktop: voltar some e as duas seções ficam no contêiner de grade', async () => {
+  it('desktop: voltar continua e as duas seções ficam no contêiner de grade', async () => {
     const { el } = await montar(RESUMO_ABERTO, ['*'], true);
-    expect(el.querySelector('[aria-label="Voltar"]')).toBeNull();
+    expect(lerPadraoPagina(el).voltar).toBe(true);
     expect(el.querySelectorAll('.secoes > section').length).toBe(2);
   });
 
-  it('clicar na barra de ação abre o sheet correspondente', async () => {
+  it('clicar em Fechar caixa no cabeçalho abre o sheet de fechamento', async () => {
     const { fixture, http, abrir, el } = await montar(RESUMO_ABERTO);
     abrir.mockReturnValue({ closed: of(undefined) });
-    const btn = Array.from(el.querySelectorAll('ce-barra-acao button')).find((b) =>
-      b.textContent?.includes('Fechar caixa'),
+    const btn = Array.from(el.querySelectorAll('ce-app-header .cabecalho__acoes button')).find(
+      (b) => b.textContent?.includes('Fechar caixa'),
     ) as HTMLButtonElement;
     btn.click();
     await assentar(fixture);
@@ -292,14 +300,14 @@ describe('CaixaPage', () => {
     expect(el.textContent).toContain('Saldo no fechamento');
   });
 
-  it('FECHADO: chip, rótulo, cartão Caixa fechado e sem barra de ação', async () => {
+  it('FECHADO: chip, rótulo, cartão Caixa fechado e sem ações no cabeçalho', async () => {
     const { el, botao } = await montar(RESUMO_FECHADO);
     const texto = norm(el.textContent);
     expect(texto).toContain('Fechado');
     expect(texto).toContain('Saldo no fechamento');
     expect(el.querySelector('.alerta__titulo')?.textContent?.trim()).toBe('Caixa fechado');
     expect(norm(el.querySelector('[role="status"]')?.textContent ?? '')).toContain('R$ 320,00');
-    expect(el.querySelector('ce-barra-acao')).toBeNull();
+    expect(lerPadraoPagina(el).acoes).toEqual([]);
     expect(botao('Lançar despesa')).toBeUndefined();
   });
 });

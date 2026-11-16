@@ -7,7 +7,7 @@ Escopo: só visual e experiência. Regras de negócio, contratos de API e a Seç
 - O app pensa como um depósito: água em galões, cascos que voltam, descartáveis (gelo, carvão, copos…) por categoria.
   Galão, casco e nível de água aparecem só onde a regra de casco vale (tipo AGUA). GALAO_COMPLETO não gera débito de casco. DESCARTAVEL agrupa pela `categoria`.
 - Número primeiro: valor grande (fonte de títulos), rótulo pequeno em cima.
-- Ação principal embaixo, ao alcance do polegar, em barra fixa (altura 56–58 px). Alvos de toque ≥ 44 px.
+- Ação principal no cabeçalho da página, à direita do título (Padrão de página, §5). Alvos de toque ≥ 44 px.
 - Cor é significado: casco, sucata, fiado e pago têm cor própria, igual em todos os temas.
 - Casco ≠ sucata ≠ fiado: campos, chips e cores separados; nunca somados nem convertidos (Seção 8, regras 1 e 7).
 - Números agregados (totais do dia, cascos na rua, fiado a receber) vêm do servidor. O front não soma saldos (regra 6). Se a API não oferece, fatia própria de backend.
@@ -56,7 +56,17 @@ gelo (cubo), carvao (saco com chama), copo, caixa (categoria desconhecida, fallb
 
 ## 5. Telas (celular primeiro; desktop ≥ 960 px)
 - **Shell**: celular com bottom-nav (Hoje, Clientes, Vender ao centro em destaque, Estoque, Mais); desktop com menu lateral no `topo` do tema.
-  Topo das telas principais com o fundo `topo` e uma onda (SVG) na transição para o `chao`.
+  Topo das telas com o fundo `topo` e uma onda (SVG) na transição para o `chao`.
+- **Padrão de página** (`ce-app-header`, todas as telas menos a Venda):
+  - topo `topo` com a onda;
+  - [← voltar] + título + ação principal à direita do título. Rótulos: "+ Novo"/"+ Nova" nas listas (com `aria-label` descritivo, ex.: "Novo cliente"), "Salvar" nos formulários, a ação da tela nas demais ("Fechar caixa", "Chegou mercadoria");
+  - ações secundárias da página (ex.: "Baixa de casco", "Custos pendentes" no Estoque; "Adicionar pagamento" e cupom na Venda) também vão no cabeçalho, antes da principal, como ghost em linha no desktop e, no celular, num menu "⋯" (`ce-acoes-secundarias`, alvo ≥ 44 px). Nada de botão de página solto no fim do conteúdo;
+  - sem "Cancelar": voltar fecha sem salvar. Formulário aberto na própria tela (tipos de casco, cargos, funcionários) troca o título para "Novo …"/"Editar …" e o voltar fecha o formulário;
+  - a linha do cabeçalho é sticky, logo abaixo da barra do shell (`--ce-cabecalho-topo`). O destaque e a onda rolam com a página;
+  - telas raiz do menu (Hoje, Clientes, Estoque, Mais) não têm voltar;
+  - desktop igual, na área de conteúdo à direita do menu lateral. Em lista + detalhe, cada coluna tem o seu cabeçalho (rolagem própria, `--ce-cabecalho-topo: 0px`), e o detalhe ao lado da lista não tem voltar;
+  - lista embutida (RH) usa a variante de seção (`secao`): h2, sem topo, sem onda, sem sticky;
+  - exceção: Venda (passo a passo no celular com `ce-barra-acao`; desktop com Confirmar sempre visível); lá o cabeçalho passa `[fixo]="false"`.
 - **Venda (PDV)**: manter as etapas atuais (Cliente → Itens → Cascos → Pagamento → Revisão → sucesso), com trilho de etapas nomeadas no topo e "N de M".
   A etapa Cascos só aparece quando há AGUA no carrinho. Cliente escolhido fica fixo no topo com chips de casco e fiado.
   Itens: filtro por categoria em pílulas, linha por produto com ícone, estoque, preço, link "preço e desconto" (desconto por item com motivo, regra 4) e contador −/+.
@@ -64,11 +74,11 @@ gelo (cubo), carvao (saco com chama), copo, caixa (categoria desconhecida, fallb
   Pagamento: total grande, forma em botões, valor com atalhos Tudo / Metade / Tudo fiado, "Vai para fiado" ao vivo em cor de fiado (regra 5), novo saldo de fiado do cliente.
   Sucesso: status (Paga/Parcial/Pendente) e saldos que o response trouxe.
   Desktop: PDV numa tela só (produtos à esquerda, venda à direita).
-- **Hoje (home)**: hero no `topo` com vendido hoje e saídas por categoria; botão Nova venda; cartões Cascos na rua (borda tracejada casco) e Fiado a receber; "Acabando" com itens abaixo do mínimo de qualquer categoria.
+- **Hoje (home)**: hero no `topo` com vendido hoje e saídas por categoria; "Nova venda" no cabeçalho; cartões Cascos na rua (borda tracejada casco) e Fiado a receber; "Acabando" com itens abaixo do mínimo de qualquer categoria.
 - **Cliente**: cascos com ele (galões tracejados), fiado, sucata e histórico; ações Recolher cascos, Receber fiado, Vender.
 - **Estoque**: Água como galões com nível e linha tracejada do mínimo; vasilhames (cascos vazios, sucata, galão completo) em chips; descartáveis por categoria em barras com marca do mínimo.
   A barra cheia é o maior estoque do grupo (só exibição). O destaque de abaixo do mínimo vem do servidor (`abaixoMinimo`/`alertasEstoqueMinimo`). Botão "Chegou mercadoria" (abastecimento).
-- **Caixa, Relatórios, RH, cadastros**: aplicar tokens, fontes, cartões e barra de ação fixa; relatórios mantêm cards no celular e tabela no desktop.
+- **Caixa, Relatórios, RH, cadastros**: aplicar tokens, fontes, cartões e o padrão de página (ação principal no cabeçalho); relatórios mantêm cards no celular e tabela no desktop.
 - **Mais › Aparência**: seletor de tema com prévia.
 
 ## 6. Fora de escopo (sugestões futuras)

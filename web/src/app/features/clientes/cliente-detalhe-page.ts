@@ -30,7 +30,6 @@ import { Icon } from '../../ui/atoms/icon';
 import { Spinner } from '../../ui/atoms/spinner';
 import { EmptyState } from '../../ui/molecules/empty-state';
 import { AppHeader } from '../../ui/organisms/app-header';
-import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { FiltroClientes, urlLista } from './clientes-linhas';
 import { ClientesStore } from './clientes-store';
@@ -49,17 +48,7 @@ const MAX_GALOES = 10;
 @Component({
   selector: 'ce-cliente-detalhe-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    CePermissao,
-    AppHeader,
-    Button,
-    Icon,
-    Spinner,
-    EmptyState,
-    BarraAcao,
-    DatePipe,
-    PrecoPipe,
-  ],
+  imports: [CePermissao, AppHeader, Button, Icon, Spinner, EmptyState, DatePipe, PrecoPipe],
   templateUrl: './cliente-detalhe-page.html',
   styleUrl: './cliente-detalhe-page.scss',
 })
@@ -76,7 +65,7 @@ export class ClienteDetalhePage {
   private readonly toast = inject(ToastService);
   private readonly breakpoints = inject(BreakpointObserver);
 
-  // A partir de 960 px o detalhe vive ao lado da lista: sem voltar, sem barra fixa, Vender no cabeçalho.
+  // A partir de 960 px o detalhe vive ao lado da lista: sem voltar. Editar e Vender ficam no cabeçalho nos dois tamanhos.
   protected readonly desktop = toSignal(
     this.breakpoints.observe('(min-width: 960px)').pipe(map((r) => r.matches)),
     { initialValue: false },

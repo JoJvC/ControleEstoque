@@ -8,6 +8,7 @@ import { ToastService } from '../../core/toast/toast-service';
 import { ICONES } from '../../ui/atoms/icon';
 
 import { acoes, assentar, configurar } from './testing';
+import { lerPadraoPagina, reenviarForm } from '../../ui/organisms/padrao-pagina.testing';
 import { FuncionarioPage } from './funcionario-page';
 import { LancarSheet } from './lancar-sheet';
 
@@ -67,6 +68,21 @@ describe('FuncionarioPage', () => {
     expect(t.el.querySelector('ce-app-header h1')!.textContent).toContain('Ana');
   });
 
+  it('padrão de página no celular: voltar e Salvar no cabeçalho, Vale e Pagamento no destaque', async () => {
+    const t = await montar();
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['Salvar'],
+      barras: 0,
+      cancelar: 0,
+    });
+    expect(t.el.querySelector('ce-app-header .destaque [aria-label="Lançar vale"]')).not.toBeNull();
+    expect(
+      t.el.querySelector<HTMLButtonElement>('ce-funcionario-form button[type="submit"]')!.hidden,
+    ).toBe(true); // só o submitter do Enter; o Salvar visível mora no cabeçalho
+  });
+
   it('voltar do ce-app-header navega para /rh/funcionarios', async () => {
     const t = await montar();
     const navegar = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
@@ -107,6 +123,24 @@ describe('FuncionarioPage', () => {
     });
     req.flush({ ...ANA, ativo: false });
     await assentar(t.fixture);
+  });
+
+  it('envio duplo: com o PUT pendente, Enter e Salvar do cabeçalho não enviam de novo', async () => {
+    const t = await montar();
+    t.botao('Salvar')!.click();
+    const req = t.http.expectOne(URL);
+    expect(req.request.method).toBe('PUT');
+    const submitter = reenviarForm(t.el);
+    t.botao('Salvar')!.click();
+    await assentar(t.fixture);
+    t.http.expectNone(URL); // um só PUT
+    t.fixture.detectChanges();
+    expect(submitter.hidden).toBe(true);
+    expect(submitter.disabled).toBe(true);
+    req.flush({}, { status: 500, statusText: 'Erro' });
+    await assentar(t.fixture);
+    t.fixture.detectChanges();
+    expect(submitter.disabled).toBe(false);
   });
 
   it('valorDiaria 0 abre com Sem diária marcada e o PUT leva 0', async () => {
@@ -230,9 +264,11 @@ describe('FuncionarioPage', () => {
     expect(t.el.querySelector('ce-rh-grade')).not.toBeNull();
     expect(t.el.querySelector('.mestre ce-list-item')!.getAttribute('aria-current')).toBe('true');
     expect(t.el.querySelector('.detalhe ce-app-header h1')!.textContent).toContain('Ana');
-    // 'Novo funcionário' só na coluna do mestre, fora do detalhe (não cobre o Salvar)
-    expect(t.el.querySelector('.mestre ce-barra-acao')!.classList).toContain('na-grade');
-    expect(t.el.querySelector('.detalhe ce-barra-acao')).toBeNull();
+    // '+ Novo' só no cabeçalho de seção da coluna do mestre; o detalhe tem o seu cabeçalho
+    expect(t.el.querySelector('.mestre ce-app-header h2')!.textContent).toContain('Funcionários');
+    expect(t.el.querySelector('.mestre ce-app-header')!.textContent).toContain('+ Novo');
+    expect(t.el.querySelector('.detalhe ce-app-header')!.textContent).not.toContain('+ Novo');
+    expect(t.el.querySelector('ce-barra-acao')).toBeNull();
     expect(t.el.querySelector('ce-app-header button[aria-label="Voltar"]')).toBeNull();
   });
 

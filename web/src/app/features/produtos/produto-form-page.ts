@@ -24,7 +24,6 @@ import { TextInput } from '../../ui/atoms/text-input';
 import { FormField } from '../../ui/molecules/form-field';
 import { MoneyInput } from '../../ui/molecules/money-input';
 import { AppHeader } from '../../ui/organisms/app-header';
-import { BarraAcao } from '../../ui/organisms/barra-acao';
 import { MarcasStore } from './marcas-store';
 import {
   ErrosProduto,
@@ -58,17 +57,7 @@ const USA_GENERICO = '__usa-generico__';
 @Component({
   selector: 'ce-produto-form-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    FormsModule,
-    AppHeader,
-    BarraAcao,
-    Button,
-    Icon,
-    Select,
-    TextInput,
-    FormField,
-    MoneyInput,
-  ],
+  imports: [FormsModule, AppHeader, Button, Icon, Select, TextInput, FormField, MoneyInput],
   templateUrl: './produto-form-page.html',
   styleUrl: './produto-form-page.scss',
 })
@@ -197,6 +186,9 @@ export class ProdutoFormPage {
   }
 
   protected async salvar(): Promise<void> {
+    // o submitter oculto (Enter) não fica desabilitado: barra o envio duplo
+    if (this.salvando()) return;
+
     this.erroForm.set(null);
     const erros = validarProduto(this.form());
     this.erros.set(erros);
@@ -218,7 +210,7 @@ export class ProdutoFormPage {
     }
   }
 
-  /** Rola até o primeiro campo com erro (ordem do DOM) e o foca; a barra fixa não o cobre. */
+  /** Rola até o primeiro campo com erro (ordem do DOM) e o foca; o cabeçalho sticky não o cobre. */
   private irAoPrimeiroInvalido(): void {
     const erro = this.host.nativeElement.querySelector('.campo__erro, .marca .form__erro');
     const alvo =

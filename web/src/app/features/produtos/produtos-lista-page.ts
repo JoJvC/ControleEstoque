@@ -37,8 +37,8 @@ const TIPO_LABEL: Record<TipoProduto, string> = {
   ],
   template: `
     <ce-app-header titulo="Produtos" [mostrarVoltar]="true" (voltar)="voltarParaMais()">
-      <ce-button *cePermissao="'estoque.editar'" variante="ghost" (click)="novo()"
-        ><ce-icon nome="mais" [tamanho]="18" /> Novo</ce-button
+      <ce-button *cePermissao="'estoque.editar'" rotulo="Novo produto" (click)="novo()"
+        >+ Novo</ce-button
       >
     </ce-app-header>
 

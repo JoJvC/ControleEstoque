@@ -8,6 +8,7 @@ import { ClientesApi } from '../../core/api/clientes-api';
 import { ClienteResponse } from '../../core/api/models/clientes';
 import { VendaDetalheResponse } from '../../core/api/models/vendas';
 import { ApiError } from '../../core/http/api-error';
+import { CePermissao } from '../../core/permissions/ce-permissao';
 import { Button } from '../../ui/atoms/button';
 import { Icon } from '../../ui/atoms/icon';
 import { TextInput } from '../../ui/atoms/text-input';
@@ -30,6 +31,7 @@ const ERRO_PADRAO = 'Verifique a conexão e tente novamente.';
     FormsModule,
     AppHeader,
     Button,
+    CePermissao,
     DataList,
     FormField,
     Icon,
@@ -39,7 +41,11 @@ const ERRO_PADRAO = 'Verifique a conexão e tente novamente.';
     TextInput,
   ],
   template: `
-    <ce-app-header titulo="Vendas" />
+    <ce-app-header titulo="Vendas" [mostrarVoltar]="true" (voltar)="voltarParaMais()">
+      <ce-button *cePermissao="'vendas.registrar'" rotulo="Nova venda" (click)="nova()"
+        >+ Nova</ce-button
+      >
+    </ce-app-header>
 
     <div class="filtros">
       @if (cliente(); as c) {
@@ -241,6 +247,14 @@ export class VendasListaPage {
   protected mudarFim(valor: string): void {
     this.fim.set(valor);
     this.aplicar();
+  }
+
+  protected nova(): void {
+    this.router.navigateByUrl('/vendas/nova');
+  }
+
+  protected voltarParaMais(): void {
+    this.router.navigateByUrl('/mais');
   }
 
   protected abrir(venda: VendaDetalheResponse): void {

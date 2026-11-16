@@ -8,6 +8,10 @@ import { ClienteResponse } from '../../core/api/models/clientes';
 import { VendaDetalheResponse } from '../../core/api/models/vendas';
 import { ConfigStore } from '../../core/config/app-config';
 import { apiErrorInterceptor } from '../../core/http/api-error-interceptor';
+import { OperatorStore } from '../../core/operator/operator-store';
+import { FakeStorage, operadorValido } from '../../core/permissions/testing';
+import { StorageService } from '../../core/platform/storage-service';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { VendasListaPage } from './vendas-lista-page';
 
 const URL_VENDAS = '/api/vendas/v1/vendas';
@@ -44,14 +48,16 @@ async function assentar(fixture: ComponentFixture<unknown>): Promise<void> {
   await fixture.whenStable();
 }
 
-async function montar(inicial: VendaDetalheResponse[] = []) {
+async function montar(inicial: VendaDetalheResponse[] = [], permissoes: string[] = []) {
   TestBed.configureTestingModule({
     providers: [
       provideHttpClient(withInterceptors([apiErrorInterceptor])),
       provideHttpClientTesting(),
       { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
+      { provide: StorageService, useValue: new FakeStorage() },
     ],
   });
+  TestBed.inject(OperatorStore).select(operadorValido(permissoes));
   const http = TestBed.inject(HttpTestingController);
   const navegar = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
   const fixture = TestBed.createComponent(VendasListaPage);
@@ -94,6 +100,28 @@ async function montar(inicial: VendaDetalheResponse[] = []) {
 
 describe('VendasListaPage', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('padrão de página: voltar e + Nova com aria-label no cabeçalho; navega para /vendas/nova', async () => {
+    const t = await montar([], ['vendas.registrar']);
+    expect(lerPadraoPagina(t.el)).toEqual({
+      cabecalhos: 1,
+      voltar: true,
+      acoes: ['+ Nova'],
+      barras: 0,
+      cancelar: 0,
+    });
+    const nova = t.botao('+ Nova');
+    expect(nova.getAttribute('aria-label')).toBe('Nova venda');
+    nova.click();
+    expect(t.navegar).toHaveBeenCalledWith('/vendas/nova');
+    t.el.querySelector<HTMLButtonElement>('button[aria-label="Voltar"]')!.click();
+    expect(t.navegar).toHaveBeenCalledWith('/mais');
+  });
+
+  it('sem vendas.registrar: sem + Nova', async () => {
+    const t = await montar([], []);
+    expect(lerPadraoPagina(t.el).acoes).toEqual([]);
+  });
 
   it('ao abrir busca sem filtros; lista vazia mostra o estado vazio', async () => {
     const t = await montar([]);
@@ -205,6 +233,7 @@ describe('VendasListaPage', () => {
         provideHttpClient(withInterceptors([apiErrorInterceptor])),
         provideHttpClientTesting(),
         { provide: ConfigStore, useValue: { apiBaseUrl: '/api' } },
+        { provide: StorageService, useValue: new FakeStorage() },
       ],
     });
     const http = TestBed.inject(HttpTestingController);

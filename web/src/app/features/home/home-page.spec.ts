@@ -14,6 +14,7 @@ import { OperatorStore } from '../../core/operator/operator-store';
 import { FakeStorage, operadorValido } from '../../core/permissions/testing';
 import { StorageService } from '../../core/platform/storage-service';
 import { hojeLocal } from '../../core/util/data-local';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { HomePage } from './home-page';
 
 const HOJE = hojeLocal();
@@ -206,6 +207,18 @@ describe('HomePage', () => {
   it('só vendas.registrar', async () => {
     const { botao } = await montar({ permissoes: ['vendas.registrar'] });
     expect(botao('Nova venda')).toBeDefined();
+  });
+
+  it('padrão de página: raiz sem voltar, Nova venda no cabeçalho, sem barra de ação', async () => {
+    const { el } = await montar();
+    expect(lerPadraoPagina(el)).toEqual({
+      cabecalhos: 1,
+      voltar: false,
+      acoes: ['Nova venda'],
+      barras: 0,
+      cancelar: 0,
+    });
+    expect(el.querySelector('.hero')?.textContent).not.toContain('Nova venda');
   });
 
   it('clique em Nova venda navega', async () => {

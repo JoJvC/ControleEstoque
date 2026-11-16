@@ -8,6 +8,7 @@ import { CargoResponse, FuncionarioResponse } from '../../core/api/models/rh';
 import { ConfigStore } from '../../core/config/app-config';
 import { Operator, OperatorStore } from '../../core/operator/operator-store';
 import { StorageService } from '../../core/platform/storage-service';
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { SelectOperatorPage } from './select-operator-page';
 
 class FakeStorage extends StorageService {
@@ -77,6 +78,24 @@ describe('SelectOperatorPage', () => {
   });
 
   afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('padrão de página: fora do shell, sem voltar, sem ação e sem barra', async () => {
+    const el = await abrirPagina();
+    expect(lerPadraoPagina(el)).toEqual({
+      cabecalhos: 1,
+      voltar: false,
+      acoes: [],
+      barras: 0,
+      cancelar: 0,
+    });
+    expect(el.querySelector('ce-app-header h1')!.textContent).toContain('Quem está operando?');
+  });
+
+  it('a área segura do topo vai para dentro do cabeçalho (o host não gera caixa)', async () => {
+    const el = await abrirPagina();
+    const linha = el.querySelector('ce-app-header header.cabecalho') as HTMLElement;
+    expect(getComputedStyle(linha).paddingTop).toContain('--ce-cabecalho-respiro');
+  });
 
   it('clique no funcionário grava as permissões do cargo no operador', async () => {
     const el = await abrirPagina();

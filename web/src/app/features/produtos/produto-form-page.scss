@@ -1,11 +1,8 @@
 @use 'mixins';
 
 .form {
-  // espaço para a barra fixa + bottom-nav + safe-area; a barra real passa de 56px (botão de 44px + padding)
-  padding-bottom: calc(
-    var(--ce-barra-acao-height) + var(--ce-nav-height) + env(safe-area-inset-bottom, 0px) +
-      var(--ce-space-8)
-  );
+  // a bottom-nav já é reservada pelo shell; o Salvar mora no cabeçalho
+  padding-bottom: var(--ce-space-8);
 
   display: flex;
   flex-direction: column;
@@ -20,7 +17,6 @@
 
   @include mixins.from-desktop {
     max-width: 720px;
-    padding-bottom: calc(var(--ce-barra-acao-height) + var(--ce-space-8));
   }
 }
 

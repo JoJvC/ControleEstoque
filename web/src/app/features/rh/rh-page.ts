@@ -30,13 +30,9 @@ type Aba = 'func' | 'cargos';
       </div>
     </ng-template>
 
+    <ce-app-header titulo="Funcionários e cargos" [mostrarVoltar]="true" (voltar)="voltar()" />
+
     @if (!pode()) {
-      <ce-app-header
-        titulo="Funcionários e cargos"
-        [onda]="true"
-        [mostrarVoltar]="!desktop()"
-        (voltar)="voltar()"
-      />
       <div class="pagina">
         <ce-empty-state
           icone="cadeado"
@@ -59,12 +55,6 @@ type Aba = 'func' | 'cargos';
         }
       </ce-rh-grade>
     } @else {
-      <ce-app-header
-        titulo="Funcionários e cargos"
-        [onda]="true"
-        [mostrarVoltar]="true"
-        (voltar)="voltar()"
-      />
       <ng-container *ngTemplateOutlet="abas" />
       @if (aba() === 'func') {
         <ce-funcionarios-page [embutido]="true" />

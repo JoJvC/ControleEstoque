@@ -1,9 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { BreakpointObserver } from '@angular/cdk/layout';
 import { NgTemplateOutlet } from '@angular/common';
-import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { map } from 'rxjs';
 
 import { TemaEscolha, ThemeStore } from '../../core/theme/theme-store';
 import { AppHeader } from '../../ui/organisms/app-header';
@@ -37,12 +34,6 @@ export class AparenciaPage {
   private readonly theme = inject(ThemeStore);
   private readonly router = inject(Router);
 
-  protected readonly desktop = toSignal(
-    inject(BreakpointObserver)
-      .observe('(min-width: 960px)')
-      .pipe(map((r) => r.matches)),
-    { initialValue: false },
-  );
   protected readonly opcoes = OPCOES;
   protected readonly escolha = this.theme.escolha;
 

@@ -1,6 +1,7 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
+import { lerPadraoPagina } from '../../ui/organisms/padrao-pagina.testing';
 import { RhPage } from './rh-page';
 import { assentar, configurar } from './testing';
 
@@ -42,6 +43,7 @@ describe('RhPage', () => {
     expect(t.el.querySelector('a')).toBeNull();
     expect(t.el.querySelector('ce-barra-acao')).toBeNull();
     expect(t.el.querySelector('ce-funcionarios-page, ce-cargos-page')).toBeNull();
+    expect(lerPadraoPagina(t.el).voltar).toBe(true);
   });
 
   it('com rh.gerir: começa em Funcionários e o clique em Cargos troca aba e conteúdo', async () => {
@@ -62,19 +64,35 @@ describe('RhPage', () => {
     expect(t.aba('Cargos').getAttribute('aria-pressed')).toBe('true');
     expect(t.el.querySelector('ce-funcionarios-page')).toBeNull();
     expect(t.el.querySelector('ce-cargos-page')!.textContent).toContain('Caixa');
-    expect(t.el.querySelector('ce-barra-acao')!.textContent).toContain('Novo cargo');
+    expect(t.el.querySelector('ce-cargos-page ce-app-header')!.textContent).toContain('+ Novo');
+    expect(t.el.querySelector('ce-barra-acao')).toBeNull();
   });
 
-  it('desktop: grade mestre-detalhe sem ce-app-header e detalhe pedindo um funcionário', async () => {
+  it('celular: cabeçalho da página com voltar e sem ação; as listas embutidas usam a seção', async () => {
+    const t = await montar(['rh.gerir']);
+    t.http.expectOne(FUNCIONARIOS).flush([ANA]);
+    await assentar(t.fixture);
+    const [pagina, secao] = Array.from(t.el.querySelectorAll<HTMLElement>('ce-app-header'));
+    expect(lerPadraoPagina(t.el, pagina)).toMatchObject({ voltar: true, acoes: [], barras: 0 });
+    expect(secao.closest('ce-funcionarios-page')).not.toBeNull();
+    expect(secao.querySelector('h2')!.textContent).toContain('Funcionários');
+    expect(secao.querySelector('.topo--onda')).toBeNull();
+    expect(lerPadraoPagina(t.el, secao).acoes).toEqual(['+ Novo']);
+  });
+
+  it('desktop: ce-app-header com voltar no lugar do h1 da grade e detalhe pedindo um funcionário', async () => {
     const t = await montar(['rh.gerir'], true);
     t.http.expectOne(FUNCIONARIOS).flush([ANA]);
     await assentar(t.fixture);
     expect(t.el.querySelector('ce-rh-grade')).not.toBeNull();
-    expect(t.el.querySelector('ce-app-header')).toBeNull();
-    expect(t.el.querySelector('ce-rh-grade h1')!.textContent).toContain('Funcionários e cargos');
+    expect(t.el.querySelector('ce-rh-grade h1')).toBeNull();
+    const pagina = t.el.querySelector<HTMLElement>('ce-app-header')!;
+    expect(pagina.closest('ce-rh-grade')).toBeNull();
+    expect(pagina.querySelector('h1')!.textContent).toContain('Funcionários e cargos');
+    expect(lerPadraoPagina(t.el, pagina)).toMatchObject({ voltar: true, acoes: [], barras: 0 });
     expect(t.el.querySelector('.mestre ce-funcionarios-page')!.textContent).toContain('Ana');
-    // a barra 'Novo funcionário' fica só na coluna do mestre (CSS encurta quando tem na-grade)
-    expect(t.el.querySelector('.mestre ce-barra-acao')!.classList).toContain('na-grade');
+    expect(t.el.querySelector('.mestre ce-funcionarios-page ce-app-header h2')).not.toBeNull();
+    expect(t.el.querySelector('ce-barra-acao')).toBeNull();
     expect(t.el.querySelector('.detalhe ce-empty-state')!.textContent).toContain(
       'Escolha um funcionário na lista',
     );

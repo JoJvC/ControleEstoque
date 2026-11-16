@@ -13,6 +13,7 @@ import { Button } from '../../ui/atoms/button';
 import { Icon } from '../../ui/atoms/icon';
 import { iconeDoProduto } from '../../ui/atoms/icone-do-produto';
 import { Skeleton } from '../../ui/atoms/skeleton';
+import { AcoesSecundarias } from '../../ui/molecules/acoes-secundarias';
 import { EmptyState } from '../../ui/molecules/empty-state';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { AjusteSheet, AjusteSheetDados } from './ajuste-sheet';
@@ -29,14 +30,28 @@ import { EstoqueStore } from './estoque-store';
 @Component({
   selector: 'ce-estoque-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgTemplateOutlet, CePermissao, AppHeader, Button, EmptyState, Icon, Skeleton],
+  imports: [
+    NgTemplateOutlet,
+    CePermissao,
+    AcoesSecundarias,
+    AppHeader,
+    Button,
+    EmptyState,
+    Icon,
+    Skeleton,
+  ],
   template: `
-    <ce-app-header
-      titulo="Estoque"
-      [onda]="true"
-      [mostrarVoltar]="true"
-      (voltar)="voltarParaMais()"
-    />
+    <ce-app-header titulo="Estoque">
+      <ce-acoes-secundarias>
+        <ce-button *cePermissao="'estoque.editar'" variante="ghost" (click)="baixaCasco()"
+          >Baixa de casco</ce-button
+        >
+        <ce-button *cePermissao="'estoque.custos'" variante="ghost" (click)="custosPendentes()"
+          >Custos pendentes</ce-button
+        >
+      </ce-acoes-secundarias>
+      <ce-button *cePermissao="'estoque.editar'" (click)="abastecer()">Chegou mercadoria</ce-button>
+    </ce-app-header>
 
     <div class="conteudo">
       @switch (store.status()) {
@@ -152,18 +167,6 @@ import { EstoqueStore } from './estoque-store';
         }
       </li>
     </ng-template>
-
-    <div class="acoes">
-      <ce-button *cePermissao="'estoque.editar'" [block]="true" (click)="abastecer()">
-        <ce-icon nome="caixa" [tamanho]="18" /> Chegou mercadoria
-      </ce-button>
-      <ce-button *cePermissao="'estoque.editar'" variante="ghost" (click)="baixaCasco()"
-        >Baixa de casco</ce-button
-      >
-      <ce-button *cePermissao="'estoque.custos'" variante="ghost" (click)="custosPendentes()"
-        >Custos pendentes</ce-button
-      >
-    </div>
   `,
   styles: `
     @use 'mixins';
@@ -317,23 +320,6 @@ import { EstoqueStore } from './estoque-store';
       font: inherit;
       cursor: pointer;
     }
-
-    // Barra fixa do botão principal (DESIGN.md §5), acima da bottom-nav
-    .acoes {
-      position: sticky;
-      bottom: calc(var(--ce-nav-height) + env(safe-area-inset-bottom, 0px));
-      display: flex;
-      align-items: center;
-      gap: var(--ce-space-3);
-      min-height: 56px;
-      padding: var(--ce-space-2) var(--ce-space-4);
-      background: var(--ce-bg);
-      border-top: 1px solid var(--ce-border);
-
-      @include mixins.from-desktop {
-        bottom: 0;
-      }
-    }
   `,
 })
 export class EstoquePage {
@@ -422,9 +408,5 @@ export class EstoquePage {
 
   protected custosPendentes(): void {
     this.router.navigateByUrl('/estoque/abastecimento/pendentes');
-  }
-
-  protected voltarParaMais(): void {
-    this.router.navigateByUrl('/mais');
   }
 }

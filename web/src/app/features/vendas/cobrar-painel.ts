@@ -24,6 +24,7 @@ import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import {
   ItemCarrinho,
   TotaisCarrinho,
+  VasilhameCarrinho,
   fiadoDe,
   rotuloCascoNaRua,
   totalItemDe,
@@ -33,7 +34,7 @@ import {
 import { TipoCascoDoCarrinho } from './cascos-por-tipo';
 import { FORMA_CREDITO, formasDaVenda, limitarCredito } from './pagamento-credito';
 import { rotuloForma } from './venda-rotulos';
-import { FormaPagamento } from '../../core/api/models/vendas';
+import { FormaPagamento, ModoCreditoVasilhame } from '../../core/api/models/vendas';
 
 /** Um tipo de casco do carrinho, com o que já foi lançado e o feedback de casco na rua. */
 export interface CascoTipoEstado extends TipoCascoDoCarrinho {
@@ -41,14 +42,32 @@ export interface CascoTipoEstado extends TipoCascoDoCarrinho {
   readonly devolvidos: number;
   readonly travado: boolean;
   readonly sucata: number;
+  /** Desconto por unidade da sucata, em reais. */
+  readonly valorSucata: number;
   readonly naRua: number;
   readonly aMais: number;
+}
+
+/** Uma linha do quadro 'Vasilhames comprados agora'. */
+export interface VasilhameEstado extends VasilhameCarrinho {
+  readonly nome: string;
+  /** Vasilhames cobertos pelo crédito de galão e total cobrado da linha. */
+  readonly abatida: number;
+  readonly total: number;
+  /** Só tipos com crédito (ou já em Comprar) mostram a escolha Abater/Comprar. */
+  readonly escolhaModo: boolean;
 }
 
 /** Tudo o que o painel mostra; a página é dona do estado (rascunho, regras e API). */
 export interface CobrarEstado {
   readonly itens: readonly ItemCarrinho[];
+  /** Bruto com os vasilhames cobrados; desconto com o da sucata. */
   readonly totais: TotaisCarrinho;
+  readonly vasilhames: readonly VasilhameEstado[];
+  readonly totalVasilhames: number;
+  readonly descontoSucata: number;
+  /** O desconto da sucata passa do total da venda: o servidor recusaria. */
+  readonly sucataExcede: boolean;
   /** Só os tipos de casco das linhas retornáveis do carrinho. */
   readonly cascos: readonly CascoTipoEstado[];
   readonly cascosNaHora: boolean;
@@ -68,6 +87,12 @@ export type CobrarAcao =
   | { readonly tipo: 'cascos'; readonly tipoCascoId: string; readonly valor: number }
   | { readonly tipo: 'naHora'; readonly valor: boolean }
   | { readonly tipo: 'sucata'; readonly tipoCascoId: string; readonly valor: number }
+  | { readonly tipo: 'sucataValor'; readonly tipoCascoId: string; readonly valor: number }
+  | {
+      readonly tipo: 'vasilhame';
+      readonly tipoCascoId: string;
+      readonly mudanca: Partial<Pick<VasilhameCarrinho, 'quantidade' | 'precoUnitario' | 'modo'>>;
+    }
   | { readonly tipo: 'pagamentos'; readonly valor: readonly PagamentoEdicao[] }
   | { readonly tipo: 'atalho'; readonly indice: number; readonly qual: 'tudo' | 'metade' }
   | { readonly tipo: 'tudoFiado' }
@@ -87,9 +112,6 @@ export type CobrarAcao =
             <span>
               {{ item.quantidade }}× {{ item.produto.nome }} —
               {{ rotuloMarca(item.marca.marcaNome) }}
-              @if (item.pagouVasilhame) {
-                <span class="desconto">vasilhame pago</span>
-              }
               @if (item.desconto) {
                 <span class="desconto">
                   desc. {{ descontoDe(item) | cePreco }}
@@ -109,10 +131,16 @@ export type CobrarAcao =
           <dt>Bruto</dt>
           <dd>{{ e.totais.bruto | cePreco }}</dd>
         </div>
-        @if (e.totais.desconto > 0) {
+        @if (e.totais.desconto - e.descontoSucata > 0) {
           <div class="totais__linha">
             <dt>Desconto (por item)</dt>
-            <dd>− {{ e.totais.desconto | cePreco }}</dd>
+            <dd>− {{ e.totais.desconto - e.descontoSucata | cePreco }}</dd>
+          </div>
+        }
+        @if (e.descontoSucata > 0) {
+          <div class="totais__linha">
+            <dt>Desconto da sucata</dt>
+            <dd>− {{ e.descontoSucata | cePreco }}</dd>
           </div>
         }
         <div class="totais__linha totais__linha--total">
@@ -120,6 +148,49 @@ export type CobrarAcao =
           <dd>{{ e.totais.liquido | cePreco }}</dd>
         </div>
       </dl>
+
+      @if (e.vasilhames.length > 0) {
+        <section class="vasilhame" aria-label="Vasilhames">
+          <h3 class="titulo"><ce-icon nome="casco" [tamanho]="20" /> Vasilhames comprados agora</h3>
+          @for (v of e.vasilhames; track v.tipoCascoId) {
+            <ce-form-field [rotulo]="'Vasilhame ' + v.nome">
+              <ce-quantity-stepper
+                [rotulo]="'Quantidade de Vasilhame ' + v.nome"
+                [item]="'Vasilhame ' + v.nome"
+                [ngModel]="v.quantidade"
+                (ngModelChange)="mudarVasilhame(v.tipoCascoId, { quantidade: $event })"
+              />
+              <ce-money-input
+                [rotulo]="'Valor unitário de Vasilhame ' + v.nome"
+                [ngModel]="v.precoUnitario"
+                (ngModelChange)="mudarVasilhame(v.tipoCascoId, { precoUnitario: $event ?? 0 })"
+              />
+            </ce-form-field>
+            @if (v.escolhaModo) {
+              <div class="modos" role="group" [attr.aria-label]="'Crédito de ' + v.nome">
+                @for (m of modos; track m.valor) {
+                  <button
+                    type="button"
+                    class="forma"
+                    [class.forma--ativa]="v.modo === m.valor"
+                    [attr.aria-pressed]="v.modo === m.valor"
+                    (click)="mudarVasilhame(v.tipoCascoId, { modo: m.valor })"
+                  >
+                    {{ m.rotulo }}
+                  </button>
+                }
+              </div>
+            }
+            <p class="vasilhame__total">
+              {{ v.nome }}: {{ v.total | cePreco }}
+              @if (v.abatida > 0) {
+                <span class="dica">· {{ v.abatida }} abatido(s) do crédito</span>
+              }
+            </p>
+          }
+          <p class="vasilhame__total">Total dos vasilhames: {{ e.totalVasilhames | cePreco }}</p>
+        </section>
+      }
 
       @if (e.cascos.length > 0) {
         <section class="casco" aria-label="Cascos">
@@ -155,7 +226,7 @@ export type CobrarAcao =
               @if (c.aceitaSucata) {
                 <ce-form-field
                   [rotulo]="'Sucata entregue — ' + c.nome"
-                  dica="Contagem própria, em separado dos cascos."
+                  dica="Contagem própria, em separado dos cascos. Desconto por unidade em R$."
                 >
                   <ce-quantity-stepper
                     [rotulo]="'Sucata entregue de ' + c.nome"
@@ -164,8 +235,25 @@ export type CobrarAcao =
                       acao.emit({ tipo: 'sucata', tipoCascoId: c.tipoCascoId, valor: $event })
                     "
                   />
+                  <ce-money-input
+                    [rotulo]="'Desconto por unidade de sucata de ' + c.nome"
+                    [ngModel]="c.valorSucata"
+                    (ngModelChange)="
+                      acao.emit({
+                        tipo: 'sucataValor',
+                        tipoCascoId: c.tipoCascoId,
+                        valor: $event ?? 0,
+                      })
+                    "
+                  />
                 </ce-form-field>
               }
+            }
+            <p class="sucata__total">Desconto da sucata: {{ e.descontoSucata | cePreco }}</p>
+            @if (e.sucataExcede) {
+              <p class="erro" role="alert">
+                O desconto da sucata passa do total da venda. Reduza o valor ou a quantidade.
+              </p>
             }
             <p class="sucata__aviso">
               <ce-icon nome="info" [tamanho]="18" /> Sucata não abate o débito de casco.
@@ -305,7 +393,8 @@ export type CobrarAcao =
     }
 
     .casco,
-    .sucata {
+    .sucata,
+    .vasilhame {
       display: flex;
       flex-direction: column;
       gap: var(--ce-space-2);
@@ -334,6 +423,22 @@ export type CobrarAcao =
       .titulo {
         color: var(--ce-sucata);
       }
+    }
+
+    .vasilhame {
+      border: 1px solid var(--ce-border);
+      background: var(--ce-surface-muted);
+    }
+
+    .vasilhame__total,
+    .sucata__total {
+      font-weight: 700;
+    }
+
+    .modos {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--ce-space-2);
     }
 
     .sucata__aviso {
@@ -429,6 +534,18 @@ export class CobrarPainel {
   protected readonly rotuloMarca = rotuloDaMarca;
   protected readonly descontoDe = valorDescontoDe;
   protected readonly totalDe = totalItemDe;
+
+  protected readonly modos: readonly { valor: ModoCreditoVasilhame; rotulo: string }[] = [
+    { valor: 'ABATER_CREDITO', rotulo: 'Abater do crédito' },
+    { valor: 'COMPRAR', rotulo: 'Comprar' },
+  ];
+
+  protected mudarVasilhame(
+    tipoCascoId: string,
+    mudanca: Partial<Pick<VasilhameCarrinho, 'quantidade' | 'precoUnitario' | 'modo'>>,
+  ): void {
+    this.acao.emit({ tipo: 'vasilhame', tipoCascoId, mudanca });
+  }
 
   protected temSucata(e: CobrarEstado): boolean {
     return e.cascos.some((c) => c.aceitaSucata);

@@ -175,6 +175,19 @@ describe('ClienteDetalhePage — saldos', () => {
     expect(itens).toEqual(['Casco 20L = 3', 'Casco 5L = 1 a favor do cliente']);
   });
 
+  it('Cascos com ele com saldo total negativo mostra "2 a favor", sem sinal de menos', async () => {
+    const t = await montar(['*'], [VENDA], {
+      saldos: {
+        ...SALDOS,
+        saldoCascos: -2,
+        cascosPorTipo: [{ tipoCascoId: 't-1', nome: 'Casco 20L', saldo: -2 }],
+      },
+    });
+    const [casco] = t.chips();
+    expect(casco.texto).toContain('Cascos com ele 2 a favor');
+    expect(casco.texto).not.toContain('-2');
+  });
+
   it('saldo positivo é crédito no tom pago; zerado é "Em dia" no tom pago', async () => {
     const credito = await montar(['*'], [VENDA], {
       saldos: { ...SALDOS, saldoFiado: 0, saldo: 25, creditoDisponivel: 25 },

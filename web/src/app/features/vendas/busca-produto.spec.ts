@@ -1,6 +1,9 @@
+import { TipoCascoResponse } from '../../core/api/models/estoque';
 import { marcaResp, produtoResp } from '../../core/api/testing';
 import {
   LinhaProduto,
+  ehVasilhame,
+  linhasDeVasilhame,
   filtrarPorSugestao,
   filtrarPorTexto,
   linhasDoCatalogo,
@@ -109,5 +112,40 @@ describe('filtrarPorSugestao', () => {
     expect(ids(filtrarPorSugestao(LINHAS, { tipo: 'categoria', valor: 'Gelo' }))).toEqual([
       'p-gelo/m-ind',
     ]);
+  });
+});
+
+describe('linhasDeVasilhame', () => {
+  const tipo = (id: string, nome: string): TipoCascoResponse => ({
+    id,
+    nome,
+    marcaId: null,
+    marca: null,
+    precoVasilhame: 30,
+    aceitaSucata: true,
+  });
+  const TIPOS = [tipo('t-1', 'Galão 20L'), tipo('t-2', 'Garrafão 10L')];
+  const nomes = (termo: string, escondidas = false) =>
+    linhasDeVasilhame(TIPOS, termo, escondidas).map((l) => l.vasilhame.nome);
+
+  it('uma linha por tipo de casco, na ordem do cadastro', () => {
+    expect(nomes('')).toEqual(['Galão 20L', 'Garrafão 10L']);
+  });
+
+  it('o texto filtra por "vasilhame <nome>", sem acento e sem diferenciar caixa', () => {
+    expect(nomes('vasilhame galao')).toEqual(['Galão 20L']);
+    expect(nomes('GARRAFAO')).toEqual(['Garrafão 10L']);
+    expect(nomes('vasilhame')).toHaveLength(2);
+    expect(nomes('agua')).toEqual([]);
+  });
+
+  it('com filtro de categoria ou sugestão as linhas ficam escondidas', () => {
+    expect(nomes('', true)).toEqual([]);
+  });
+
+  it('ehVasilhame separa a linha de vasilhame da de produto', () => {
+    const [v] = linhasDeVasilhame(TIPOS, '', false);
+    expect(ehVasilhame(v)).toBe(true);
+    expect(ehVasilhame({ produto: AGUA, marca: AGUA.marcas[0] })).toBe(false);
   });
 });

@@ -20,13 +20,29 @@ export interface ItemVendaRequest {
   quantidade: number;
   precoUnitario: number;
   desconto: DescontoRequest | null;
-  pagouVasilhame: boolean;
+}
+
+export type ModoCreditoVasilhame = 'ABATER_CREDITO' | 'COMPRAR';
+
+/** Vasilhame vendido por tipo de casco; `modoCredito` omitido vale ABATER_CREDITO. */
+export interface VasilhameRequest {
+  tipoCascoId: string;
+  quantidade: number;
+  precoUnitario: number;
+  modoCredito?: ModoCreditoVasilhame;
 }
 
 /** Casco devolvido ou sucata entregue, por tipo de casco. */
 export interface CascoPorTipoRequest {
   tipoCascoId: string;
   quantidade: number;
+}
+
+/** Sucata entregue por tipo de casco; o valor unitário (≥ 0) vira desconto da venda. */
+export interface SucataEntregueRequest {
+  tipoCascoId: string;
+  quantidade: number;
+  valorUnitario: number;
 }
 
 export interface PagamentoRequest {
@@ -39,9 +55,10 @@ export interface CreateVendaRequest {
   funcionarioId: string;
   enderecoEntregaId: string | null;
   itens: ItemVendaRequest[];
+  vasilhames: VasilhameRequest[];
   pagamentos: PagamentoRequest[];
   cascosDevolvidos: CascoPorTipoRequest[];
-  sucataEntregue: CascoPorTipoRequest[];
+  sucataEntregue: SucataEntregueRequest[];
   observacao: string | null;
 }
 
@@ -51,6 +68,8 @@ export interface VendaResponse {
   totalDesconto: number;
   totalLiquido: number;
   totalPago: number;
+  descontoSucata: number;
+  creditoGerado: number;
   saldoFiadoGerado: number;
   statusPagamento: StatusPagamento;
   saldoCascoCliente: number;
@@ -67,14 +86,21 @@ export interface ItemVendaResponse {
   produtoId: string;
   marcaId: string;
   tipoCascoId: string | null;
-  pagouVasilhame: boolean;
-  precoVasilhame: number;
   quantidade: number;
   precoUnitario: number;
   descontoTipo: TipoDesconto | null;
   descontoValor: number | null;
   motivoDesconto: string | null;
   totalItem: number;
+}
+
+export interface VasilhameResponse {
+  tipoCascoId: string;
+  quantidade: number;
+  quantidadeAbatida: number;
+  precoUnitario: number;
+  modo: ModoCreditoVasilhame;
+  total: number;
 }
 
 export interface PagamentoResponse {
@@ -97,9 +123,10 @@ export interface VendaDetalheResponse {
   cupomNumero: string | null;
   cupomEmitidoEm: string | null;
   itens: ItemVendaResponse[];
+  vasilhames: VasilhameResponse[];
   pagamentos: PagamentoResponse[];
   cascosDevolvidos: CascoPorTipoRequest[];
-  sucataEntregue: CascoPorTipoRequest[];
+  sucataEntregue: SucataEntregueRequest[];
 }
 
 export interface AddPagamentoRequest {

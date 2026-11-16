@@ -1,4 +1,8 @@
-import { ProdutoMarcaResponse, ProdutoResponse } from '../../core/api/models/estoque';
+import {
+  ProdutoMarcaResponse,
+  ProdutoResponse,
+  TipoCascoResponse,
+} from '../../core/api/models/estoque';
 import { semAcento } from '../../core/util/sem-acento';
 
 /** Uma linha do catálogo do PDV: produto + marca. */
@@ -6,6 +10,15 @@ export interface LinhaProduto {
   readonly produto: ProdutoResponse;
   readonly marca: ProdutoMarcaResponse;
 }
+
+/** Vasilhame vendido como linha da lista do PDV, por tipo de casco: 'Vasilhame <nome do tipo>'. */
+export interface LinhaVasilhame {
+  readonly vasilhame: TipoCascoResponse;
+}
+
+export type LinhaLista = LinhaProduto | LinhaVasilhame;
+
+export const ehVasilhame = (linha: LinhaLista): linha is LinhaVasilhame => 'vasilhame' in linha;
 
 export interface SugestaoBusca {
   readonly tipo: 'nome' | 'marca' | 'categoria';
@@ -72,4 +85,22 @@ export function filtrarPorSugestao<L extends LinhaProduto>(
     case 'categoria':
       return linhas.filter((l) => l.produto.categoria === sugestao.valor);
   }
+}
+
+/**
+ * Linhas de vasilhame da lista: uma por tipo de casco, filtradas por `vasilhame <nome>`.
+ * `escondidas` (filtro de categoria ou sugestão de produto/marca ativo) esvazia a lista.
+ */
+export function linhasDeVasilhame(
+  tiposCasco: readonly TipoCascoResponse[],
+  termo: string,
+  escondidas: boolean,
+): LinhaVasilhame[] {
+  if (escondidas) {
+    return [];
+  }
+  const t = semAcento(termo.trim());
+  return tiposCasco
+    .filter((tipo) => semAcento(`vasilhame ${tipo.nome}`).includes(t))
+    .map((vasilhame) => ({ vasilhame }));
 }

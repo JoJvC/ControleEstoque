@@ -46,7 +46,7 @@ import { PagamentoEdicao } from '../../ui/organisms/pagamento-lista';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import {
   ItemCarrinho,
-  cascosNaRua,
+  abatidaDe,
   categoriasDe,
   fiadoDe,
   filtrarPorCategoria,
@@ -55,26 +55,37 @@ import {
   mesmoItem,
   pagamentoExcede,
   paraCreateVendaRequest,
-  precoVasilhameDe,
   rascunhoDeVenda,
   totaisDe,
   totalItemDe,
   totalPagoDe,
+  totalVasilhameDe,
+  totalVasilhamesDe,
+  vasilhameNovo,
+  vasilhamesPorTipo,
   valorDoAtalho,
   valorDescontoDe,
+  VasilhameCarrinho,
 } from './carrinho';
 import {
+  LinhaLista,
   LinhaProduto,
   SugestaoBusca,
+  ehVasilhame,
   filtrarPorSugestao,
   filtrarPorTexto,
+  linhasDeVasilhame,
   linhasDoCatalogo,
   sugestoesDaBusca,
 } from './busca-produto';
 import {
   QuantidadesPorTipo,
+  descontoSucataDe,
   linhasCascoPorTipo,
+  previaCascoDoTipo,
+  rotuloSaldoCasco,
   quantidadeDevolvida,
+  sucataExcede,
   tiposCascoDoCarrinho,
 } from './cascos-por-tipo';
 import {
@@ -84,6 +95,7 @@ import {
   CobrarPainel,
   CobrarSheet,
   CobrarSheetDados,
+  VasilhameEstado,
 } from './cobrar-painel';
 import { ItemVendaSheet, ItemVendaSheetDados, ItemVendaSheetResultado } from './item-venda-sheet';
 import { VendaStore } from './venda-store';
@@ -187,7 +199,7 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
                     <span class="dica">· {{ rotuloItens() }}</span>
                   }
                 </h2>
-                @if (clienteSelecionado() && itens().length > 0) {
+                @if (clienteSelecionado() && !carrinhoVazio()) {
                   <ce-cobrar-painel [estado]="cobrarEstado()" (acao)="agir($event)" />
                 } @else {
                   <p class="dica">
@@ -228,7 +240,10 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
                 [attr.aria-expanded]="cascosAbertos()"
                 (click)="cascosAbertos.set(!cascosAbertos())"
               >
-                <ce-chip tom="casco" icone="casco">Casco {{ s.saldoCascos }}</ce-chip>
+                <ce-chip tom="casco" icone="casco"
+                  >{{ s.saldoCascos < 0 ? 'Casco: ' : 'Casco '
+                  }}{{ rotuloSaldoCasco(s.saldoCascos) }}</ce-chip
+                >
               </button>
               @let saldo = classificarSaldo(s.saldo);
               <ce-chip [tom]="saldo.tom" icone="dinheiro">{{ rotuloSaldo(saldo) }}</ce-chip>
@@ -374,51 +389,77 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
         (recarregar)="carregarProdutos()"
       >
         <ng-template let-linha>
-          @let p = linha.produto;
-          @let item = itemDe(linha);
-          @let rotulo = rotuloDaLinha(linha);
-          <div class="prod" [class.prod--sel]="item !== undefined">
-            <button
-              type="button"
-              class="prod__corpo"
-              [attr.aria-label]="'Adicionar ' + rotulo"
-              (click)="mudarQuantidade(linha, (item?.quantidade ?? 0) + 1)"
-            >
-              <ce-icon class="prod__icone" [nome]="iconeDe(p)" [tamanho]="32" />
-              <span class="prod__info">
-                <span class="prod__nome">{{ rotulo }}</span>
-                <span class="dica">
-                  @if (p.tamanho) {
-                    {{ p.tamanho }} ·
-                  }
-                  Estoque: {{ linha.marca.quantidade }} ·
-                  <span class="prod__preco">{{ precoDe(linha) | cePreco }}</span>
+          @if (linha.vasilhame; as tipo) {
+            @let rotuloV = 'Vasilhame ' + tipo.nome;
+            @let qtd = quantidadeDeVasilhame(tipo.id);
+            <div class="prod" [class.prod--sel]="qtd > 0">
+              <button
+                type="button"
+                class="prod__corpo"
+                [attr.aria-label]="'Adicionar ' + rotuloV"
+                (click)="definirVasilhame(tipo, qtd + 1)"
+              >
+                <ce-icon class="prod__icone" nome="casco" [tamanho]="32" />
+                <span class="prod__info">
+                  <span class="prod__nome">{{ rotuloV }}</span>
+                  <span class="dica">
+                    <span class="prod__preco">{{ tipo.precoVasilhame | cePreco }}</span>
+                  </span>
                 </span>
-              </span>
-            </button>
-            @if (item) {
-              <ce-quantity-stepper
-                [rotulo]="'Quantidade de ' + rotulo"
-                [item]="rotulo"
-                [ngModel]="item.quantidade"
-                (ngModelChange)="mudarQuantidade(linha, $event)"
-              />
-              <div class="prod__extra">
-                <button type="button" class="prod__link" (click)="editarPreco(linha)">
-                  Preço e desconto
-                </button>
-                @if (item.desconto) {
-                  <span class="dica">desc. {{ descontoDe(item) | cePreco }}</span>
-                } @else if (item.precoUnitario !== linha.marca.precoReferencia) {
-                  <span class="dica">preço editado</span>
-                }
-                @if (item.pagouVasilhame) {
-                  <span class="dica">vasilhame pago</span>
-                }
-                <span class="prod__total">{{ totalDe(item) | cePreco }}</span>
-              </div>
-            }
-          </div>
+              </button>
+              @if (qtd > 0) {
+                <ce-quantity-stepper
+                  [rotulo]="'Quantidade de ' + rotuloV"
+                  [item]="rotuloV"
+                  [ngModel]="qtd"
+                  (ngModelChange)="definirVasilhame(tipo, $event)"
+                />
+              }
+            </div>
+          } @else {
+            @let p = linha.produto;
+            @let item = itemDe(linha);
+            @let rotulo = rotuloDaLinha(linha);
+            <div class="prod" [class.prod--sel]="item !== undefined">
+              <button
+                type="button"
+                class="prod__corpo"
+                [attr.aria-label]="'Adicionar ' + rotulo"
+                (click)="mudarQuantidade(linha, (item?.quantidade ?? 0) + 1)"
+              >
+                <ce-icon class="prod__icone" [nome]="iconeDe(p)" [tamanho]="32" />
+                <span class="prod__info">
+                  <span class="prod__nome">{{ rotulo }}</span>
+                  <span class="dica">
+                    @if (p.tamanho) {
+                      {{ p.tamanho }} ·
+                    }
+                    Estoque: {{ linha.marca.quantidade }} ·
+                    <span class="prod__preco">{{ precoDe(linha) | cePreco }}</span>
+                  </span>
+                </span>
+              </button>
+              @if (item) {
+                <ce-quantity-stepper
+                  [rotulo]="'Quantidade de ' + rotulo"
+                  [item]="rotulo"
+                  [ngModel]="item.quantidade"
+                  (ngModelChange)="mudarQuantidade(linha, $event)"
+                />
+                <div class="prod__extra">
+                  <button type="button" class="prod__link" (click)="editarPreco(linha)">
+                    Preço e desconto
+                  </button>
+                  @if (item.desconto) {
+                    <span class="dica">desc. {{ descontoDe(item) | cePreco }}</span>
+                  } @else if (item.precoUnitario !== linha.marca.precoReferencia) {
+                    <span class="dica">preço editado</span>
+                  }
+                  <span class="prod__total">{{ totalDe(item) | cePreco }}</span>
+                </div>
+              }
+            </div>
+          }
         </ng-template>
       </ce-data-list>
     </ng-template>
@@ -772,6 +813,11 @@ export class PdvPage implements OnInit {
   protected readonly cascosDevolvidos = signal<QuantidadesPorTipo>({});
   protected readonly cascosNaHora = signal(false);
   protected readonly sucataEntregue = signal<QuantidadesPorTipo>({});
+  // Desconto por unidade da sucata, por tipo; começa em 0 (não há valor sugerido no cadastro).
+  protected readonly sucataValores = signal<QuantidadesPorTipo>({});
+  protected readonly vasilhames = signal<readonly VasilhameCarrinho[]>([]);
+  // Edição: crédito de galão por tipo conhecido pelo detalhe (o que o servidor abateu).
+  private readonly creditoEdicao = signal<QuantidadesPorTipo>({});
   protected readonly pagamentos = signal<readonly PagamentoEdicao[]>(PAGAMENTO_PADRAO);
 
   // Edição: com `id` (rota editar/:id) a página pré-carrega a venda e salva por PUT.
@@ -816,14 +862,53 @@ export class PdvPage implements OnInit {
   protected readonly sugestoes = computed(() =>
     sugestoesDaBusca(this.catalogo(), this.termoProduto()),
   );
-  protected readonly linhasDeProduto = computed(() => {
+  protected readonly linhasDeProduto = computed<LinhaLista[]>(() => {
     const porCategoria = filtrarPorCategoria(this.catalogo(), this.categoria());
     const filtro = this.filtroSugestao();
     const porSugestao = filtro === null ? porCategoria : filtrarPorSugestao(porCategoria, filtro);
-    return filtrarPorTexto(porSugestao, this.termoProduto());
+    const vasilhames = linhasDeVasilhame(
+      this.tiposCasco(),
+      this.termoProduto(),
+      this.categoria() !== null || filtro !== null,
+    );
+    return [...filtrarPorTexto(porSugestao, this.termoProduto()), ...vasilhames];
   });
 
-  protected readonly totais = computed(() => totaisDe(this.itens()));
+  protected readonly carrinhoVazio = computed(
+    () => this.itens().length === 0 && this.vasilhames().length === 0,
+  );
+  // Crédito de galão por tipo = max(0, −saldo); na edição o saldo não é carregado.
+  private readonly creditosVasilhame = computed<QuantidadesPorTipo>(() => {
+    const base = this.saldoBaseDeCascos();
+    return base === null
+      ? this.creditoEdicao()
+      : Object.fromEntries(base.map((c) => [c.tipoCascoId, Math.max(0, -c.saldo)]));
+  });
+  protected readonly vasilhamesEstado = computed<VasilhameEstado[]>(() => {
+    const creditos = this.creditosVasilhame();
+    return this.vasilhames().map((v) => {
+      const credito = creditos[v.tipoCascoId] ?? 0;
+      return {
+        ...v,
+        nome: this.tiposCasco().find((t) => t.id === v.tipoCascoId)?.nome ?? '',
+        abatida: abatidaDe(v, credito),
+        total: totalVasilhameDe(v, credito),
+        escolhaModo: credito > 0 || v.modo === 'COMPRAR',
+      };
+    });
+  });
+  protected readonly totalVasilhames = computed(() =>
+    totalVasilhamesDe(this.vasilhames(), this.creditosVasilhame()),
+  );
+  protected readonly descontoSucata = computed(() =>
+    descontoSucataDe(this.tiposDoCarrinho(), this.sucataEntregue(), this.sucataValores()),
+  );
+  protected readonly totais = computed(() =>
+    totaisDe(this.itens(), this.totalVasilhames(), this.descontoSucata()),
+  );
+  protected readonly sucataPassaDoTotal = computed(() =>
+    sucataExcede(this.descontoSucata(), this.totais().liquido + this.descontoSucata()),
+  );
   protected readonly pago = computed(() => totalPagoDe(this.pagamentos()));
   protected readonly fiado = computed(() => fiadoDe(this.totais().liquido, this.pagamentos()));
   protected readonly excede = computed(() =>
@@ -835,7 +920,7 @@ export class PdvPage implements OnInit {
     this.id() === undefined ? (this.saldos()?.cascosPorTipo ?? null) : null,
   );
   private readonly tiposDoCarrinho = computed(() =>
-    tiposCascoDoCarrinho(this.itens(), this.tiposCasco()),
+    tiposCascoDoCarrinho(this.itens(), this.tiposCasco(), vasilhamesPorTipo(this.vasilhames())),
   );
   protected readonly cascos = computed<CascoTipoEstado[]>(() => {
     const base = this.saldoBaseDeCascos();
@@ -846,13 +931,20 @@ export class PdvPage implements OnInit {
         this.cascosDevolvidos()[tipo.tipoCascoId] ?? 0,
       );
       const saldo = base?.find((c) => c.tipoCascoId === tipo.tipoCascoId)?.saldo ?? 0;
+      // Na edição o saldo não é carregado: o abatido já está no saldo gravado, não entra na prévia.
+      const abatidos =
+        base === null
+          ? 0
+          : (this.vasilhamesEstado().find((v) => v.tipoCascoId === tipo.tipoCascoId)?.abatida ?? 0);
+      const { naRua, aMais } = previaCascoDoTipo(saldo, tipo.vendidosEmTroca, valor, abatidos);
       return {
         ...tipo,
         devolvidos: valor,
         travado,
         sucata: this.sucataEntregue()[tipo.tipoCascoId] ?? 0,
-        naRua: cascosNaRua(saldo + tipo.vendidosEmTroca, valor),
-        aMais: Math.max(0, valor - saldo - tipo.vendidosEmTroca),
+        valorSucata: this.sucataValores()[tipo.tipoCascoId] ?? 0,
+        naRua,
+        aMais,
       };
     });
   });
@@ -862,6 +954,7 @@ export class PdvPage implements OnInit {
   );
   protected readonly classificarSaldo = classificarSaldo;
   protected readonly rotuloSaldo = rotuloSaldo;
+  protected readonly rotuloSaldoCasco = rotuloSaldoCasco;
 
   // Saldos do cliente vêm do servidor e são exibidos como chegaram (Regra 8.6): sem soma local.
   protected readonly saldos = signal<SaldosResponse | null>(null);
@@ -872,23 +965,26 @@ export class PdvPage implements OnInit {
   });
 
   protected readonly podeRegistrar = computed(
-    () => this.enderecoOk() && this.itens().length > 0 && !this.excede(),
+    () =>
+      this.enderecoOk() && !this.carrinhoVazio() && !this.excede() && !this.sucataPassaDoTotal(),
   );
 
   // Barra fixa do celular
-  protected readonly quantidadeTotal = computed(() =>
-    this.itens().reduce((soma, i) => soma + i.quantidade, 0),
+  protected readonly quantidadeTotal = computed(
+    () =>
+      this.itens().reduce((soma, i) => soma + i.quantidade, 0) +
+      this.vasilhames().reduce((soma, v) => soma + v.quantidade, 0),
   );
   protected readonly rotuloItens = computed(() => {
     const n = this.quantidadeTotal();
     return `${n} ${n === 1 ? 'item' : 'itens'}`;
   });
-  protected readonly podeCobrar = computed(() => this.enderecoOk() && this.itens().length > 0);
+  protected readonly podeCobrar = computed(() => this.enderecoOk() && !this.carrinhoVazio());
   protected readonly rotuloCobrar = computed(() => {
     if (this.clienteSelecionado() === null) {
       return 'Escolha o cliente';
     }
-    if (this.itens().length === 0) {
+    if (this.carrinhoVazio()) {
       return 'Adicione itens';
     }
     return this.enderecoOk() ? 'Cobrar' : 'Escolha o endereço';
@@ -908,6 +1004,10 @@ export class PdvPage implements OnInit {
   protected readonly cobrarEstado = computed<CobrarEstado>(() => ({
     itens: this.itens(),
     totais: this.totais(),
+    vasilhames: this.vasilhamesEstado(),
+    totalVasilhames: this.totalVasilhames(),
+    descontoSucata: this.descontoSucata(),
+    sucataExcede: this.sucataPassaDoTotal(),
     cascos: this.cascos(),
     cascosNaHora: this.cascosNaHora(),
     clienteNome: this.saldoBaseDeCascos() === null ? null : (this.clienteSelecionado()?.nome ?? ''),
@@ -927,8 +1027,7 @@ export class PdvPage implements OnInit {
     | { readonly estado: 'pulados'; readonly pulados: number }
   >({ estado: 'ocioso' });
   protected readonly podeRepetir = computed(
-    () =>
-      this.id() === undefined && this.itens().length === 0 && this.repetir().estado !== 'sem-venda',
+    () => this.id() === undefined && this.carrinhoVazio() && this.repetir().estado !== 'sem-venda',
   );
 
   private cobrarRef: DialogRef<void> | null = null;
@@ -981,14 +1080,17 @@ export class PdvPage implements OnInit {
           produtos.set(produtoId, await firstValueFrom(this.estoqueApi.obterProduto(produtoId)));
         }
       }
-      const rascunho = rascunhoDeVenda(venda, produtos, this.tiposCasco());
+      const rascunho = rascunhoDeVenda(venda, produtos);
       this.selecionarCliente(cliente);
       this.enderecoId.set(rascunho.enderecoEntregaId);
       this.itens.set(rascunho.itens);
+      this.vasilhames.set(rascunho.vasilhames);
+      this.creditoEdicao.set(rascunho.creditoVasilhames);
       this.pagamentos.set(rascunho.pagamentos);
       this.cascosDevolvidos.set(rascunho.cascosDevolvidos);
       this.cascosNaHora.set(rascunho.cascosNaHora);
       this.sucataEntregue.set(rascunho.sucataEntregue);
+      this.sucataValores.set(rascunho.sucataValores);
       this.vendaCarregada.set(venda);
       this.carga.set('ok');
     } catch (e) {
@@ -1149,7 +1251,12 @@ export class PdvPage implements OnInit {
   protected enterProduto(evento: Event): void {
     this.termoProduto.set((evento.target as HTMLInputElement).value.trim());
     const [primeira] = this.linhasDeProduto();
-    if (primeira) {
+    if (primeira && ehVasilhame(primeira)) {
+      this.definirVasilhame(
+        primeira.vasilhame,
+        this.quantidadeDeVasilhame(primeira.vasilhame.id) + 1,
+      );
+    } else if (primeira) {
       void this.adicionarProduto(primeira);
     }
   }
@@ -1159,6 +1266,30 @@ export class PdvPage implements OnInit {
     if (resultado !== undefined && resultado !== 'remover') {
       this.itens.update((atual) => [...atual, resultado]);
     }
+  }
+
+  protected quantidadeDeVasilhame(tipoCascoId: string): number {
+    return this.vasilhames().find((v) => v.tipoCascoId === tipoCascoId)?.quantidade ?? 0;
+  }
+
+  /** Lista do PDV: tocar em 'Vasilhame <tipo>' soma 1 no quadro; quantidade 0 tira o tipo do quadro. */
+  protected definirVasilhame(tipo: TipoCascoResponse, quantidade: number): void {
+    if (this.quantidadeDeVasilhame(tipo.id) === 0 && quantidade > 0) {
+      this.vasilhames.update((atual) => [...atual, vasilhameNovo(tipo, quantidade)]);
+    } else {
+      this.alterarVasilhame(tipo.id, { quantidade });
+    }
+  }
+
+  private alterarVasilhame(
+    tipoCascoId: string,
+    mudanca: Partial<Pick<VasilhameCarrinho, 'quantidade' | 'precoUnitario' | 'modo'>>,
+  ): void {
+    this.vasilhames.update((atual) =>
+      mudanca.quantidade !== undefined && mudanca.quantidade <= 0
+        ? atual.filter((v) => v.tipoCascoId !== tipoCascoId)
+        : atual.map((v) => (v.tipoCascoId === tipoCascoId ? { ...v, ...mudanca } : v)),
+    );
   }
 
   protected itemDe({ produto, marca }: LinhaProduto): ItemCarrinho | undefined {
@@ -1187,7 +1318,7 @@ export class PdvPage implements OnInit {
         return;
       }
       // O operador tocou no catálogo com a consulta em voo: o carrinho dele não é substituído.
-      if (this.itens().length > 0) {
+      if (!this.carrinhoVazio()) {
         this.repetir.set({ estado: 'ocioso' });
         return;
       }
@@ -1196,14 +1327,18 @@ export class PdvPage implements OnInit {
         this.repetir.set({ estado: 'sem-venda' });
         return;
       }
-      const { itens, pulados } = itensDaUltimaVenda(ultima, catalogo, this.tiposCasco());
-      if (itens.length > 0) {
+      const { itens, vasilhames, pulados } = itensDaUltimaVenda(
+        ultima,
+        catalogo,
+        this.tiposCasco(),
+      );
+      const copiou = itens.length > 0 || vasilhames.length > 0;
+      if (copiou) {
         this.itens.set(itens);
+        this.vasilhames.set(vasilhames);
       }
       this.repetir.set(
-        pulados > 0
-          ? { estado: 'pulados', pulados }
-          : { estado: itens.length > 0 ? 'ocioso' : 'sem-venda' },
+        pulados > 0 ? { estado: 'pulados', pulados } : { estado: copiou ? 'ocioso' : 'sem-venda' },
       );
     } catch (e) {
       if (this.clienteSelecionado()?.id === cliente.id) {
@@ -1228,7 +1363,7 @@ export class PdvPage implements OnInit {
     } else if (indice >= 0) {
       this.itens.update((atual) => atual.map((i, n) => (n === indice ? { ...i, quantidade } : i)));
     } else {
-      const novo = itemNovo(linha.produto, linha.marca, quantidade, this.tiposCasco());
+      const novo = itemNovo(linha.produto, linha.marca, quantidade);
       this.itens.update((atual) => [...atual, novo]);
     }
   }
@@ -1257,12 +1392,10 @@ export class PdvPage implements OnInit {
     { produto, marca }: { produto: ProdutoResponse; marca: ProdutoMarcaResponse },
     existente: ItemCarrinho | null,
   ): Promise<ItemVendaSheetResultado | undefined> {
-    const tipo = produto.tipo === 'RETORNAVEL' ? marca.tipoCascoResolvidoId : null;
     const ref = this.sheet.abrir<ItemVendaSheetResultado, ItemVendaSheetDados>(ItemVendaSheet, {
       produto,
       marca,
       existente,
-      precoVasilhame: tipo === null ? null : precoVasilhameDe(marca, this.tiposCasco()),
     });
     return firstValueFrom(ref.closed);
   }
@@ -1293,6 +1426,12 @@ export class PdvPage implements OnInit {
         break;
       case 'sucata':
         this.sucataEntregue.update((m) => ({ ...m, [acao.tipoCascoId]: acao.valor }));
+        break;
+      case 'sucataValor':
+        this.sucataValores.update((m) => ({ ...m, [acao.tipoCascoId]: acao.valor }));
+        break;
+      case 'vasilhame':
+        this.alterarVasilhame(acao.tipoCascoId, acao.mudanca);
         break;
       case 'pagamentos':
         this.pagamentos.set(limitarPagamentos(acao.valor, this.creditoDisponivel()));
@@ -1355,10 +1494,12 @@ export class PdvPage implements OnInit {
           funcionarioId,
           enderecoEntregaId: this.enderecoId(),
           itens: this.itens(),
+          vasilhames: this.vasilhames(),
           pagamentos: this.pagamentos(),
           cascosDevolvidos: this.cascosDevolvidos(),
           cascosNaHora: this.cascosNaHora(),
           sucataEntregue: this.sucataEntregue(),
+          sucataValores: this.sucataValores(),
         },
         this.tiposCasco(),
       );
@@ -1427,6 +1568,9 @@ export class PdvPage implements OnInit {
     this.clienteSelecionado.set(null);
     this.enderecoId.set(null);
     this.itens.set([]);
+    this.vasilhames.set([]);
+    this.creditoEdicao.set({});
+    this.sucataValores.set({});
     this.cascosDevolvidos.set({});
     this.cascosNaHora.set(false);
     this.sucataEntregue.set({});

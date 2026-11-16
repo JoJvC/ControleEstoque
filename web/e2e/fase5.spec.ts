@@ -13,7 +13,7 @@ import {
 // Fluxos da Fase 5: marca + vasilhame, devolução travada, crédito, dois momentos, 'Sem marca'.
 // Rodam contra o compose (gateway em E2E_BASE_URL) e criam os próprios dados com sufixo único.
 
-test('venda com marca e "Pagou o vasilhame": soma o vasilhame e não empresta casco', async ({
+test('venda com marca e vasilhame na lista: soma o vasilhame e não empresta casco', async ({
   page,
   request,
 }) => {
@@ -27,14 +27,17 @@ test('venda com marca e "Pagou o vasilhame": soma o vasilhame e não empresta ca
   await selecionarOperador(page, operador.nome);
 
   await escolherClienteEProduto(page, cliente, produto.nome);
-  await page.getByRole('button', { name: 'Preço e desconto' }).click();
-  const item = page.getByRole('dialog');
-  await item.getByLabel(/Pagou o vasilhame/).check();
-  await item.getByRole('button', { name: /Adicionar ao carrinho|Atualizar item/ }).click();
+  // O vasilhame é uma linha da lista ('Vasilhame <tipo de casco>'): tocar soma 1 no quadro.
+  await page.getByRole('textbox', { name: 'Buscar produto' }).fill(produto.cascoNome);
+  await page.getByRole('button', { name: `Adicionar Vasilhame ${produto.cascoNome}` }).click();
 
-  // 1 × (50 + 30 do vasilhame do tipo de casco) = 80, pagos em PIX.
+  // 1 × 50 + 1 vasilhame de 30 do tipo de casco = 80, pagos em PIX.
   await page.getByRole('button', { name: 'Cobrar', exact: true }).click();
   const cobrar = page.getByRole('dialog');
+  await expect(cobrar.getByText('Vasilhames comprados agora')).toBeVisible();
+  await expect(cobrar.getByLabel(`Valor unitário de Vasilhame ${produto.cascoNome}`)).toHaveValue(
+    '30,00',
+  );
   await cobrar.getByRole('group', { name: 'Formas de pagamento' }).getByText('PIX').click();
   await cobrar.getByLabel('Valor em PIX').fill('80,00');
   await cobrar.getByRole('button', { name: /Confirmar venda/ }).click();
@@ -43,7 +46,7 @@ test('venda com marca e "Pagou o vasilhame": soma o vasilhame e não empresta ca
   await expect(sucesso).toBeVisible();
   await expect(sucesso.getByText(reais(80)).first()).toBeVisible();
   await expect(sucesso.getByText('Paga', { exact: true })).toBeVisible();
-  // linha com vasilhame pago não gera débito de casco
+  // o vasilhame vendido cobre o galão cheio: não gera débito de casco
   await expect(
     sucesso.locator('.resumo__linha', { hasText: 'Saldo de cascos do cliente' }).locator('dd'),
   ).toHaveText('0');

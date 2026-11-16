@@ -37,12 +37,12 @@ describe('VendasApi', () => {
         quantidade: 5,
         precoUnitario: 50,
         desconto: null,
-        pagouVasilhame: true,
       },
     ],
+    vasilhames: [{ tipoCascoId: 't-1', quantidade: 2, precoUnitario: 30, modoCredito: 'COMPRAR' }],
     pagamentos: [{ forma: 'PIX', valor: 200 }],
     cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 3 }],
-    sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
+    sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1, valorUnitario: 5 }],
     observacao: null,
   };
 

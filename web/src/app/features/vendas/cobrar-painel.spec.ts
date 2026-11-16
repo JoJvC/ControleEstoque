@@ -3,7 +3,13 @@ import { vi } from 'vitest';
 
 import { ProdutoResponse } from '../../core/api/models/estoque';
 import { produtoResp } from '../../core/api/testing';
-import { CascoTipoEstado, CobrarAcao, CobrarEstado, CobrarPainel } from './cobrar-painel';
+import {
+  CascoTipoEstado,
+  CobrarAcao,
+  CobrarEstado,
+  CobrarPainel,
+  VasilhameEstado,
+} from './cobrar-painel';
 import { itemCarrinho } from './testing';
 
 function produto(tipo: ProdutoResponse['tipo'], nome: string): ProdutoResponse {
@@ -18,6 +24,7 @@ const CASCO_T: CascoTipoEstado = {
   devolvidos: 3,
   travado: false,
   sucata: 1,
+  valorSucata: 0,
   naRua: 2,
   aMais: 0,
 };
@@ -42,6 +49,10 @@ const ESTADO: CobrarEstado = {
     }),
   ],
   totais: { bruto: 250, desconto: 10, liquido: 240 },
+  vasilhames: [],
+  totalVasilhames: 0,
+  descontoSucata: 0,
+  sucataExcede: false,
   cascos: [CASCO_T],
   cascosNaHora: false,
   clienteNome: 'Ana',
@@ -52,6 +63,17 @@ const ESTADO: CobrarEstado = {
   enviando: false,
   podeRegistrar: true,
   rotuloConfirmar: 'Confirmar venda',
+};
+
+const VASILHAME: VasilhameEstado = {
+  tipoCascoId: 't-1',
+  nome: 'Casco 20L',
+  quantidade: 2,
+  precoUnitario: 30,
+  modo: 'ABATER_CREDITO',
+  abatida: 0,
+  total: 60,
+  escolhaModo: false,
 };
 
 function montar(estado: Partial<CobrarEstado> = {}) {
@@ -124,13 +146,81 @@ describe('CobrarPainel', () => {
     expect(t.texto()).not.toContain('Sucata entregue — Casco 10L');
   });
 
-  it('input: vasilhame pago aparece na linha do carrinho', async () => {
+  it('input: sem vasilhame no carrinho o quadro de vasilhames não aparece', async () => {
+    const t = montar();
+    await t.fixture.whenStable();
+
+    expect(t.el.querySelector('.vasilhame')).toBeNull();
+  });
+
+  it('input: quadro de vasilhames com quantidade, valor, total da linha e total geral', async () => {
+    const t = montar({ vasilhames: [VASILHAME], totalVasilhames: 60 });
+    await t.fixture.whenStable();
+
+    expect(t.texto()).toContain('Vasilhames comprados agora');
+    expect(t.campo('.vasilhame ce-quantity-stepper input').value).toBe('2');
+    expect(t.campo('.vasilhame ce-money-input input').value).toBe('30,00');
+    expect(t.texto()).toContain('Casco 20L: R$ 60,00');
+    expect(t.texto()).toContain('Total dos vasilhames: R$ 60,00');
+  });
+
+  it('input: sem crédito a escolha Abater/Comprar não aparece; com crédito aparece', async () => {
+    const sem = montar({ vasilhames: [VASILHAME] });
+    await sem.fixture.whenStable();
+    expect(sem.el.querySelector('.modos')).toBeNull();
+
+    const com = montar({
+      vasilhames: [{ ...VASILHAME, escolhaModo: true, abatida: 2, total: 0 }],
+    });
+    await com.fixture.whenStable();
+    expect(com.botao('Abater do crédito').getAttribute('aria-pressed')).toBe('true');
+    expect(com.botao('Comprar').getAttribute('aria-pressed')).toBe('false');
+    expect(com.texto()).toContain('2 abatido(s) do crédito');
+  });
+
+  it('input: sucata mostra o desconto total e o aviso quando passa do total da venda', async () => {
     const t = montar({
-      itens: [itemCarrinho({ produto: produto('RETORNAVEL', 'Água 20L'), pagouVasilhame: true })],
+      cascos: [{ ...CASCO_T, sucata: 2, valorSucata: 5 }],
+      descontoSucata: 10,
+      sucataExcede: true,
     });
     await t.fixture.whenStable();
 
-    expect(t.texto()).toContain('vasilhame pago');
+    expect(t.texto()).toContain('Desconto da sucata: R$ 10,00');
+    expect(t.texto()).toMatch(/Desconto da sucata ?− R\$ 10,00/);
+    expect(t.campo('.sucata ce-money-input input').value).toBe('5,00');
+    const alertas = Array.from(t.el.querySelectorAll('[role="alert"]')).map((a) => a.textContent);
+    expect(alertas.join(' ')).toContain('O desconto da sucata passa do total da venda');
+  });
+
+  it('input: com podeRegistrar falso (sucata acima do total) o Registrar fica desabilitado', async () => {
+    const t = montar({ sucataExcede: true, podeRegistrar: false });
+    await t.fixture.whenStable();
+
+    expect(t.botao('Confirmar venda').disabled).toBe(true);
+  });
+
+  it('output: editar quantidade e valor do vasilhame e trocar Abater/Comprar', async () => {
+    const t = montar({
+      vasilhames: [{ ...VASILHAME, escolhaModo: true }],
+    });
+    await t.fixture.whenStable();
+
+    t.campo('.vasilhame ce-quantity-stepper input').value = '3';
+    t.campo('.vasilhame ce-quantity-stepper input').dispatchEvent(new Event('input'));
+    await t.fixture.whenStable();
+    t.campo('.vasilhame ce-money-input input').value = '2500';
+    t.campo('.vasilhame ce-money-input input').dispatchEvent(new Event('input'));
+    await t.fixture.whenStable();
+    t.botao('Comprar').click();
+    t.botao('Abater do crédito').click();
+
+    expect(t.acoes).toEqual([
+      { tipo: 'vasilhame', tipoCascoId: 't-1', mudanca: { quantidade: 3 } },
+      { tipo: 'vasilhame', tipoCascoId: 't-1', mudanca: { precoUnitario: 25 } },
+      { tipo: 'vasilhame', tipoCascoId: 't-1', mudanca: { modo: 'COMPRAR' } },
+      { tipo: 'vasilhame', tipoCascoId: 't-1', mudanca: { modo: 'ABATER_CREDITO' } },
+    ]);
   });
 
   it('input: com "na hora" o stepper de cada tipo fica desabilitado no valor vendido', async () => {
@@ -188,7 +278,8 @@ describe('CobrarPainel', () => {
     t.campo('ce-checkbox input').click();
     await aoMudar(t.campo('ce-quantity-stepper input', 0), '4');
     await aoMudar(t.campo('ce-quantity-stepper input', 1), '2');
-    await aoMudar(t.campo('ce-money-input input'), '10000');
+    await aoMudar(t.campo('.sucata ce-money-input input'), '500');
+    await aoMudar(t.campo('.formas ~ .forma-linha ce-money-input input'), '10000');
     t.botao('Metade').click();
     t.botao('Dinheiro').click();
     t.botao('PIX').click();
@@ -200,6 +291,7 @@ describe('CobrarPainel', () => {
       { tipo: 'naHora', valor: true },
       { tipo: 'cascos', tipoCascoId: 't-1', valor: 4 },
       { tipo: 'sucata', tipoCascoId: 't-1', valor: 2 },
+      { tipo: 'sucataValor', tipoCascoId: 't-1', valor: 5 },
       { tipo: 'pagamentos', valor: [{ forma: 'PIX', valor: 100 }] },
       { tipo: 'atalho', indice: 0, qual: 'metade' },
       {

@@ -35,6 +35,7 @@ function venda(id: string, clienteId = 'c-1'): VendaDetalheResponse {
     itens: [],
     pagamentos: [],
     cascosDevolvidos: [],
+    vasilhames: [],
     sucataEntregue: [],
   };
 }

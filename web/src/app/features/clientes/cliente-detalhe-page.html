@@ -37,7 +37,7 @@
           <h2 class="secao__titulo">
             <ce-icon nome="casco-na-rua" [tamanho]="16" /> Cascos com ele
           </h2>
-          <p class="bloco__valor">{{ s.saldoCascos }}</p>
+          <p class="bloco__valor">{{ rotuloSaldoCasco(s.saldoCascos) }}</p>
           @if (galoes(s.saldoCascos); as g) {
             @if (g.desenhados === 0) {
               <p class="vazio">Nenhum casco com ele</p>

@@ -346,7 +346,7 @@ Cada sprint termina com `ng build` + `ng test` verdes e lint limpo. Não iniciar
 Entrou (REGRAS_DE_NEGOCIO.md descreve só isto):
 - [x] Produto com N marcas (`produto_marcas`), tipo RETORNAVEL/DESCARTAVEL, 'Sem marca' gravando na 'Genérica'
 - [x] Tipos de casco genérico/específico (o específico vence) e as 3 gestões do retornável: produto por marca, vasilhame vazio por tipo, sucata por tipo
-- [x] Venda com 'Pagou o vasilhame' por linha, devolução e sucata por tipo, 'Devolveu todos na hora' travando o campo
+- [x] Venda com vasilhame como linha própria (quadro 'Vasilhames comprados agora', modo Abater do crédito ou Comprar), devolução e sucata com desconto por unidade por tipo, 'Devolveu todos na hora' travando o campo
 - [x] Saldo único do cliente (fiado/crédito) e forma `CREDITO_CLIENTE` só no registro da venda
 - [x] Abastecimento em dois momentos, sem caixa, com custo 0 aceito e cargas pendentes
 - [x] Relatório de lucro por produto+marca com frete rateado e vasilhame à parte
@@ -385,7 +385,7 @@ Pendente:
 
 9. **Cascos e sucata são por tipo de casco, só dos tipos do carrinho.** A seção de cascos lista os tipos das linhas retornáveis do carrinho (o tipo vem resolvido do servidor em `tipoCascoResolvidoId`; o front não recalcula). Cada tipo tem seu stepper de devolução e, se aceita sucata, o de sucata. Tipo que sai do carrinho some da seção e do pedido. Descartável não mostra casco.
 
-10. **"Pagou o vasilhame" é por linha.** Só em linha retornável com tipo de casco resolvido; vem desmarcado (troca ou empréstimo). Marcado, o bruto da linha soma `quantidade × preço do vasilhame` do tipo, antes do desconto, e a linha indica o vasilhame pago. Linha descartável não mostra a opção.
+10. **Vasilhame é uma linha própria da venda, por tipo de casco.** A lista do PDV traz 'Vasilhame <tipo de casco>' (some com filtro de categoria ou sugestão); tocar soma 1 no quadro 'Vasilhames comprados agora', com quantidade e valor unitário editáveis (começa em `precoVasilhame` do tipo) e total. Com crédito de galão do tipo (saldo negativo) o quadro oferece 'Abater do crédito' (padrão) ou 'Comprar'; vai em `modoCredito`. O vasilhame entra no bruto sem desconto de item e abate o empréstimo de casco do tipo (max(0, galões − vasilhames)). A sucata entregue leva um desconto por unidade, por tipo (começa em R$ 0,00); o total dela entra no desconto da venda e, se passar do total, 'Registrar' fica desabilitado.
 
 11. **Busca por nome, marca ou categoria, com sugestão que filtra.** A API não busca por texto: o filtro é no front, sobre a lista carregada, sem acento e sem diferenciar caixa. As sugestões (nome, marca, categoria; no máximo 8) aparecem sob a caixa; escolher uma filtra a lista, mostra o filtro como chip com botão de limpar e esvazia o texto.
 

@@ -40,8 +40,6 @@ const VENDA: VendaDetalheResponse = {
       produtoId: 'p-agua',
       marcaId: 'm-1',
       tipoCascoId: null,
-      pagouVasilhame: false,
-      precoVasilhame: 0,
       quantidade: 2,
       precoUnitario: 60,
       descontoTipo: 'VALOR',
@@ -52,6 +50,7 @@ const VENDA: VendaDetalheResponse = {
   ],
   pagamentos: [{ forma: 'PIX', valor: 40 }],
   cascosDevolvidos: [],
+  vasilhames: [],
   sucataEntregue: [],
 };
 

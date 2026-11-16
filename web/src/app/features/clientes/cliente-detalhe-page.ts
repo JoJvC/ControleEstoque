@@ -40,7 +40,7 @@ import { EntregarSucataSheet, EntregarSucataSheetDados } from './entregar-sucata
 import { PagarCascoSheet, PagarCascoSheetDados } from './pagar-casco-sheet';
 import { ReceberFiadoSheet, ReceberFiadoSheetDados } from './receber-fiado-sheet';
 import { classificarSaldo, rotuloSaldo } from './saldo-cliente';
-import { linhasCascoPorTipo } from '../vendas/cascos-por-tipo';
+import { linhasCascoPorTipo, rotuloSaldoCasco } from '../vendas/cascos-por-tipo';
 
 const preco = new PrecoPipe();
 const MAX_GALOES = 10;
@@ -140,6 +140,7 @@ export class ClienteDetalhePage {
   protected readonly classificarSaldo = classificarSaldo;
   protected readonly rotuloSaldo = rotuloSaldo;
   protected readonly linhasCasco = linhasCascoPorTipo;
+  protected readonly rotuloSaldoCasco = rotuloSaldoCasco;
   protected readonly legendaSaldo = {
     fiado: 'dinheiro a receber',
     credito: 'a favor do cliente',

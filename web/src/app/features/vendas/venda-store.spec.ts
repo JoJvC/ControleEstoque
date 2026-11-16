@@ -74,12 +74,12 @@ describe('VendaStore.editar', () => {
           quantidade: 3,
           precoUnitario: 10,
           desconto: null,
-          pagouVasilhame: false,
         },
       ],
+      vasilhames: [],
       pagamentos: [{ forma: 'PIX', valor: 30 }],
       cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 2 }],
-      sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
+      sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1, valorUnitario: 0 }],
       observacao: null,
     };
 
@@ -127,6 +127,7 @@ function venda(id: string, clienteId: string): VendaDetalheResponse {
     itens: [],
     pagamentos: [],
     cascosDevolvidos: [],
+    vasilhames: [],
     sucataEntregue: [],
   };
 }
@@ -293,8 +294,6 @@ describe('VendaStore cache de produtos', () => {
         produtoId,
         marcaId: 'm-1',
         tipoCascoId: null,
-        pagouVasilhame: false,
-        precoVasilhame: 0,
         quantidade: 1,
         precoUnitario: 10,
         descontoTipo: null,

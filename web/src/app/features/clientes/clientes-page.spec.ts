@@ -28,6 +28,7 @@ interface Opcoes {
   id?: string;
   filtro?: string;
   clientes?: unknown[];
+  cascos?: unknown[];
 }
 
 async function assentar(fixture: ComponentFixture<unknown>): Promise<void> {
@@ -68,7 +69,7 @@ async function montar(opcoes: Opcoes = {}) {
     const respostas: [(url: string) => boolean, object][] = [
       [(u) => u === CLIENTES, opcoes.clientes ?? [ANA, BIA]],
       [(u) => u === FIADO_REL, FIADO],
-      [(u) => u === CASCOS_REL, CASCOS],
+      [(u) => u === CASCOS_REL, opcoes.cascos ?? CASCOS],
       [
         (u) => u.endsWith('/saldos'),
         {
@@ -173,6 +174,16 @@ describe('ClientesPage — lista e chips', () => {
     expect(t.chip('Com casco').getAttribute('aria-pressed')).toBe('true');
     expect(t.nomes()).toEqual(['Caio']);
     expect(t.texto()).toContain('6 cascos');
+  });
+
+  it('saldo de casco negativo aparece como "2 a favor", sem sinal de menos', async () => {
+    const t = await montar({
+      filtro: 'casco',
+      cascos: [{ clienteId: 'c', nome: 'Caio', saldoCascos: -2 }],
+    });
+    await assentar(t.fixture);
+    expect(t.texto()).toContain('2 a favor');
+    expect(t.texto()).not.toContain('-2');
   });
 
   it('o chip atualiza a URL com replaceUrl', async () => {

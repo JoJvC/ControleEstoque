@@ -11,7 +11,6 @@ import {
   filtrarPorCategoria,
   itemNovo,
   mesmoItem,
-  precoVasilhameDe,
   valorDoAtalho,
   fiadoDe,
   itensDaUltimaVenda,
@@ -22,6 +21,9 @@ import {
   rascunhoDeVenda,
   totaisDe,
   totalPagoDe,
+  totalVasilhameDe,
+  totalVasilhamesDe,
+  vasilhameNovo,
 } from './carrinho';
 import { itemCarrinho } from './testing';
 
@@ -75,46 +77,63 @@ describe('totaisDe', () => {
     expect(totaisDe([])).toEqual({ bruto: 0, desconto: 0, liquido: 0 });
   });
 
-  it('2 × R$ 10 com vasilhame de R$ 30 pago: bruto R$ 80', () => {
-    const pago = item(2, 10, null, 'RETORNAVEL', { pagouVasilhame: true, precoVasilhame: 30 });
-    expect(brutoDe(pago)).toBe(80);
-    expect(totaisDe([pago])).toEqual({ bruto: 80, desconto: 0, liquido: 80 });
-  });
-
-  it('vasilhame só entra com pagouVasilhame; o desconto incide sobre o bruto com vasilhame', () => {
-    const troca = item(2, 10, null, 'RETORNAVEL', { precoVasilhame: 30 });
-    expect(brutoDe(troca)).toBe(20);
-    const pago = item(2, 10, { tipo: 'PERCENTUAL', valor: 10, motivo: 'm' }, 'RETORNAVEL', {
-      pagouVasilhame: true,
-      precoVasilhame: 30,
-    });
-    expect(totaisDe([pago])).toEqual({ bruto: 80, desconto: 8, liquido: 72 });
+  it('vasilhames cobrados entram no bruto sem desconto de item; sucata entra no desconto', () => {
+    const i = item(2, 10, { tipo: 'PERCENTUAL', valor: 10, motivo: 'm' });
+    expect(brutoDe(i)).toBe(20);
+    expect(totaisDe([i], 60, 5)).toEqual({ bruto: 80, desconto: 7, liquido: 73 });
   });
 });
 
-describe('itemNovo / mesmoItem / precoVasilhameDe', () => {
+describe('vasilhames', () => {
+  const v = (quantidade: number, modo: 'ABATER_CREDITO' | 'COMPRAR' = 'ABATER_CREDITO') => ({
+    ...vasilhameNovo(TIPO_T, quantidade),
+    modo,
+  });
+
+  it('vasilhame novo: preço do tipo e modo Abater do crédito', () => {
+    expect(vasilhameNovo(TIPO_T, 2)).toEqual({
+      tipoCascoId: 't-1',
+      quantidade: 2,
+      precoUnitario: 30,
+      modo: 'ABATER_CREDITO',
+    });
+  });
+
+  it('sem crédito cobra tudo: 2 × 30 = 60', () => {
+    expect(totalVasilhameDe(v(2), 0)).toBe(60);
+  });
+
+  it('crédito 2, qtd 3: Abater cobra 1 (30,00); Comprar cobra 3 (90,00)', () => {
+    expect(totalVasilhameDe(v(3), 2)).toBe(30);
+    expect(totalVasilhameDe(v(3, 'COMPRAR'), 2)).toBe(90);
+  });
+
+  it('crédito maior que a quantidade abate tudo', () => {
+    expect(totalVasilhameDe(v(2), 5)).toBe(0);
+  });
+
+  it('total geral soma por tipo com o crédito de cada um', () => {
+    const outro = { ...v(1), tipoCascoId: 't-2', precoUnitario: 10 };
+    expect(totalVasilhamesDe([v(3), outro], { 't-1': 2 })).toBe(40);
+  });
+});
+
+describe('itemNovo / mesmoItem', () => {
   const agua = produto('RETORNAVEL', 'p-agua');
   const outra = { ...agua, marcas: [marcaResp({ marcaId: 'm-2', tipoCascoResolvidoId: 't-1' })] };
 
-  it('linha nova: preço sugerido da marca, troca por padrão e vasilhame do tipo resolvido', () => {
-    expect(itemNovo(agua, agua.marcas[0], 3, TIPOS)).toEqual({
+  it('linha nova: preço sugerido da marca', () => {
+    expect(itemNovo(agua, agua.marcas[0], 3)).toEqual({
       produto: agua,
       marca: agua.marcas[0],
       quantidade: 3,
       precoUnitario: 50,
       desconto: null,
-      pagouVasilhame: false,
-      precoVasilhame: 30,
     });
   });
 
-  it('sem tipo resolvido o vasilhame é 0', () => {
-    const gelo = produto('DESCARTAVEL', 'p-gelo');
-    expect(precoVasilhameDe(gelo.marcas[0], TIPOS)).toBe(0);
-  });
-
   it('a identidade do item é produto+marca', () => {
-    const i = itemNovo(agua, agua.marcas[0], 1, TIPOS);
+    const i = itemNovo(agua, agua.marcas[0], 1);
     expect(mesmoItem(i, agua, agua.marcas[0])).toBe(true);
     expect(mesmoItem(i, agua, outra.marcas[0])).toBe(false);
   });
@@ -163,6 +182,8 @@ describe('paraCreateVendaRequest', () => {
     cascosDevolvidos: { 't-1': 3 },
     cascosNaHora: false,
     sucataEntregue: { 't-1': 1 },
+    vasilhames: [],
+    sucataValores: { 't-1': 5 },
   };
 
   it('Exemplo da F5: 5 Água de T, devolução 3, sucata 1 e PIX 200 → listas por tipo e total 250', () => {
@@ -182,26 +203,22 @@ describe('paraCreateVendaRequest', () => {
           quantidade: 5,
           precoUnitario: 50,
           desconto: null,
-          pagouVasilhame: false,
         },
       ],
+      vasilhames: [],
       pagamentos: [{ forma: 'PIX', valor: 200 }],
       cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 3 }],
-      sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
+      sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1, valorUnitario: 5 }],
       observacao: null,
     });
     expect(totaisDe(itens).liquido).toBe(250);
   });
 
-  it('pagamentos sem valor ou zerados ficam de fora; desconto e vasilhame pago vão no item', () => {
+  it('pagamentos sem valor ou zerados ficam de fora; o desconto vai no item', () => {
     const request = paraCreateVendaRequest(
       {
         ...base,
-        itens: [
-          item(5, 50, { tipo: 'VALOR', valor: 10, motivo: 'm' }, 'RETORNAVEL', {
-            pagouVasilhame: true,
-          }),
-        ],
+        itens: [item(5, 50, { tipo: 'VALOR', valor: 10, motivo: 'm' })],
         pagamentos: [
           { forma: 'PIX', valor: 200 },
           { forma: 'DINHEIRO', valor: null },
@@ -212,7 +229,35 @@ describe('paraCreateVendaRequest', () => {
     );
     expect(request.pagamentos).toEqual([{ forma: 'PIX', valor: 200 }]);
     expect(request.itens[0].desconto).toEqual({ tipo: 'VALOR', valor: 10, motivo: 'm' });
-    expect(request.itens[0].pagouVasilhame).toBe(true);
+    expect(Object.keys(request.itens[0]).join()).not.toMatch(/vasilhame/i);
+  });
+
+  it('vasilhames vão com tipo, quantidade, preço e modoCredito; quantidade 0 não vai', () => {
+    const request = paraCreateVendaRequest(
+      {
+        ...base,
+        itens: [item(5, 50)],
+        pagamentos: [],
+        vasilhames: [
+          { ...vasilhameNovo(TIPO_T, 2), modo: 'COMPRAR' },
+          { ...vasilhameNovo(TIPO_T, 0), tipoCascoId: 't-9' },
+        ],
+      },
+      TIPOS,
+    );
+    expect(request.vasilhames).toEqual([
+      { tipoCascoId: 't-1', quantidade: 2, precoUnitario: 30, modoCredito: 'COMPRAR' },
+    ]);
+  });
+
+  it('sucata sem valor digitado vai com valorUnitario 0', () => {
+    const request = paraCreateVendaRequest(
+      { ...base, itens: [item(5, 50)], pagamentos: [], sucataValores: {} },
+      TIPOS,
+    );
+    expect(request.sucataEntregue).toEqual([
+      { tipoCascoId: 't-1', quantidade: 1, valorUnitario: 0 },
+    ]);
   });
 
   it('só descartável no carrinho: listas de casco e sucata vazias', () => {
@@ -259,8 +304,6 @@ describe('rascunhoDeVenda', () => {
         produtoId: 'p-agua',
         marcaId: 'm-1',
         tipoCascoId: 't-1',
-        pagouVasilhame: true,
-        precoVasilhame: 30,
         quantidade: 1,
         precoUnitario: 50,
         descontoTipo: null,
@@ -272,8 +315,6 @@ describe('rascunhoDeVenda', () => {
         produtoId: 'p-carvao',
         marcaId: 'm-1',
         tipoCascoId: null,
-        pagouVasilhame: false,
-        precoVasilhame: 0,
         quantidade: 1,
         precoUnitario: 50,
         descontoTipo: 'PERCENTUAL',
@@ -286,20 +327,28 @@ describe('rascunhoDeVenda', () => {
       { forma: 'DINHEIRO', valor: 30 },
       { forma: 'PIX', valor: 20 },
     ],
+    vasilhames: [
+      {
+        tipoCascoId: 't-1',
+        quantidade: 3,
+        quantidadeAbatida: 2,
+        precoUnitario: 30,
+        modo: 'ABATER_CREDITO',
+        total: 30,
+      },
+    ],
     cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 2 }],
-    sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1 }],
+    sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 1, valorUnitario: 5 }],
   };
 
-  it('reconstrói a marca e o pagouVasilhame; desconto com motivo null vira vazio', () => {
-    const { itens } = rascunhoDeVenda(venda, mapa, TIPOS);
+  it('reconstrói a marca; desconto com motivo null vira vazio', () => {
+    const { itens } = rascunhoDeVenda(venda, mapa);
     expect(itens[0]).toEqual({
       produto: agua,
       marca: agua.marcas[0],
       quantidade: 1,
       precoUnitario: 50,
       desconto: null,
-      pagouVasilhame: true,
-      precoVasilhame: 30,
     });
     expect(itens[1]).toEqual({
       produto: carvao,
@@ -307,32 +356,39 @@ describe('rascunhoDeVenda', () => {
       quantidade: 1,
       precoUnitario: 50,
       desconto: { tipo: 'PERCENTUAL', valor: 10, motivo: '' },
-      pagouVasilhame: false,
-      precoVasilhame: 0,
     });
   });
 
   it('pagamentos, cascos e sucata por tipo, vendedor e endereço vêm da venda; na hora é false', () => {
-    const r = rascunhoDeVenda(venda, mapa, TIPOS);
+    const r = rascunhoDeVenda(venda, mapa);
     expect(r.pagamentos).toEqual([
       { forma: 'DINHEIRO', valor: 30 },
       { forma: 'PIX', valor: 20 },
     ]);
     expect(r.cascosDevolvidos).toEqual({ 't-1': 2 });
     expect(r.sucataEntregue).toEqual({ 't-1': 1 });
+    expect(r.sucataValores).toEqual({ 't-1': 5 });
     expect(r.cascosNaHora).toBe(false);
     expect(r.funcionarioId).toBe('f-orig');
     expect(r.enderecoEntregaId).toBe('e-1');
     expect(r.clienteId).toBe('c-1');
   });
 
+  it('vasilhames do detalhe voltam com tipo, quantidade, preço e modo; crédito é o abatido', () => {
+    const r = rascunhoDeVenda(venda, mapa);
+    expect(r.vasilhames).toEqual([
+      { tipoCascoId: 't-1', quantidade: 3, precoUnitario: 30, modo: 'ABATER_CREDITO' },
+    ]);
+    expect(r.creditoVasilhames).toEqual({ 't-1': 2 });
+  });
+
   it('marca que não existe mais no produto falha em vez de montar item sem marca', () => {
     const semMarca = { ...venda, itens: [{ ...venda.itens[0], marcaId: 'm-sumiu' }] };
-    expect(() => rascunhoDeVenda(semMarca, mapa, TIPOS)).toThrow();
+    expect(() => rascunhoDeVenda(semMarca, mapa)).toThrow();
   });
 
   it('ida e volta: paraCreateVendaRequest reproduz itens, pagamentos, cascos e sucata', () => {
-    const req = paraCreateVendaRequest(rascunhoDeVenda(venda, mapa, TIPOS), TIPOS);
+    const req = paraCreateVendaRequest(rascunhoDeVenda(venda, mapa), TIPOS);
     expect(req.itens).toEqual([
       {
         produtoId: 'p-agua',
@@ -340,7 +396,6 @@ describe('rascunhoDeVenda', () => {
         quantidade: 1,
         precoUnitario: 50,
         desconto: null,
-        pagouVasilhame: true,
       },
       {
         produtoId: 'p-carvao',
@@ -348,8 +403,10 @@ describe('rascunhoDeVenda', () => {
         quantidade: 1,
         precoUnitario: 50,
         desconto: { tipo: 'PERCENTUAL', valor: 10, motivo: '' },
-        pagouVasilhame: false,
       },
+    ]);
+    expect(req.vasilhames).toEqual([
+      { tipoCascoId: 't-1', quantidade: 3, precoUnitario: 30, modoCredito: 'ABATER_CREDITO' },
     ]);
     expect(req.pagamentos).toEqual(venda.pagamentos);
     expect(req.cascosDevolvidos).toEqual(venda.cascosDevolvidos);
@@ -452,13 +509,10 @@ describe('itensDaUltimaVenda', () => {
     quantidade: number,
     precoUnitario: number,
     marcaId = 'm-1',
-    pagouVasilhame = false,
   ) => ({
     produtoId,
     marcaId,
     tipoCascoId: null,
-    pagouVasilhame,
-    precoVasilhame: 0,
     quantidade,
     precoUnitario,
     descontoTipo: 'PERCENTUAL' as const,
@@ -466,7 +520,10 @@ describe('itensDaUltimaVenda', () => {
     motivoDesconto: 'antigo',
     totalItem: 0,
   });
-  const venda = (itens: VendaDetalheResponse['itens']): VendaDetalheResponse => ({
+  const venda = (
+    itens: VendaDetalheResponse['itens'],
+    vasilhames: VendaDetalheResponse['vasilhames'] = [],
+  ): VendaDetalheResponse => ({
     id: 'v-0',
     clienteId: 'c-1',
     funcionarioId: 'f-1',
@@ -481,9 +538,10 @@ describe('itensDaUltimaVenda', () => {
     cupomNumero: null,
     cupomEmitidoEm: null,
     itens,
+    vasilhames,
     pagamentos: [{ forma: 'PIX', valor: 99 }],
     cascosDevolvidos: [{ tipoCascoId: 't-1', quantidade: 3 }],
-    sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 2 }],
+    sucataEntregue: [{ tipoCascoId: 't-1', quantidade: 2, valorUnitario: 4 }],
   });
 
   it('converte produto e quantidade; desconto, pagamentos, cascos e sucata não são copiados', () => {
@@ -493,7 +551,8 @@ describe('itensDaUltimaVenda', () => {
       TIPOS,
     );
     expect(r).toEqual({
-      itens: [itemNovo(agua, agua.marcas[0], 2, TIPOS), itemNovo(gelo, gelo.marcas[0], 1, TIPOS)],
+      itens: [itemNovo(agua, agua.marcas[0], 2), itemNovo(gelo, gelo.marcas[0], 1)],
+      vasilhames: [],
       pulados: 0,
     });
     expect(totaisDe(r.itens)).toEqual({ bruto: 36, desconto: 0, liquido: 36 });
@@ -514,16 +573,47 @@ describe('itensDaUltimaVenda', () => {
     expect(r.pulados).toBe(1);
   });
 
-  it('leva marcaId e pagouVasilhame; linha cuja marca não existe mais é descartada', () => {
+  it('leva marcaId; linha cuja marca não existe mais é descartada', () => {
     const r = itensDaUltimaVenda(
-      venda([itemVenda('p-agua', 2, 12, 'm-1', true), itemVenda('p-gelo', 1, 8, 'm-sumiu')]),
+      venda([itemVenda('p-agua', 2, 12, 'm-1'), itemVenda('p-gelo', 1, 8, 'm-sumiu')]),
       catalogo,
       TIPOS,
     );
     expect(r.itens).toHaveLength(1);
     expect(r.itens[0].marca.marcaId).toBe('m-1');
-    expect(r.itens[0].pagouVasilhame).toBe(true);
-    expect(r.itens[0].precoVasilhame).toBe(30);
+    expect(r.pulados).toBe(1);
+  });
+
+  it('copia os vasilhames com tipo, quantidade e preço da venda; o modo volta para Abater', () => {
+    const r = itensDaUltimaVenda(
+      venda(
+        [],
+        [
+          {
+            tipoCascoId: 't-1',
+            quantidade: 2,
+            quantidadeAbatida: 0,
+            precoUnitario: 25,
+            modo: 'COMPRAR',
+            total: 50,
+          },
+          {
+            tipoCascoId: 't-sumiu',
+            quantidade: 1,
+            quantidadeAbatida: 0,
+            precoUnitario: 25,
+            modo: 'COMPRAR',
+            total: 25,
+          },
+        ],
+      ),
+      catalogo,
+      TIPOS,
+    );
+    expect(r.vasilhames).toEqual([
+      { tipoCascoId: 't-1', quantidade: 2, precoUnitario: 25, modo: 'ABATER_CREDITO' },
+    ]);
+    expect(r.itens).toEqual([]);
     expect(r.pulados).toBe(1);
   });
 });

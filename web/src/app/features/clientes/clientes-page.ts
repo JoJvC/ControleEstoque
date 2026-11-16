@@ -26,6 +26,7 @@ import { ClienteDetalhePage } from './cliente-detalhe-page';
 import { FiltroClientes, LinhaCliente, normalizarFiltro, urlLista } from './clientes-linhas';
 import { ClientesStore } from './clientes-store';
 import { classificarSaldo, rotuloSaldo } from './saldo-cliente';
+import { rotuloSaldoCasco } from '../vendas/cascos-por-tipo';
 
 @Component({
   selector: 'ce-clientes-page',
@@ -94,7 +95,11 @@ import { classificarSaldo, rotuloSaldo } from './saldo-cliente';
               <span ce-trailing class="selos">
                 @if (linha.saldoCascos) {
                   <ce-chip tom="casco" icone="casco-na-rua">
-                    {{ linha.saldoCascos }} {{ linha.saldoCascos === 1 ? 'casco' : 'cascos' }}
+                    @if (linha.saldoCascos < 0) {
+                      {{ rotuloSaldoCasco(linha.saldoCascos) }}
+                    } @else {
+                      {{ linha.saldoCascos }} {{ linha.saldoCascos === 1 ? 'casco' : 'cascos' }}
+                    }
                   </ce-chip>
                 }
                 @if (linha.saldo) {
@@ -234,6 +239,7 @@ export class ClientesPage implements OnInit {
 
   protected readonly classificarSaldo = classificarSaldo;
   protected readonly rotuloSaldo = rotuloSaldo;
+  protected readonly rotuloSaldoCasco = rotuloSaldoCasco;
   protected readonly store = inject(ClientesStore);
   private readonly router = inject(Router);
   private readonly breakpoints = inject(BreakpointObserver);

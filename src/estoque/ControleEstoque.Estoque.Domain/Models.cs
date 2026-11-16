@@ -96,7 +96,7 @@ public sealed record LancamentoCustos(
     Guid FuncionarioId, decimal? Frete, IReadOnlyList<CustoLinha> Itens, IReadOnlyList<CustoLinha> Cascos);
 
 public sealed record NovaBaixaCasco(
-    Guid TipoCascoId, int Quantidade, string? Motivo, IReadOnlyList<Guid> ResponsaveisIds);
+    Guid TipoCascoId, int Quantidade, MotivoBaixaCasco Motivo, string? Observacao, IReadOnlyList<Guid> ResponsaveisIds);
 
 /// <summary>Lançamento assinado no razão de cascos de um tipo.</summary>
 public sealed record MovimentoCasco(SituacaoCasco Situacao, TipoMovimentoEstoque Tipo, int Quantidade);

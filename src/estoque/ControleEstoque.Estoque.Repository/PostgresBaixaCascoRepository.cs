@@ -32,7 +32,7 @@ public sealed class PostgresBaixaCascoRepository : IBaixaCascoRepository
             command.Parameters.AddWithValue("quantidade", baixa.Quantidade);
             command.Parameters.Add(new NpgsqlParameter("motivo", NpgsqlDbType.Text)
             {
-                Value = (object?)baixa.Motivo ?? DBNull.Value
+                Value = baixa.Motivo.ToString()
             });
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -45,9 +45,9 @@ public sealed class PostgresBaixaCascoRepository : IBaixaCascoRepository
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        // O casco quebrado sai do estoque de vazios do tipo e, se o tipo aceita, entra na sucata do mesmo tipo.
+        // Quebrado sai dos vazios e, se o tipo aceita, entra na sucata; perdido sai só dos vazios.
         await PostgresEstoqueRepository.InserirMovimentosCascoAsync(
-            connection, transaction, baixa.TipoCascoId, movimentos, id, null, cancellationToken);
+            connection, transaction, baixa.TipoCascoId, movimentos, id, baixa.Observacao, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return (id, null);

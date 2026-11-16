@@ -312,7 +312,8 @@ describe('EstoquePage — vasilhames por tipo', () => {
     const baixa = store.baixarCasco({
       tipoCascoId: 't2',
       quantidade: 1,
-      motivo: null,
+      motivo: 'QUEBRADO',
+      observacao: null,
       responsaveisIds: ['f1'],
     });
     const req = t.http.expectOne(`${BASE}/estoque/cascos/baixas`);

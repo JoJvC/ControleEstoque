@@ -87,6 +87,7 @@ public sealed class EstoqueService : IEstoqueService
     public async Task<Guid> BaixarCascoAsync(NovaBaixaCasco baixa, CancellationToken cancellationToken)
     {
         Validacao.IdPreenchido(baixa.TipoCascoId, "TipoCascoId");
+        Validacao.EnumDefinido(baixa.Motivo, "Motivo");
         if (baixa.Quantidade <= 0)
         {
             throw new RequestValidationException("QUANTIDADE_INVALIDA", "Quantidade da baixa deve ser positiva.");
@@ -100,17 +101,20 @@ public sealed class EstoqueService : IEstoqueService
         if (baixa.ResponsaveisIds.Count == 0)
         {
             throw new RequestValidationException(
-                "RESPONSAVEL_OBRIGATORIO", "Informe ao menos um funcionário responsável pela quebra.");
+                "RESPONSAVEL_OBRIGATORIO", "Informe ao menos um funcionário responsável pela quebra ou perda.");
         }
 
         var tipo = await ObterTipoCascoAsync(baixa.TipoCascoId, cancellationToken);
-        var movimentos = RegrasCasco.MovimentosDaQuebra(baixa.Quantidade, tipo.AceitaSucata);
+        var perda = baixa.Motivo == MotivoBaixaCasco.PERDIDO;
+        var movimentos = perda
+            ? RegrasCasco.MovimentosDaPerda(baixa.Quantidade)
+            : RegrasCasco.MovimentosDaQuebra(baixa.Quantidade, tipo.AceitaSucata);
 
         var (id, falta) = await baixas.CreateAsync(baixa, movimentos, cancellationToken);
         if (falta is not null)
         {
             throw new InsufficientStockException(
-                $"Estoque de casco vazio '{tipo.Nome}' ({falta.Saldo}) insuficiente para baixar {baixa.Quantidade}.");
+                $"Estoque de casco vazio '{tipo.Nome}' ({falta.Saldo}) insuficiente para baixar {baixa.Quantidade} por {(perda ? "perda" : "quebra")}.");
         }
 
         return id;

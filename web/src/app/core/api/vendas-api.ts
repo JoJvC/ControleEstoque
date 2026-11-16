@@ -5,6 +5,7 @@ import { Observable, map } from 'rxjs';
 import { ConfigStore } from '../config/app-config';
 import {
   AddPagamentoRequest,
+  CancelarVendaRequest,
   CreateVendaRequest,
   CupomFiscalResponse,
   UltimoPrecoResponse,
@@ -34,6 +35,10 @@ export class VendasApi {
 
   criar(request: CreateVendaRequest): Observable<VendaResponse> {
     return this.http.post<VendaResponse>(`${this.base}/vendas`, request);
+  }
+
+  cancelar(id: string, request: CancelarVendaRequest): Observable<void> {
+    return this.http.post<void>(`${this.base}/vendas/${id}/cancelamento`, request);
   }
 
   editar(id: string, request: CreateVendaRequest): Observable<VendaResponse> {

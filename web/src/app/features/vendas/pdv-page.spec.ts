@@ -124,6 +124,8 @@ async function montar(
     desktop?: boolean;
     cliente?: string;
     repetirUltima?: string;
+    caixa?: string;
+    dataCaixa?: string;
     catalogoFalha?: boolean;
     catalogo?: ProdutoResponse[];
   } = {},
@@ -166,6 +168,12 @@ async function montar(
   }
   if (opcoes.repetirUltima) {
     fixture.componentRef.setInput('repetirUltima', opcoes.repetirUltima);
+  }
+  if (opcoes.caixa) {
+    fixture.componentRef.setInput('caixa', opcoes.caixa);
+  }
+  if (opcoes.dataCaixa) {
+    fixture.componentRef.setInput('dataCaixa', opcoes.dataCaixa);
   }
   const el = fixture.nativeElement as HTMLElement;
   const produtosReq = http.expectOne('/api/estoque/v1/produtos');
@@ -1829,6 +1837,77 @@ describe('PdvPage com ?cliente=', () => {
     await assentar(t.fixture);
     t.http.expectNone('/api/clientes/v1/clientes/c-9');
     await t.responderSaldos('c-1');
+  });
+
+  describe('modo caixa reaberto (?caixa e ?dataCaixa)', () => {
+    const NO_CAIXA = { desktop: true, caixa: 'cx-1', dataCaixa: '2026-11-15' };
+    const faixa = (t: T) => t.el.querySelector('.faixa-caixa');
+
+    it('com caixa e dataCaixa: mostra a faixa e confirmar a venda envia caixaId no POST', async () => {
+      const t = await montar(undefined, NO_CAIXA);
+      expect(faixa(t)?.textContent).toContain('Lançando no caixa de 15/11');
+      await t.escolherCliente(cliente('c-1', 'Ana'), SALDOS);
+      await t.tocar(GALAO);
+      await t.clicarNoPainel('Confirmar venda');
+      const req = t.http.expectOne(URL_VENDAS);
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body.caixaId).toBe('cx-1');
+      req.flush(RESPOSTA);
+      await assentar(t.fixture);
+      await t.depoisDoPost();
+      await t.clicar('Voltar ao caixa');
+      expect(t.navegar).toHaveBeenCalledWith('/financeiro/caixas/cx-1');
+    });
+
+    it('sem caixa: não há faixa nem caixaId, e voltar vai ao Hoje', async () => {
+      const t = await montar(undefined, { desktop: true });
+      expect(faixa(t)).toBeNull();
+      await t.escolherCliente(cliente('c-1', 'Ana'), SALDOS);
+      await t.tocar(GALAO);
+      await t.clicarNoPainel('Confirmar venda');
+      const req = t.http.expectOne(URL_VENDAS);
+      expect('caixaId' in req.request.body).toBe(false);
+      req.flush(RESPOSTA);
+      await assentar(t.fixture);
+      await t.depoisDoPost();
+      await t.clicar('Voltar ao Hoje');
+      expect(t.navegar).toHaveBeenCalledWith('/home');
+    });
+
+    it('no modo edição, o PUT não leva a faixa nem caixaId', async () => {
+      const t = await montar('v-1', { caixa: 'cx-1', dataCaixa: '2026-11-15' });
+      t.http.expectOne(`${URL_VENDAS}/v-1`).flush(VENDA_EDICAO);
+      await assentar(t.fixture);
+      t.http.expectOne('/api/clientes/v1/clientes/c-1').flush(cliente('c-1', 'Ana'));
+      await assentar(t.fixture);
+      await t.responderSaldos('c-1');
+      expect(faixa(t)).toBeNull();
+      await t.cobrar();
+      await t.clicarNoPainel('Salvar alterações');
+      const req = t.http.expectOne(`${URL_VENDAS}/v-1`);
+      expect(req.request.method).toBe('PUT');
+      expect('caixaId' in req.request.body).toBe(false);
+      req.flush(RESPOSTA);
+      await assentar(t.fixture);
+      t.http.expectOne((r) => r.method === 'GET' && r.url === URL_VENDAS).flush([]);
+      await assentar(t.fixture);
+    });
+
+    it('409 CAIXA_FECHADO aparece inline e mantém o rascunho', async () => {
+      const t = await montar(undefined, NO_CAIXA);
+      await t.escolherCliente(cliente('c-1', 'Ana'), SALDOS);
+      await t.tocar(GALAO);
+      await t.clicarNoPainel('Confirmar venda');
+      t.http
+        .expectOne(URL_VENDAS)
+        .flush(
+          { code: 'CAIXA_FECHADO', message: 'x', traceId: 't' },
+          { status: 409, statusText: 'Conflict' },
+        );
+      await assentar(t.fixture);
+      expect(t.alertas()).toContain('O caixa do dia já está fechado.');
+      expect(faixa(t)).not.toBeNull();
+    });
   });
 
   it('com repetirUltima=1: seleciona o cliente e carrega a última venda', async () => {

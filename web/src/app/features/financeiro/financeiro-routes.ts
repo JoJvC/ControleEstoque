@@ -6,4 +6,12 @@ export const FINANCEIRO_ROUTES: Routes = [
     path: 'caixa',
     loadComponent: () => import('./caixa-page').then((m) => m.CaixaPage),
   },
+  {
+    path: 'caixas',
+    loadComponent: () => import('./caixas-lista-page').then((m) => m.CaixasListaPage),
+  },
+  {
+    path: 'caixas/:id',
+    loadComponent: () => import('./caixa-detalhe-page').then((m) => m.CaixaDetalhePage),
+  },
 ];

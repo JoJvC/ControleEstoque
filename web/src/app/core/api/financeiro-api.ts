@@ -8,10 +8,15 @@ import {
   CaixaResponse,
   CreateDespesaRequest,
   CreateTipoDespesaRequest,
+  DetalheCaixa,
   FecharCaixaRequest,
   FechamentoResponse,
+  ItemListaCaixa,
+  LancamentoDiariasResponse,
+  LancarDiariasRequest,
   PagamentoFiadoRequest,
   PagamentoFiadoResponse,
+  ReabrirCaixaRequest,
   ResumoCaixaResponse,
   TipoDespesaResponse,
 } from './models/financeiro';
@@ -44,6 +49,25 @@ export class FinanceiroApi {
   /** `data` em yyyy-MM-dd. */
   obterResumoCaixa(data: string): Observable<ResumoCaixaResponse> {
     return this.http.get<ResumoCaixaResponse>(`${this.base}/caixas/${data}`);
+  }
+
+  /** Datas em yyyy-MM-dd; a API exige as duas. */
+  listarCaixas(inicio: string, fim: string): Observable<ItemListaCaixa[]> {
+    return this.http.get<ItemListaCaixa[]>(`${this.base}/caixas`, {
+      params: periodoParams(inicio, fim),
+    });
+  }
+
+  obterDetalheCaixa(id: string): Observable<DetalheCaixa> {
+    return this.http.get<DetalheCaixa>(`${this.base}/caixas/${id}/detalhe`);
+  }
+
+  reabrirCaixa(id: string, request: ReabrirCaixaRequest): Observable<CaixaResponse> {
+    return this.http.post<CaixaResponse>(`${this.base}/caixas/${id}/reabertura`, request);
+  }
+
+  lancarDiarias(id: string, request: LancarDiariasRequest): Observable<LancamentoDiariasResponse> {
+    return this.http.post<LancamentoDiariasResponse>(`${this.base}/caixas/${id}/diarias`, request);
   }
 
   lancarDespesa(caixaId: string, request: CreateDespesaRequest): Observable<void> {

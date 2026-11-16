@@ -123,6 +123,27 @@ describe('CargosPage', () => {
     await assentar(t.fixture);
   });
 
+  it('editar: oferece Reabrir caixa e Cancelar venda; marcar as duas envia as chaves no PUT', async () => {
+    const t = await montar(['rh.gerir']);
+    t.botao('Editar')!.click();
+    await assentar(t.fixture);
+    const rotulos = Array.from(t.el.querySelectorAll('ce-checkbox')).map((c) =>
+      c.textContent?.trim(),
+    );
+    expect(rotulos).toContain('Reabrir caixa');
+    expect(rotulos).toContain('Cancelar venda');
+    await t.marcar('Reabrir caixa');
+    await t.marcar('Cancelar venda');
+    t.botao('Salvar')!.click();
+    const req = t.http.expectOne(`${URL}/c1`);
+    expect(req.request.body).toEqual({
+      nome: 'Caixa',
+      permissoes: ['vendas.registrar', 'caixa.reabrir', 'vendas.cancelar'],
+    });
+    req.flush({ ...CAIXA, permissoes: req.request.body.permissoes });
+    await assentar(t.fixture);
+  });
+
   it('linha nativa: badge e sem Editar', async () => {
     const t = await montar(['rh.gerir']);
     const linhas = Array.from(t.el.querySelectorAll('li'));

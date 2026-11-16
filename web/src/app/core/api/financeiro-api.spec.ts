@@ -50,6 +50,44 @@ describe('FinanceiroApi', () => {
     req.flush({});
   });
 
+  it('listarCaixas: GET /caixas com inicio e fim na query', () => {
+    api.listarCaixas('2026-10-17', '2026-11-16').subscribe();
+    const req = http.expectOne((r) => r.url === `${BASE}/caixas`);
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('inicio')).toBe('2026-10-17');
+    expect(req.request.params.get('fim')).toBe('2026-11-16');
+    req.flush([]);
+  });
+
+  it('obterDetalheCaixa: GET /caixas/{id}/detalhe', () => {
+    api.obterDetalheCaixa('cx-1').subscribe();
+    const req = http.expectOne(`${BASE}/caixas/cx-1/detalhe`);
+    expect(req.request.method).toBe('GET');
+    req.flush({});
+  });
+
+  it('reabrirCaixa: POST /caixas/{id}/reabertura com { funcionarioId, motivo }', () => {
+    api.reabrirCaixa('cx-1', { funcionarioId: 'f-1', motivo: 'erro de lançamento' }).subscribe();
+    const req = http.expectOne(`${BASE}/caixas/cx-1/reabertura`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ funcionarioId: 'f-1', motivo: 'erro de lançamento' });
+    req.flush({});
+  });
+
+  it('lancarDiarias: POST /caixas/{id}/diarias com a lista', () => {
+    const corpo = {
+      diarias: [
+        { funcionarioId: 'f-1', valor: 90 },
+        { funcionarioId: 'f-2', valor: null },
+      ],
+    };
+    api.lancarDiarias('cx-1', corpo).subscribe();
+    const req = http.expectOne(`${BASE}/caixas/cx-1/diarias`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(corpo);
+    req.flush({ caixaId: 'cx-1', data: '2026-11-15', diariasLancadas: 2 });
+  });
+
   it('lancarDespesa: POST /caixas/{id}/despesas com o corpo', () => {
     api.lancarDespesa('cx-1', { tipoDespesaId: 't-1', valor: 20, descricao: null }).subscribe();
     const req = http.expectOne(`${BASE}/caixas/cx-1/despesas`);

@@ -13,6 +13,7 @@ import { Button } from '../../ui/atoms/button';
 import { Icon } from '../../ui/atoms/icon';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
+import { AvisoCaixaFechado } from '../financeiro/aviso-caixa-fechado';
 import { CaixaStore } from '../financeiro/caixa-store';
 import { AcabandoLinha, HojeAcabando, modeloAcabando, rotaRepor } from './hoje-acabando';
 import { HojeCartao, rotaClientes } from './hoje-cartao';
@@ -25,6 +26,7 @@ import { HojeUltimas, modeloUltimas, rotaVenda, UltimaVenda } from './hoje-ultim
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AppHeader,
+    AvisoCaixaFechado,
     Button,
     CePermissao,
     HojeAcabando,
@@ -57,6 +59,7 @@ import { HojeUltimas, modeloUltimas, rotaVenda, UltimaVenda } from './hoje-ultim
           <ce-icon nome="dinheiro" [tamanho]="20" />
           {{ rotuloCaixa() }}
         </button>
+        <ce-aviso-caixa-fechado [pendentes]="caixa.resumo()?.caixasComDiariasPendentes ?? []" />
       </ce-hoje-hero>
 
       <div class="home__tiles">

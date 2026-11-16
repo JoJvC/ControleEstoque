@@ -95,6 +95,7 @@ export function dataExtenso(d: Date): string {
 
     .hero__acoes {
       display: flex;
+      flex-wrap: wrap;
       gap: var(--ce-space-3);
       margin-top: var(--ce-space-2);
     }

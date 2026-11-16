@@ -128,6 +128,9 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
   ],
   template: `
     <ce-app-header [titulo]="id() ? 'Editar venda' : 'Nova venda'" [fixo]="false" />
+    @if (caixaDeLancamento()) {
+      <p class="faixa-caixa" role="status">Lançando no caixa de {{ rotuloDataCaixa() }}</p>
+    }
 
     <div class="conteudo">
       @if (venda(); as v) {
@@ -172,7 +175,7 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
             <p class="erro" role="alert">{{ mensagem }}</p>
           }
           <ce-button variante="ghost" [block]="true" (click)="voltarAoHoje()">
-            Voltar ao Hoje
+            {{ caixaDeLancamento() ? 'Voltar ao caixa' : 'Voltar ao Hoje' }}
           </ce-button>
         </section>
       } @else if (carga() === 'carregando') {
@@ -514,6 +517,14 @@ const PAGAMENTO_PADRAO: readonly PagamentoEdicao[] = [{ forma: 'DINHEIRO', valor
       display: block;
     }
 
+    .faixa-caixa {
+      margin: 0;
+      padding: var(--ce-space-2) var(--ce-space-4);
+      background: var(--ce-warning-soft);
+      color: var(--ce-text);
+      font-weight: 600;
+    }
+
     .conteudo {
       display: flex;
       flex-direction: column;
@@ -831,6 +842,15 @@ export class PdvPage implements OnInit {
   readonly id = input<string>();
   /** Query param ?cliente=<id> (vem do detalhe do cliente): pré-seleciona o cliente numa venda nova. */
   readonly cliente = input<string>();
+  /** Query params ?caixa=<id>&dataCaixa=<yyyy-MM-dd> (vêm do detalhe do caixa reaberto): a venda nova vai para esse caixa. */
+  readonly caixa = input<string>();
+  readonly dataCaixa = input<string>();
+  /** Só venda nova: o PUT mantém o caixa da venda. */
+  protected readonly caixaDeLancamento = computed(() => (this.id() ? undefined : this.caixa()));
+  protected readonly rotuloDataCaixa = computed(() => {
+    const [, mes, dia] = (this.dataCaixa() ?? '').split('-');
+    return dia && mes ? `${dia}/${mes}` : '';
+  });
   /** Query param ?repetirUltima=1 (vem do Repetir do cliente): com `cliente`, carrega a última venda dele. */
   readonly repetirUltima = input<string>();
   private readonly vendaCarregada = signal<VendaDetalheResponse | null>(null);
@@ -1532,7 +1552,8 @@ export class PdvPage implements OnInit {
         await this.vendaStore.editar(original.id, { ...request, observacao: original.observacao });
         await this.router.navigateByUrl(`/vendas/detalhe/${original.id}`);
       } else {
-        this.venda.set(await this.vendaStore.criar(request));
+        const caixaId = this.caixaDeLancamento();
+        this.venda.set(await this.vendaStore.criar(caixaId ? { ...request, caixaId } : request));
         this.carregarSaldos(cliente.id); // Regra 8.6: saldos novos vêm do servidor
       }
       this.passo.set(0);
@@ -1553,7 +1574,8 @@ export class PdvPage implements OnInit {
   }
 
   protected voltarAoHoje(): void {
-    void this.router.navigateByUrl('/home');
+    const caixa = this.caixaDeLancamento();
+    void this.router.navigateByUrl(caixa ? `/financeiro/caixas/${caixa}` : '/home');
   }
 
   protected async emitirCupom(vendaId: string): Promise<void> {

@@ -33,6 +33,13 @@ const MENSAGENS: Record<string, string> = {
   TIPO_DESPESA_INEXISTENTE: 'Tipo de despesa não encontrado.',
   FUNCIONARIO_DUPLICADO: 'Funcionário repetido na lista de diárias.',
   CAIXA_NAO_ABERTO: 'O caixa do dia ainda não foi aberto.',
+  CAIXA_NAO_ENCONTRADO: 'Caixa não encontrado.',
+  CAIXA_JA_ABERTO: 'O caixa já está aberto.',
+  MOTIVO_OBRIGATORIO: 'Informe o motivo da reabertura.',
+  CAIXA_SEM_DIARIAS_PENDENTES: 'Este caixa não tem diárias pendentes.',
+  DIARIAS_JA_LANCADAS: 'As diárias deste caixa já foram lançadas.',
+  DIARIA_INVALIDA: 'Valor de diária inválido.',
+  PERMISSAO_NEGADA: 'Você não tem permissão para esta ação.',
 };
 
 const GENERICA_POR_STATUS: Record<number, string> = {

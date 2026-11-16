@@ -2,6 +2,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { BehaviorSubject, of } from 'rxjs';
 import { vi } from 'vitest';
 
@@ -82,6 +83,7 @@ async function montar(
     ],
   });
   TestBed.inject(OperatorStore).select(operadorValido(permissoes));
+  const navegar = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
   const http = TestBed.inject(HttpTestingController);
   const fixture = TestBed.createComponent(CaixaPage);
   fixture.detectChanges();
@@ -104,6 +106,7 @@ async function montar(
     fixture,
     http,
     abrir,
+    navegar,
     el,
     botao: (texto: string) =>
       Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes(texto)) as
@@ -187,7 +190,7 @@ describe('CaixaPage', () => {
     expect(lerPadraoPagina(el)).toEqual({
       cabecalhos: 1,
       voltar: true,
-      acoes: ['Fechar caixa'],
+      acoes: ['', 'Caixas anteriores', 'Vendas do dia', 'Fechar caixa'],
       barras: 0,
       cancelar: 0,
     });
@@ -300,6 +303,48 @@ describe('CaixaPage', () => {
     expect(el.textContent).toContain('Saldo no fechamento');
   });
 
+  it('a ação "Caixas anteriores" navega para /financeiro/caixas', async () => {
+    const { botao, navegar } = await montar(RESUMO_ABERTO);
+    botao('Caixas anteriores')!.click();
+    expect(navegar).toHaveBeenCalledWith('/financeiro/caixas');
+  });
+
+  it('a ação "Vendas do dia" navega para o detalhe do caixa de hoje', async () => {
+    const { botao, navegar } = await montar(RESUMO_ABERTO);
+    botao('Vendas do dia')!.click();
+    expect(navegar).toHaveBeenCalledWith('/financeiro/caixas/cx-1');
+  });
+
+  it('caixa fechado pelo sistema com diárias pendentes: aviso e o clique leva ao detalhe', async () => {
+    const { el, botao, navegar } = await montar({
+      ...RESUMO_ABERTO,
+      caixasComDiariasPendentes: [{ id: 'cx-0', data: '2026-11-15' }],
+    });
+    expect(norm(el.textContent)).toContain(
+      'Caixa de 15/11 fechado pelo sistema à meia-noite. Diárias pendentes.',
+    );
+    botao('Lançar diárias')!.click();
+    expect(navegar).toHaveBeenCalledWith('/financeiro/caixas/cx-0');
+  });
+
+  it('vários caixas pendentes: o aviso leva à lista de caixas', async () => {
+    const { botao, navegar } = await montar({
+      ...RESUMO_ABERTO,
+      caixasComDiariasPendentes: [
+        { id: 'cx-0', data: '2026-11-14' },
+        { id: 'cx-2', data: '2026-11-15' },
+      ],
+    });
+    botao('Lançar diárias')!.click();
+    expect(navegar).toHaveBeenCalledWith('/financeiro/caixas');
+  });
+
+  it('sem caixas pendentes: não há aviso', async () => {
+    const { el, botao } = await montar({ ...RESUMO_ABERTO, caixasComDiariasPendentes: [] });
+    expect(norm(el.textContent)).not.toContain('fechado pelo sistema');
+    expect(botao('Lançar diárias')).toBeUndefined();
+  });
+
   it('FECHADO: chip, rótulo, cartão Caixa fechado e sem ações no cabeçalho', async () => {
     const { el, botao } = await montar(RESUMO_FECHADO);
     const texto = norm(el.textContent);
@@ -307,7 +352,7 @@ describe('CaixaPage', () => {
     expect(texto).toContain('Saldo no fechamento');
     expect(el.querySelector('.alerta__titulo')?.textContent?.trim()).toBe('Caixa fechado');
     expect(norm(el.querySelector('[role="status"]')?.textContent ?? '')).toContain('R$ 320,00');
-    expect(lerPadraoPagina(el).acoes).toEqual([]);
+    expect(lerPadraoPagina(el).acoes).toEqual(['', 'Caixas anteriores', 'Vendas do dia']);
     expect(botao('Lançar despesa')).toBeUndefined();
   });
 });

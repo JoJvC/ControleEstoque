@@ -20,4 +20,6 @@ export const PERMISSOES: readonly PermissaoCatalogo[] = [
   { chave: 'relatorios.ver', rotulo: 'Ver relatórios' },
   { chave: 'clientes.cadastrar', rotulo: 'Cadastrar clientes' },
   { chave: 'rh.gerir', rotulo: 'Gerir funcionários e cargos' },
+  { chave: 'caixa.reabrir', rotulo: 'Reabrir caixa' },
+  { chave: 'vendas.cancelar', rotulo: 'Cancelar venda' },
 ];

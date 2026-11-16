@@ -1,5 +1,7 @@
 // Espelho manual de src/financeiro/ControleEstoque.Financeiro.Contracts — não inventar campos.
 
+import { FormaPagamento } from './vendas';
+
 export interface PagamentoFiadoRequest {
   valor: number;
   /** Texto livre (vai só para a observação do lançamento). */
@@ -55,6 +57,12 @@ export interface ResumoCaixaResponse {
   totalDespesas: number;
   saldoParcial: number;
   despesas: DespesaResponse[];
+  caixasComDiariasPendentes: CaixaDiariasPendentes[];
+}
+
+export interface CaixaDiariasPendentes {
+  id: string;
+  data: string;
 }
 
 export interface CreateDespesaRequest {
@@ -65,7 +73,8 @@ export interface CreateDespesaRequest {
 
 export interface DiariaFechamentoRequest {
   funcionarioId: string;
-  valor: number;
+  /** Nulo: o servidor usa a diária cadastrada do funcionário. */
+  valor: number | null;
 }
 
 export interface FecharCaixaRequest {
@@ -88,4 +97,83 @@ export interface CreateTipoDespesaRequest {
 export interface TipoDespesaResponse {
   id: string;
   nome: string;
+}
+
+export interface ItemListaCaixa {
+  id: string;
+  data: string;
+  status: StatusCaixa;
+  fechadoPeloSistema: boolean;
+  diariasPendentes: boolean;
+  saldoInicial: number;
+  totalEntradas: number;
+  totalSaidas: number;
+  saldoFinal: number;
+  dinheiroNaGaveta: number;
+}
+
+export interface PessoaCaixa {
+  id: string;
+  nome: string;
+}
+
+export interface EntradaCaixa {
+  hora: string;
+  origem: 'VENDA' | 'RECEBIMENTO_FIADO';
+  clienteId: string;
+  clienteNome: string;
+  forma: FormaPagamento;
+  valor: number;
+}
+
+export interface SaidaCaixa {
+  hora: string;
+  descricao: string;
+  forma: FormaPagamento;
+  valor: number;
+}
+
+export interface TotalPorForma {
+  forma: FormaPagamento;
+  valor: number;
+}
+
+export interface DiariaLancada {
+  funcionarioId: string;
+  funcionarioNome: string;
+  valor: number;
+  hora: string;
+}
+
+export interface DetalheCaixa {
+  id: string;
+  data: string;
+  status: StatusCaixa;
+  saldoInicial: number;
+  entradas: EntradaCaixa[];
+  saidas: SaidaCaixa[];
+  totaisPorForma: TotalPorForma[];
+  totalEntradas: number;
+  totalSaidas: number;
+  saldoFinal: number;
+  dinheiroNaGaveta: number;
+  diarias: { lancadas: DiariaLancada[]; pendentes: boolean };
+  abertura: { por: PessoaCaixa | null; em: string };
+  /** Nulo se o caixa não está FECHADO. */
+  fechamento: { em: string | null; pelaSistema: boolean; por: PessoaCaixa | null } | null;
+}
+
+export interface ReabrirCaixaRequest {
+  funcionarioId: string;
+  motivo: string;
+}
+
+export interface LancarDiariasRequest {
+  diarias: DiariaFechamentoRequest[];
+}
+
+export interface LancamentoDiariasResponse {
+  caixaId: string;
+  data: string;
+  diariasLancadas: number;
 }

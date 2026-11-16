@@ -60,6 +60,12 @@ export interface CreateVendaRequest {
   cascosDevolvidos: CascoPorTipoRequest[];
   sucataEntregue: SucataEntregueRequest[];
   observacao: string | null;
+  /** Lança a venda num caixa aberto de outra data (caixa reaberto); sem ele, vai para o caixa do dia. */
+  caixaId?: string;
+}
+
+export interface CancelarVendaRequest {
+  funcionarioId: string;
 }
 
 export interface VendaResponse {

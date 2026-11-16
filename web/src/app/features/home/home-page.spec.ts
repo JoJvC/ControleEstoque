@@ -284,6 +284,37 @@ describe('HomePage', () => {
     expect(navegar).toHaveBeenCalledWith('/financeiro/caixa');
   });
 
+  it('caixa fechado pelo sistema com diárias pendentes: aviso e o clique leva ao detalhe', async () => {
+    const { texto, botao, navegar } = await montar({
+      caixa: { ...RESUMO, caixasComDiariasPendentes: [{ id: 'cx-0', data: '2026-11-15' }] },
+    });
+    expect(texto()).toContain(
+      'Caixa de 15/11 fechado pelo sistema à meia-noite. Diárias pendentes.',
+    );
+    botao('Lançar diárias')!.click();
+    expect(navegar).toHaveBeenCalledWith('/financeiro/caixas/cx-0');
+  });
+
+  it('vários caixas pendentes: o aviso leva à lista de caixas', async () => {
+    const { botao, navegar } = await montar({
+      caixa: {
+        ...RESUMO,
+        caixasComDiariasPendentes: [
+          { id: 'cx-0', data: '2026-11-14' },
+          { id: 'cx-1', data: '2026-11-15' },
+        ],
+      },
+    });
+    botao('Lançar diárias')!.click();
+    expect(navegar).toHaveBeenCalledWith('/financeiro/caixas');
+  });
+
+  it('sem caixas pendentes: não há aviso', async () => {
+    const { texto, botao } = await montar({ caixa: { ...RESUMO, caixasComDiariasPendentes: [] } });
+    expect(texto()).not.toContain('fechado pelo sistema');
+    expect(botao('Lançar diárias')).toBeUndefined();
+  });
+
   it('caixa 500: botão mostra Caixa e vai ao caixa', async () => {
     const { el, navegar } = await montar({ caixa: 500 });
     const b = el.querySelector('.home__caixa') as HTMLElement;

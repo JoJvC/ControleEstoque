@@ -56,6 +56,14 @@ describe('VendasApi', () => {
     expect(resp).toEqual({ id: ID });
   });
 
+  it('cancelar: POST /vendas/{id}/cancelamento com { funcionarioId }', () => {
+    api.cancelar(ID, { funcionarioId: 'f-1' }).subscribe();
+    const req = http.expectOne(`${BASE}/${ID}/cancelamento`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ funcionarioId: 'f-1' });
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
   it('criar: venda de conversão leva CONVERTER_CASCO e pagamentos vazios', () => {
     const conversao = {
       ...body,

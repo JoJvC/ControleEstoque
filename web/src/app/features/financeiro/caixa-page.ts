@@ -15,9 +15,11 @@ import { EmptyState } from '../../ui/molecules/empty-state';
 import { FormField } from '../../ui/molecules/form-field';
 import { ListItem } from '../../ui/molecules/list-item';
 import { MoneyInput } from '../../ui/molecules/money-input';
+import { AcoesSecundarias } from '../../ui/molecules/acoes-secundarias';
 import { AppHeader } from '../../ui/organisms/app-header';
 import { PrecoPipe } from '../../ui/pipes/preco-pipe';
 import { dataExtenso } from '../home/hoje-hero';
+import { AvisoCaixaFechado } from './aviso-caixa-fechado';
 import { CaixaStore } from './caixa-store';
 import { DespesaSheet, DespesaSheetDados } from './despesa-sheet';
 import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
@@ -26,6 +28,8 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
   selector: 'ce-caixa-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    AcoesSecundarias,
+    AvisoCaixaFechado,
     CePermissao,
     ReactiveFormsModule,
     AppHeader,
@@ -46,6 +50,14 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
       [mostrarVoltar]="true"
       (voltar)="voltar()"
     >
+      <ce-acoes-secundarias>
+        <ce-button variante="ghost" (click)="ir('/financeiro/caixas')">Caixas anteriores</ce-button>
+        @if (store.resumo(); as resumo) {
+          <ce-button variante="ghost" (click)="ir('/financeiro/caixas/' + resumo.caixa.id)"
+            >Vendas do dia</ce-button
+          >
+        }
+      </ce-acoes-secundarias>
       @if (store.status() === 'ok' && !fechado()) {
         <ce-button *cePermissao="'caixa.fechar'" (click)="fechar()">Fechar caixa</ce-button>
       }
@@ -84,6 +96,7 @@ import { FechamentoSheet, FechamentoSheetDados } from './fechamento-sheet';
     </ce-app-header>
 
     <div class="conteudo">
+      <ce-aviso-caixa-fechado [pendentes]="store.resumo()?.caixasComDiariasPendentes ?? []" />
       @switch (store.status()) {
         @case ('nao-aberto') {
           <form class="abrir" (submit)="$event.preventDefault(); abrir()">
@@ -354,6 +367,10 @@ export class CaixaPage {
     } finally {
       this.abrindo.set(false);
     }
+  }
+
+  protected ir(rota: string): void {
+    void this.router.navigateByUrl(rota);
   }
 
   protected voltar(): void {

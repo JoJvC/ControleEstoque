@@ -140,7 +140,51 @@ describe('BaixaCascoSheet', () => {
     expect(req.request.body).toEqual({
       tipoCascoId: 't1',
       quantidade: 1,
-      motivo: null,
+      motivo: 'QUEBRADO',
+      observacao: null,
+      responsaveisIds: ['f1'],
+    });
+    req.flush({ id: 'b1' });
+    await t.fixture.whenStable();
+    t.http.expectOne('/api/estoque/v1/produtos').flush([]);
+    t.http.expectOne('/api/estoque/v1/estoque/cascos').flush([]);
+    await t.fixture.whenStable();
+    expect(t.close).toHaveBeenCalledWith(true);
+  });
+
+  it('padrão é Quebrado: radio marcado e título de quebra', async () => {
+    const t = await montar();
+
+    const radios = Array.from(t.el.querySelectorAll('[role="radio"]'));
+    const quebrado = radios.find((r) => r.textContent!.includes('Quebrado'))!;
+    expect(quebrado.getAttribute('aria-checked')).toBe('true');
+    expect(t.el.textContent).toContain('Baixa de casco por quebra');
+  });
+
+  it('Perdido: troca título e aviso e envia motivo PERDIDO com a observação aparada', async () => {
+    const t = await montar();
+    t.tipo('t1');
+    const perdido = Array.from(t.el.querySelectorAll<HTMLElement>('[role="radio"]')).find((r) =>
+      r.textContent!.includes('Perdido'),
+    )!;
+    perdido.click();
+    t.fixture.detectChanges();
+    expect(t.el.textContent).toContain('Baixa de casco por perda');
+    expect(t.el.textContent).toContain('não entra na sucata');
+
+    (t.el.querySelector('ce-checkbox input') as HTMLInputElement).click();
+    const obs = t.el.querySelector('ce-input input') as HTMLInputElement;
+    obs.value = '  sumiu na rota  ';
+    obs.dispatchEvent(new Event('input'));
+    await t.fixture.whenStable();
+
+    t.confirmar().click();
+    const req = t.http.expectOne('/api/estoque/v1/estoque/cascos/baixas');
+    expect(req.request.body).toEqual({
+      tipoCascoId: 't1',
+      quantidade: 1,
+      motivo: 'PERDIDO',
+      observacao: 'sumiu na rota',
       responsaveisIds: ['f1'],
     });
     req.flush({ id: 'b1' });

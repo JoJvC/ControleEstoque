@@ -171,7 +171,8 @@ export interface AbastecimentoPendenteResponse {
 export interface CreateBaixaCascoRequest {
   tipoCascoId: string;
   quantidade: number;
-  motivo: string | null;
+  motivo: 'QUEBRADO' | 'PERDIDO';
+  observacao: string | null;
   responsaveisIds: string[];
 }
 

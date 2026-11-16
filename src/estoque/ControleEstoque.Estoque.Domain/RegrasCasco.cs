@@ -21,4 +21,8 @@ public static class RegrasCasco
 
         return movimentos;
     }
+
+    /// <summary>Perda: sai só do vazio do tipo e nunca entra na sucata.</summary>
+    public static IReadOnlyList<MovimentoCasco> MovimentosDaPerda(int quantidade) =>
+        [new(SituacaoCasco.VAZIO, TipoMovimentoEstoque.BAIXA_PERDA, -quantidade)];
 }

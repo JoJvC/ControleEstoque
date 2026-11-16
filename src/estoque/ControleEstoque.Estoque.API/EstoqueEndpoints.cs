@@ -207,7 +207,8 @@ public static class EstoqueEndpoints
         {
             var id = await estoque.BaixarCascoAsync(
                 new NovaBaixaCasco(
-                    request.TipoCascoId, request.Quantidade, request.Motivo, request.ResponsaveisIds ?? []),
+                    request.TipoCascoId, request.Quantidade, request.Motivo ?? MotivoBaixaCasco.QUEBRADO,
+                    request.Observacao, request.ResponsaveisIds ?? []),
                 cancellationToken);
             return Results.Created($"/v1/estoque/cascos/baixas/{id}", new CreatedResponse(id));
         });

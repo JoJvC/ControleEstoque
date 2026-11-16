@@ -71,6 +71,12 @@ public sealed class RegrasProdutoTests
             [new MovimentoCasco(SituacaoCasco.VAZIO, TipoMovimentoEstoque.BAIXA_QUEBRA, -2)],
             RegrasCasco.MovimentosDaQuebra(2, aceitaSucata: false));
 
+    [Fact]
+    public void MovimentosDaPerda_SoSaiDoVazioComBaixaPerda() =>
+        Assert.Equal(
+            [new MovimentoCasco(SituacaoCasco.VAZIO, TipoMovimentoEstoque.BAIXA_PERDA, -2)],
+            RegrasCasco.MovimentosDaPerda(2));
+
     private static ProdutoMarca Marca(long quantidade = 0, int minimo = 0, Guid? tipoCascoId = null) => new(
         Guid.NewGuid(), Guid.NewGuid(), "Marca", 10m, minimo, quantidade, null, tipoCascoId);
 

@@ -95,14 +95,16 @@ describe('EstoqueStore', () => {
     const baixa = store.baixarCasco({
       tipoCascoId: 't1',
       quantidade: 1,
-      motivo: 'quebra',
+      motivo: 'QUEBRADO',
+      observacao: null,
       responsaveisIds: ['f1'],
     });
     const req = http.expectOne(`${BASE}/estoque/cascos/baixas`);
     expect(req.request.body).toEqual({
       tipoCascoId: 't1',
       quantidade: 1,
-      motivo: 'quebra',
+      motivo: 'QUEBRADO',
+      observacao: null,
       responsaveisIds: ['f1'],
     });
     req.flush({ id: 'b1' }, { status: 201, statusText: 'Created' });

@@ -171,7 +171,7 @@ public sealed class EstoqueServiceTests
     public async Task BaixarCascoAsync_QuandoTipoAceitaSucata_TiraDoVazioEPoeNaSucataDoMesmoTipo()
     {
         estoque.SetSaldoCasco(cascoComSucata.Id, SituacaoCasco.VAZIO, 10);
-        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 2, "queda", [Guid.NewGuid()]);
+        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 2, MotivoBaixaCasco.QUEBRADO, null, [Guid.NewGuid()]);
 
         var id = await sut.BaixarCascoAsync(baixa, CancellationToken.None);
 
@@ -186,7 +186,7 @@ public sealed class EstoqueServiceTests
     {
         estoque.SetSaldoCasco(cascoSemSucata.Id, SituacaoCasco.VAZIO, 10);
         estoque.SetSaldoCasco(cascoSemSucata.Id, SituacaoCasco.SUCATA, 1);
-        var baixa = new NovaBaixaCasco(cascoSemSucata.Id, 2, null, [Guid.NewGuid()]);
+        var baixa = new NovaBaixaCasco(cascoSemSucata.Id, 2, MotivoBaixaCasco.QUEBRADO, null, [Guid.NewGuid()]);
 
         await sut.BaixarCascoAsync(baixa, CancellationToken.None);
 
@@ -196,13 +196,51 @@ public sealed class EstoqueServiceTests
     }
 
     [Fact]
+    public async Task BaixarCascoAsync_QuandoPerdido_SoTiraDoVazioENaoGeraSucata()
+    {
+        estoque.SetSaldoCasco(cascoComSucata.Id, SituacaoCasco.VAZIO, 10);
+        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 3, MotivoBaixaCasco.PERDIDO, "sumiu", [Guid.NewGuid()]);
+
+        await sut.BaixarCascoAsync(baixa, CancellationToken.None);
+
+        Assert.Equal(7, estoque.GetSaldoCasco(cascoComSucata.Id, SituacaoCasco.VAZIO));
+        Assert.Equal(0, estoque.GetSaldoCasco(cascoComSucata.Id, SituacaoCasco.SUCATA));
+        Assert.Equal(
+            [new MovimentoCasco(SituacaoCasco.VAZIO, TipoMovimentoEstoque.BAIXA_PERDA, -3)], baixas.UltimosMovimentos);
+        Assert.Equal(MotivoBaixaCasco.PERDIDO, baixas.UltimaBaixa!.Motivo);
+        Assert.Equal("sumiu", baixas.UltimaBaixa!.Observacao);
+    }
+
+    [Fact]
+    public async Task BaixarCascoAsync_QuandoMotivoForaDaFaixa_LancaValorEnumInvalido()
+    {
+        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 1, (MotivoBaixaCasco)99, null, [Guid.NewGuid()]);
+
+        var e = await Assert.ThrowsAsync<RequestValidationException>(
+            () => sut.BaixarCascoAsync(baixa, CancellationToken.None));
+
+        Assert.Equal("VALOR_ENUM_INVALIDO", e.Code);
+    }
+
+    [Fact]
+    public async Task BaixarCascoAsync_QuandoPerdidoMaiorQueOVazio_LancaInsufficientStock()
+    {
+        estoque.SetSaldoCasco(cascoComSucata.Id, SituacaoCasco.VAZIO, 1);
+        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 5, MotivoBaixaCasco.PERDIDO, null, [Guid.NewGuid()]);
+
+        await Assert.ThrowsAsync<InsufficientStockException>(
+            () => sut.BaixarCascoAsync(baixa, CancellationToken.None));
+        Assert.Equal(1, estoque.GetSaldoCasco(cascoComSucata.Id, SituacaoCasco.VAZIO));
+    }
+
+    [Fact]
     public async Task BaixarCascoAsync_NaoMexeNoSaldoDeOutroTipo()
     {
         estoque.SetSaldoCasco(cascoComSucata.Id, SituacaoCasco.VAZIO, 10);
         estoque.SetSaldoCasco(cascoSemSucata.Id, SituacaoCasco.VAZIO, 10);
 
         await sut.BaixarCascoAsync(
-            new NovaBaixaCasco(cascoComSucata.Id, 2, null, [Guid.NewGuid()]), CancellationToken.None);
+            new NovaBaixaCasco(cascoComSucata.Id, 2, MotivoBaixaCasco.QUEBRADO, null, [Guid.NewGuid()]), CancellationToken.None);
 
         Assert.Equal(10, estoque.GetSaldoCasco(cascoSemSucata.Id, SituacaoCasco.VAZIO));
         Assert.Equal(0, estoque.GetSaldoCasco(cascoSemSucata.Id, SituacaoCasco.SUCATA));
@@ -214,7 +252,7 @@ public sealed class EstoqueServiceTests
         estoque.SetSaldoCasco(cascoComSucata.Id, SituacaoCasco.VAZIO, 1);
         // Vazio de outro tipo não cobre: o saldo é por tipo.
         estoque.SetSaldoCasco(cascoSemSucata.Id, SituacaoCasco.VAZIO, 100);
-        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 5, null, [Guid.NewGuid()]);
+        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 5, MotivoBaixaCasco.QUEBRADO, null, [Guid.NewGuid()]);
 
         await Assert.ThrowsAsync<InsufficientStockException>(
             () => sut.BaixarCascoAsync(baixa, CancellationToken.None));
@@ -227,7 +265,7 @@ public sealed class EstoqueServiceTests
     [Fact]
     public async Task BaixarCascoAsync_QuandoSemResponsavel_LancaValidacao()
     {
-        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 2, "quebrou", []);
+        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 2, MotivoBaixaCasco.QUEBRADO, null, []);
 
         var e = await Assert.ThrowsAsync<RequestValidationException>(
             () => sut.BaixarCascoAsync(baixa, CancellationToken.None));
@@ -238,7 +276,7 @@ public sealed class EstoqueServiceTests
     [Fact]
     public async Task BaixarCascoAsync_QuandoResponsavelIdVazio_LancaIdInvalido()
     {
-        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 2, "quebrou", [Guid.NewGuid(), Guid.Empty]);
+        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 2, MotivoBaixaCasco.QUEBRADO, null, [Guid.NewGuid(), Guid.Empty]);
 
         var e = await Assert.ThrowsAsync<RequestValidationException>(
             () => sut.BaixarCascoAsync(baixa, CancellationToken.None));
@@ -249,7 +287,7 @@ public sealed class EstoqueServiceTests
     [Fact]
     public async Task BaixarCascoAsync_QuandoTipoCascoIdVazio_LancaIdInvalido()
     {
-        var baixa = new NovaBaixaCasco(Guid.Empty, 2, null, [Guid.NewGuid()]);
+        var baixa = new NovaBaixaCasco(Guid.Empty, 2, MotivoBaixaCasco.QUEBRADO, null, [Guid.NewGuid()]);
 
         var e = await Assert.ThrowsAsync<RequestValidationException>(
             () => sut.BaixarCascoAsync(baixa, CancellationToken.None));
@@ -260,7 +298,7 @@ public sealed class EstoqueServiceTests
     [Fact]
     public async Task BaixarCascoAsync_QuandoTipoNaoExiste_LancaNotFoundSemGravar()
     {
-        var baixa = new NovaBaixaCasco(Guid.NewGuid(), 2, null, [Guid.NewGuid()]);
+        var baixa = new NovaBaixaCasco(Guid.NewGuid(), 2, MotivoBaixaCasco.QUEBRADO, null, [Guid.NewGuid()]);
 
         var e = await Assert.ThrowsAsync<EntityNotFoundException>(
             () => sut.BaixarCascoAsync(baixa, CancellationToken.None));
@@ -274,7 +312,7 @@ public sealed class EstoqueServiceTests
     [InlineData(-1)]
     public async Task BaixarCascoAsync_QuandoQuantidadeNaoPositiva_LancaQuantidadeInvalida(int quantidade)
     {
-        var baixa = new NovaBaixaCasco(cascoComSucata.Id, quantidade, null, [Guid.NewGuid()]);
+        var baixa = new NovaBaixaCasco(cascoComSucata.Id, quantidade, MotivoBaixaCasco.QUEBRADO, null, [Guid.NewGuid()]);
 
         var e = await Assert.ThrowsAsync<RequestValidationException>(
             () => sut.BaixarCascoAsync(baixa, CancellationToken.None));
@@ -287,7 +325,7 @@ public sealed class EstoqueServiceTests
     public async Task BaixarCascoAsync_ConcorrenteComSaldo5_AceitaSo5De10()
     {
         estoque.SetSaldoCasco(cascoComSucata.Id, SituacaoCasco.VAZIO, 5);
-        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 1, null, [Guid.NewGuid()]);
+        var baixa = new NovaBaixaCasco(cascoComSucata.Id, 1, MotivoBaixaCasco.QUEBRADO, null, [Guid.NewGuid()]);
 
         var resultados = await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => TentarAsync(
             () => sut.BaixarCascoAsync(baixa, CancellationToken.None))));
@@ -307,7 +345,7 @@ public sealed class EstoqueServiceTests
         await Assert.ThrowsAsync<InsufficientStockException>(
             () => sut.AjustarAsync(marca.Id, -1, null, CancellationToken.None));
         await Assert.ThrowsAsync<InsufficientStockException>(() => sut.BaixarCascoAsync(
-            new NovaBaixaCasco(cascoComSucata.Id, 1, null, [Guid.NewGuid()]), CancellationToken.None));
+            new NovaBaixaCasco(cascoComSucata.Id, 1, MotivoBaixaCasco.QUEBRADO, null, [Guid.NewGuid()]), CancellationToken.None));
         Assert.Null(baixas.UltimaBaixa);
     }
 

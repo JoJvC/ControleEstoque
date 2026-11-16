@@ -179,7 +179,7 @@ public sealed record RelatorioLucroResponse(
 }
 
 public sealed record CreateBaixaCascoRequest(
-    Guid TipoCascoId, int Quantidade, string? Motivo, List<Guid>? ResponsaveisIds);
+    Guid TipoCascoId, int Quantidade, MotivoBaixaCasco? Motivo, string? Observacao, List<Guid>? ResponsaveisIds);
 
 public sealed record CreatedResponse(Guid Id);
 

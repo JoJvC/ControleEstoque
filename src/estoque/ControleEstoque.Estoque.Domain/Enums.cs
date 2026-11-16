@@ -28,6 +28,13 @@ public enum TipoMovimentoEstoque
     AJUSTE
 }
 
+/// <summary>Motivo da baixa de casco; os nomes espelham <c>baixas_casco.motivo</c> e o <c>MotivoPerda</c> de Vendas.</summary>
+public enum MotivoBaixaCasco
+{
+    QUEBRADO,
+    PERDIDO
+}
+
 public enum TipoFrete
 {
     TERCEIRIZADO,

@@ -34,12 +34,42 @@ import { EstoqueStore } from './estoque-store';
     QuantityStepper,
   ],
   template: `
-    <ce-sheet-shell titulo="Baixa de casco por quebra" (fechar)="ref.close()">
+    <ce-sheet-shell
+      [titulo]="perdido() ? 'Baixa de casco por perda' : 'Baixa de casco por quebra'"
+      (fechar)="ref.close()"
+    >
       <form class="form" (submit)="$event.preventDefault(); salvar()">
         <p class="aviso">
           <ce-icon nome="info" [tamanho]="16" />
-          O casco baixado sai do estoque de casco vazio e entra no estoque de sucata.
+          @if (perdido()) {
+            O casco baixado sai do estoque de casco vazio e não entra na sucata.
+          } @else {
+            O casco baixado sai do estoque de casco vazio e entra no estoque de sucata.
+          }
         </p>
+
+        <div class="motivo" role="radiogroup" aria-label="Motivo da baixa">
+          <button
+            type="button"
+            class="motivo__opcao"
+            [class.motivo__opcao--ativa]="!perdido()"
+            [attr.aria-checked]="!perdido()"
+            role="radio"
+            (click)="motivo.set('QUEBRADO')"
+          >
+            Quebrado
+          </button>
+          <button
+            type="button"
+            class="motivo__opcao"
+            [class.motivo__opcao--ativa]="perdido()"
+            [attr.aria-checked]="perdido()"
+            role="radio"
+            (click)="motivo.set('PERDIDO')"
+          >
+            Perdido
+          </button>
+        </div>
 
         <ce-form-field rotulo="Tipo de casco" [obrigatorio]="true">
           <ce-select
@@ -50,12 +80,15 @@ import { EstoqueStore } from './estoque-store';
           />
         </ce-form-field>
 
-        <ce-form-field rotulo="Quantidade quebrada" [obrigatorio]="true">
+        <ce-form-field
+          [rotulo]="perdido() ? 'Quantidade perdida' : 'Quantidade quebrada'"
+          [obrigatorio]="true"
+        >
           <ce-quantity-stepper [formControl]="quantidade" [min]="1" />
         </ce-form-field>
 
-        <ce-form-field rotulo="Motivo" dica="Como aconteceu — fica no registro.">
-          <ce-input placeholder="Ex.: queda na descarga" [formControl]="motivo" />
+        <ce-form-field rotulo="Observação" dica="Como aconteceu — fica no registro.">
+          <ce-input placeholder="Ex.: queda na descarga" [formControl]="observacao" />
         </ce-form-field>
 
         <fieldset class="responsaveis">
@@ -90,6 +123,8 @@ import { EstoqueStore } from './estoque-store';
     </ce-sheet-shell>
   `,
   styles: `
+    @use 'mixins';
+
     .form {
       display: flex;
       flex-direction: column;
@@ -105,6 +140,28 @@ import { EstoqueStore } from './estoque-store';
       background: var(--ce-primary-soft);
       color: var(--ce-primary-strong);
       font-size: var(--ce-font-sm);
+    }
+
+    .motivo {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--ce-space-2);
+    }
+
+    .motivo__opcao {
+      @include mixins.touch-target;
+
+      border: 1px solid var(--ce-border);
+      border-radius: var(--ce-radius-controle);
+      background: var(--ce-surface);
+      font-weight: 600;
+      color: var(--ce-text-muted);
+    }
+
+    .motivo__opcao--ativa {
+      border-color: var(--ce-primary);
+      background: var(--ce-primary-soft);
+      color: var(--ce-primary-strong);
     }
 
     .responsaveis {
@@ -156,7 +213,9 @@ export class BaixaCascoSheet {
       .map((c) => ({ value: c.tipoCascoId, label: `${c.nome} (${c.vazios} vazios)` })),
   );
   protected readonly quantidade = new FormControl(1, { nonNullable: true });
-  protected readonly motivo = new FormControl('', { nonNullable: true });
+  protected readonly motivo = signal<'QUEBRADO' | 'PERDIDO'>('QUEBRADO');
+  protected readonly perdido = computed(() => this.motivo() === 'PERDIDO');
+  protected readonly observacao = new FormControl('', { nonNullable: true });
 
   protected readonly funcionarios = signal<FuncionarioResponse[]>([]);
   protected readonly carregandoFuncionarios = signal(true);
@@ -198,7 +257,10 @@ export class BaixaCascoSheet {
       return;
     }
     if (this.selecionados().size === 0) {
-      this.erro.set('Informe ao menos um funcionário responsável pela quebra.');
+      this.erro.set(
+        'Informe ao menos um funcionário responsável pela ' +
+          (this.perdido() ? 'perda.' : 'quebra.'),
+      );
       return;
     }
 
@@ -207,7 +269,8 @@ export class BaixaCascoSheet {
       await this.store.baixarCasco({
         tipoCascoId,
         quantidade: this.quantidade.value,
-        motivo: this.motivo.value.trim() || null,
+        motivo: this.motivo(),
+        observacao: this.observacao.value.trim() || null,
         responsaveisIds: [...this.selecionados()],
       });
       this.ref.close(true);

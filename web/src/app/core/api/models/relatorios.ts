@@ -83,6 +83,7 @@ export interface SaldoCascoRelatorio {
   clienteId: string;
   nome: string;
   saldoCascos: number;
+  cascosAFavor: number;
 }
 
 export interface SucataEntregueRelatorio {

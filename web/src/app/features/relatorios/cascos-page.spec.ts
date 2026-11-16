@@ -32,7 +32,7 @@ function montar() {
 function linhas(el: HTMLElement): string[][] {
   return Array.from(el.querySelectorAll('.tabela tbody tr')).map((tr) =>
     Array.from(tr.querySelectorAll('td')).map((td) =>
-      (td.textContent ?? '').replace(/\s/g, ' ').trim(),
+      (td.textContent ?? '').replace(/\s+/g, ' ').trim(),
     ),
   );
 }
@@ -43,13 +43,13 @@ describe('CascosPage', () => {
   it('com dados mostra as linhas nos cards e na tabela', async () => {
     const { fixture, http, el } = montar();
     http.expectOne(URL).flush([
-      { clienteId: 'c1', nome: 'Mercado Sol', saldoCascos: 5 },
-      { clienteId: 'c2', nome: 'Bar Lua', saldoCascos: -2 },
+      { clienteId: 'c1', nome: 'Mercado Sol', saldoCascos: 5, cascosAFavor: 0 },
+      { clienteId: 'c2', nome: 'Bar Lua', saldoCascos: 0, cascosAFavor: 2 },
     ]);
     await assentar(fixture);
     expect(linhas(el)).toEqual([
       ['Mercado Sol', '5'],
-      ['Bar Lua', '-2'],
+      ['Bar Lua', '0 + 2 a favor'],
     ]);
     expect(el.querySelectorAll('.cards .card')).toHaveLength(2);
     expect(el.textContent).not.toContain('R$');

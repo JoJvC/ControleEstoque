@@ -20,7 +20,7 @@ const CASCOS_REL = '/api/clientes/v1/relatorios/cascos';
 const ANA = { id: 'a', nome: 'Ana', telefone: '11', observacoes: null, enderecos: [] };
 const BIA = { id: 'b', nome: 'Bia', telefone: null, observacoes: null, enderecos: [] };
 const FIADO = [{ clienteId: 'f', nome: 'Fátima', saldoDevedor: 42.5, saldo: -42.5 }];
-const CASCOS = [{ clienteId: 'c', nome: 'Caio', saldoCascos: 6 }];
+const CASCOS = [{ clienteId: 'c', nome: 'Caio', saldoCascos: 6, cascosAFavor: 0 }];
 
 interface Opcoes {
   permissoes?: string[];
@@ -177,14 +177,18 @@ describe('ClientesPage — lista e chips', () => {
     expect(t.texto()).toContain('6 cascos');
   });
 
-  it('saldo de casco negativo aparece como "2 a favor", sem sinal de menos', async () => {
+  it('Com casco mostra Zé com "1 casco" e "+ 1 a favor" e não mostra Bia (só crédito)', async () => {
     const t = await montar({
       filtro: 'casco',
-      cascos: [{ clienteId: 'c', nome: 'Caio', saldoCascos: -2 }],
+      cascos: [
+        { clienteId: 'z', nome: 'Zé', saldoCascos: 1, cascosAFavor: 1 },
+        { clienteId: 'b', nome: 'Bia', saldoCascos: 0, cascosAFavor: 2 },
+      ],
     });
     await assentar(t.fixture);
-    expect(t.texto()).toContain('2 a favor');
-    expect(t.texto()).not.toContain('-2');
+    expect(t.nomes()).toEqual(['Zé']);
+    expect(t.texto().replace(/\s+/g, ' ')).toContain('1 casco + 1 a favor');
+    expect(t.texto()).not.toContain('Bia');
   });
 
   it('o chip atualiza a URL com replaceUrl', async () => {

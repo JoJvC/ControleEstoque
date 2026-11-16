@@ -82,9 +82,9 @@ public sealed class PostgresCascoClienteRepository : ICascoClienteRepository
             VALUES (@tipoCascoId, 'VAZIO', 'DEVOLUCAO_CLIENTE', @quantidade)
             """;
 
-        // SUM(bigint) é numeric no Postgres: o ::bigint mantém o (long?) do ExecuteScalar.
+        // Só os positivos: crédito de um tipo não abate outro. SUM(bigint) é numeric no Postgres: o ::bigint mantém o (long?) do ExecuteScalar.
         public const string GetSaldo =
-            "SELECT COALESCE(SUM(saldo_cascos), 0)::bigint FROM vw_saldo_casco_cliente WHERE cliente_id = @clienteId";
+            "SELECT COALESCE(SUM(GREATEST(saldo_cascos, 0)), 0)::bigint FROM vw_saldo_casco_cliente WHERE cliente_id = @clienteId";
 
         // Mesmo critério de PostgresSaldosRepository.GetCascosPorTipo (GET /saldos).
         public const string GetCascosPorTipo = """

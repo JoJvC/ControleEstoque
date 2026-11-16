@@ -42,7 +42,7 @@ async function responder(t: Awaited<ReturnType<typeof navegar>>, todos: object[]
     );
   t.http
     .match(CASCOS_REL)
-    .forEach((r) => r.flush([{ clienteId: 'c', nome: 'Caio', saldoCascos: 6 }]));
+    .forEach((r) => r.flush([{ clienteId: 'c', nome: 'Caio', saldoCascos: 6, cascosAFavor: 0 }]));
   await t.harness.fixture.whenStable();
   t.harness.detectChanges();
 }

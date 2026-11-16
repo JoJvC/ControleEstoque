@@ -32,7 +32,12 @@ import { RelatoriosStore } from './relatorios-store';
                 <dl>
                   <dt class="card__titulo">{{ c.nome }}</dt>
                   <dt>Saldo de cascos</dt>
-                  <dd>{{ c.saldoCascos }}</dd>
+                  <dd>
+                    {{ c.saldoCascos }}
+                    @if (c.cascosAFavor) {
+                      + {{ c.cascosAFavor }} a favor
+                    }
+                  </dd>
                 </dl>
               </li>
             }
@@ -49,7 +54,12 @@ import { RelatoriosStore } from './relatorios-store';
                 @for (c of linhas; track c.clienteId) {
                   <tr>
                     <td>{{ c.nome }}</td>
-                    <td class="num">{{ c.saldoCascos }}</td>
+                    <td class="num">
+                      {{ c.saldoCascos }}
+                      @if (c.cascosAFavor) {
+                        + {{ c.cascosAFavor }} a favor
+                      }
+                    </td>
                   </tr>
                 }
               </tbody>

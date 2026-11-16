@@ -52,7 +52,7 @@ public sealed class PostgresSaldosRepository : ISaldosRepository
         while (await reader.ReadAsync(cancellationToken))
         {
             results.Add(new SaldoCascoRelatorio(
-                reader.GetGuid(0), reader.GetString(1), reader.GetInt64(2)));
+                reader.GetGuid(0), reader.GetString(1), reader.GetInt64(2), reader.GetInt64(3)));
         }
 
         return results;
@@ -104,17 +104,18 @@ public sealed class PostgresSaldosRepository : ISaldosRepository
             "SELECT saldo_devedor FROM vw_saldo_fiado_cliente WHERE cliente_id = @clienteId";
 
         public const string ListSaldosCasco = """
-            SELECT cliente_id, nome, SUM(saldo_cascos)::bigint AS saldo_cascos
+            SELECT cliente_id, nome,
+                   SUM(GREATEST(saldo_cascos, 0))::bigint AS cascos,
+                   SUM(GREATEST(-saldo_cascos, 0))::bigint AS a_favor
             FROM vw_saldo_casco_cliente
             GROUP BY cliente_id, nome
-            HAVING SUM(saldo_cascos) <> 0
-            ORDER BY SUM(saldo_cascos) DESC
+            HAVING SUM(GREATEST(saldo_cascos, 0)) > 0 OR SUM(GREATEST(-saldo_cascos, 0)) > 0
+            ORDER BY cascos DESC, a_favor DESC, nome
             """;
 
         public const string TotalCascosNaRua = """
-            SELECT COALESCE(SUM(saldo), 0)::bigint
-            FROM (SELECT SUM(saldo_cascos) AS saldo FROM vw_saldo_casco_cliente GROUP BY cliente_id) t
-            WHERE saldo > 0
+            SELECT COALESCE(SUM(GREATEST(saldo_cascos, 0)), 0)::bigint
+            FROM vw_saldo_casco_cliente
             """;
 
         public const string ListSucataEntregue = """

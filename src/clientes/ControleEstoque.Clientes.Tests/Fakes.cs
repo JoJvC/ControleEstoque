@@ -134,7 +134,8 @@ internal sealed class FakeCascoClienteRepository : ICascoClienteRepository
     public Task<long> GetSaldoAsync(Guid clienteId, Guid tipoCascoId, CancellationToken cancellationToken) =>
         Task.FromResult(saldos.GetValueOrDefault((clienteId, tipoCascoId)));
 
-    private long Total(Guid clienteId) => saldos.Where(kv => kv.Key.Cliente == clienteId).Sum(kv => kv.Value);
+    // Como o SQL real (GetSaldo): só os positivos; o crédito de um tipo não abate outro.
+    private long Total(Guid clienteId) => saldos.Where(kv => kv.Key.Cliente == clienteId).Sum(kv => Math.Max(0, kv.Value));
 
     public Task<ResultadoDevolucaoCasco> DevolverAsync(
         Guid clienteId, IReadOnlyList<LinhaDevolucaoCasco> linhas, CancellationToken cancellationToken)

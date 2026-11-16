@@ -50,7 +50,7 @@ public sealed record ResultadoEntregaSucata(long TotalSucataEntregue, decimal No
     public decimal NovoSaldo => 0m - NovoSaldoFiado;
 }
 
-public sealed record SaldoCascoRelatorio(Guid ClienteId, string Nome, long SaldoCascos);
+public sealed record SaldoCascoRelatorio(Guid ClienteId, string Nome, long SaldoCascos, long CascosAFavor);
 
 public sealed record TotalCascosRelatorio(long TotalCascos);
 

@@ -37,8 +37,9 @@ const FIADO = [
   { clienteId: 'z', nome: 'ZÉ', saldoDevedor: -10, saldo: 10 },
 ];
 const CASCOS = [
-  { clienteId: 'a', nome: 'Ana', saldoCascos: 6 },
-  { clienteId: 'b', nome: 'Bia', saldoCascos: 0 },
+  { clienteId: 'a', nome: 'Ana', saldoCascos: 6, cascosAFavor: 0 },
+  { clienteId: 'b', nome: 'Bia', saldoCascos: 0, cascosAFavor: 2 },
+  { clienteId: 'z', nome: 'Zé', saldoCascos: 1, cascosAFavor: 1 },
 ];
 
 describe('montarLinhas', () => {
@@ -59,8 +60,14 @@ describe('montarLinhas', () => {
 
   it('fiado e casco filtram por termo sem diferenciar maiúsculas e minúsculas', () => {
     expect(montarLinhas('fiado', [], FIADO, CASCOS, ' AN ').map((l) => l.id)).toEqual(['a']);
-    expect(montarLinhas('casco', [], FIADO, CASCOS, 'bIa').map((l) => l.id)).toEqual(['b']);
+    expect(montarLinhas('casco', [], FIADO, CASCOS, 'zÉ').map((l) => l.id)).toEqual(['z']);
     expect(montarLinhas('casco', [], FIADO, CASCOS, 'zzz')).toEqual([]);
+  });
+
+  it('Com casco: Zé (+1/−1) entra com selo 1 e a favor 1; Bia (só crédito) fica fora', () => {
+    const linhas = montarLinhas('casco', [], FIADO, CASCOS, '');
+    expect(linhas.map((l) => l.id)).toEqual(['a', 'z']);
+    expect(linhas[1]).toMatchObject({ saldoCascos: 1, cascosAFavor: 1 });
   });
 
   it('no relatório o secundário fica vazio e os selos vêm da junção por id', () => {
@@ -70,6 +77,7 @@ describe('montarLinhas', () => {
       nome: 'Ana',
       secundario: undefined,
       saldoCascos: 6,
+      cascosAFavor: undefined,
       saldo: -42.5,
     });
   });
@@ -78,8 +86,9 @@ describe('montarLinhas', () => {
     const [ana] = montarLinhas('todos', [cliente('a', 'Ana', null, null)], [], CASCOS, '');
     expect(ana.saldo).toBeUndefined();
     expect(ana.saldoCascos).toBe(6);
-    const [bia] = montarLinhas('casco', [], [], CASCOS, 'bia');
+    const [bia] = montarLinhas('todos', [cliente('b', 'Bia', null, null)], [], CASCOS, '');
     expect(bia.saldoCascos).toBeUndefined();
+    expect(bia.cascosAFavor).toBe(2);
   });
 
   it('o saldo passa como vem: fiado negativo, crédito positivo', () => {

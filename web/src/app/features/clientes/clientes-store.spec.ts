@@ -239,7 +239,9 @@ describe('ClientesStore — filtros e relatórios', () => {
     store.abrir('todos');
     http.expectOne((r) => r.url === CLIENTES).flush([ANA]);
     http.expectOne(FIADO_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoDevedor: 5, saldo: -5 }]);
-    http.expectOne(CASCOS_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoCascos: 2 }]);
+    http
+      .expectOne(CASCOS_REL)
+      .flush([{ clienteId: 'a', nome: 'Ana', saldoCascos: 2, cascosAFavor: 0 }]);
     expect(store.linhas()).toMatchObject([{ id: 'a', saldo: -5, saldoCascos: 2 }]);
 
     store.definirFiltro('fiado');
@@ -282,7 +284,9 @@ describe('ClientesStore — filtros e relatórios', () => {
     store.abrir('todos');
     http.expectOne((r) => r.url === CLIENTES).flush([ANA]);
     http.expectOne(FIADO_REL).flush(null, { status: 500, statusText: 'x' });
-    http.expectOne(CASCOS_REL).flush([{ clienteId: 'a', nome: 'Ana', saldoCascos: 2 }]);
+    http
+      .expectOne(CASCOS_REL)
+      .flush([{ clienteId: 'a', nome: 'Ana', saldoCascos: 2, cascosAFavor: 0 }]);
     expect(store.statusLista()).toBe('ok');
     expect(store.linhas()).toMatchObject([{ id: 'a', saldoCascos: 2 }]);
     expect(store.linhas()[0].saldo).toBeUndefined();

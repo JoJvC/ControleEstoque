@@ -76,4 +76,14 @@ public sealed class SaldosCascosTests
         Assert.Empty(saldos.CascosPorTipo);
         Assert.Empty(saldos.SucataPorTipo);
     }
+
+    [Fact]
+    public void Montar_QuandoMisturaPositivoENegativo_TotalSoPositivoEListaMantemONegativo()
+    {
+        var saldos = SaldosCascos.Montar(
+            [new(Guid.NewGuid(), "20L", 1), new(Guid.NewGuid(), "Cerveja", -1)], [], 0m);
+
+        Assert.Equal(1, saldos.SaldoCascos);
+        Assert.Equal([-1L, 1L], saldos.CascosPorTipo.Select(c => c.Saldo).Order());
+    }
 }

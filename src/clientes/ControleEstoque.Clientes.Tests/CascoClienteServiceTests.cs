@@ -26,7 +26,7 @@ public sealed class CascoClienteServiceTests
         var resultado = await sut.DevolverAsync(
             cliente.Id, Linhas((a.Id, 2), (b.Id, 1)), CancellationToken.None);
 
-        Assert.Equal(0, resultado.NovoSaldoCascos);
+        Assert.Equal(1, resultado.NovoSaldoCascos);
         Assert.Equal(1, resultado.SaldoPorTipo.Single(s => s.TipoCascoId == a.Id).Saldo);
         Assert.Equal(-1, resultado.SaldoPorTipo.Single(s => s.TipoCascoId == b.Id).Saldo);
         Assert.Equal(1, await cascos.GetSaldoAsync(cliente.Id, a.Id, CancellationToken.None));
@@ -41,7 +41,7 @@ public sealed class CascoClienteServiceTests
 
         var resultado = await sut.DevolverAsync(cliente.Id, Linhas((tipo.Id, 3)), CancellationToken.None);
 
-        Assert.Equal(-3, resultado.NovoSaldoCascos);
+        Assert.Equal(0, resultado.NovoSaldoCascos);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public sealed class CascoClienteServiceTests
 
         var resultado = await sut.DevolverAsync(cliente.Id, Linhas((tipo.Id, 3)), CancellationToken.None);
 
-        Assert.Equal(-2, resultado.NovoSaldoCascos);
+        Assert.Equal(0, resultado.NovoSaldoCascos);
     }
 
     [Fact]
